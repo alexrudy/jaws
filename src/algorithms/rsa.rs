@@ -106,6 +106,7 @@ impl super::SigningAlgorithm for Rsa<sha2::Sha512> {
 #[cfg(test)]
 mod test {
     use crate::algorithms::SigningAlgorithm;
+    use crate::key::jwk_reader::rsa;
 
     use super::*;
 
@@ -117,18 +118,9 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
     #[test]
     fn rfc7515_example_a2_signature() {
-        let key = json!( {"kty":"RSA",
+        let pkey = rsa(&json!( {"kty":"RSA",
               "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
              HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
              D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
@@ -158,23 +150,7 @@ mod test {
              y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
              W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
              }
-        );
-
-        let primes = vec![
-            to_biguint(&key["p"]).expect("p"),
-            to_biguint(&key["q"]).expect("q"),
-        ];
-
-        let pkey = rsa::RsaPrivateKey::from_components(
-            to_biguint(&key["n"]).expect("n"),
-            to_biguint(&key["e"]).expect("e"),
-            to_biguint(&key["d"]).expect("d"),
-            primes,
-        )
-        .unwrap();
-
-        assert_eq!(&to_biguint(&key["dp"]).expect("dp"), pkey.dp().unwrap());
-        assert_eq!(&to_biguint(&key["dq"]).expect("dq"), pkey.dq().unwrap());
+        ));
 
         let payload = strip_whitespace(
             "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFt

@@ -103,6 +103,51 @@ where
 }
 
 #[cfg(test)]
+pub(crate) mod jwk_reader {
+    use base64ct::Encoding;
+
+    fn strip_whitespace(s: &str) -> String {
+        s.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
+        let val = strip_whitespace(v.as_str()?);
+        Some(rsa::BigUint::from_bytes_be(
+            base64ct::Base64UrlUnpadded::decode_vec(&val)
+                .ok()?
+                .as_slice(),
+        ))
+    }
+
+    pub(crate) fn rsa_pub(key: &serde_json::Value) -> rsa::RsaPublicKey {
+        let n = to_biguint(&key["n"]).expect("decode n");
+        let e = to_biguint(&key["e"]).expect("decode e");
+
+        rsa::RsaPublicKey::new(n, e).expect("valid key parameters")
+    }
+
+    pub(crate) fn rsa(key: &serde_json::Value) -> rsa::RsaPrivateKey {
+        let primes = vec![
+            to_biguint(&key["p"]).expect("p"),
+            to_biguint(&key["q"]).expect("q"),
+        ];
+
+        let pkey = rsa::RsaPrivateKey::from_components(
+            to_biguint(&key["n"]).expect("n"),
+            to_biguint(&key["e"]).expect("e"),
+            to_biguint(&key["d"]).expect("d"),
+            primes,
+        )
+        .unwrap();
+
+        assert_eq!(&to_biguint(&key["dp"]).expect("dp"), pkey.dp().unwrap());
+        assert_eq!(&to_biguint(&key["dq"]).expect("dq"), pkey.dq().unwrap());
+
+        pkey
+    }
+}
+
+#[cfg(test)]
 mod test {
     use super::*;
 
@@ -110,7 +155,7 @@ mod test {
 
     #[test]
     fn rfc7639_example() {
-        let key = json!({
+        let key = jwk_reader::rsa_pub(&json!({
               "kty": "RSA",
               "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
                   VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6
@@ -122,28 +167,7 @@ mod test {
               "alg": "RS256",
               "kid": "2011-04-29"
              }
-        );
-
-        let n = base64ct::Base64UrlUnpadded::decode_vec(
-            &key["n"]
-                .as_str()
-                .unwrap()
-                .replace(|c: char| c.is_ascii_whitespace(), ""),
-        )
-        .expect("decode n");
-        let e = base64ct::Base64UrlUnpadded::decode_vec(
-            &key["e"]
-                .as_str()
-                .unwrap()
-                .replace(|c: char| c.is_ascii_whitespace(), ""),
-        )
-        .expect("decode e");
-
-        let key = rsa::RsaPublicKey::new(
-            rsa::BigUint::from_bytes_be(&n),
-            rsa::BigUint::from_bytes_be(&e),
-        )
-        .unwrap();
+        ));
 
         let thumb = Thumbprint::<sha2::Sha256, _>::new(key);
 

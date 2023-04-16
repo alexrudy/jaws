@@ -68,11 +68,15 @@ where
 /// input to the cryptographic signature.
 #[derive(Debug, Clone)]
 pub struct UnsignedToken<H, P> {
+    /// The JOSE header in unconstructed form.
     pub header: JOSEHeaderBuilder<H>,
+
+    /// The payload of the token.
     payload: Payload<P>,
 }
 
 impl<P> UnsignedToken<(), P> {
+    /// Create a new JWT with only the registered header values.
     pub fn new_registered(payload: P) -> UnsignedToken<(), P> {
         UnsignedToken {
             header: JOSEHeaderBuilder::new_registered(),
@@ -82,6 +86,10 @@ impl<P> UnsignedToken<(), P> {
 }
 
 impl<H, P> UnsignedToken<H, P> {
+    /// Create a new JWT
+    ///
+    /// H is the custom header type, and should not implement any of the
+    /// registered header fields.
     pub fn new(custom: H, payload: P) -> Self {
         Self {
             header: JOSEHeaderBuilder::new(custom),
@@ -232,28 +240,33 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::claims::Claims;
 
     use base64ct::Encoding;
+    use chrono::TimeZone;
     use serde_json::json;
     use sha2::Sha256;
+
+    use crate::key::jwk_reader::rsa;
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
     #[test]
     #[allow(non_snake_case)]
     fn rfc7515_example_A2() {
-        let key = json!( {"kty":"RSA",
+        // This test alters the example from RFC 7515, section A.2, since
+        // the RFC does not require a specific JSON serialization format,
+        // so we use the compact representation without newlines, as opposed
+        // to the one presented in the RFC.
+        //
+        // Link: https://tools.ietf.org/html/rfc7515#appendix-A.2
+        //
+        // See crate::algorithms::rsa::test::rfc7515_example_A2 for a test
+        // which validates the signature against the RFC example.
+
+        let pkey = rsa(&json!( {"kty":"RSA",
               "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
              HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
              D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
@@ -283,31 +296,17 @@ mod test {
              y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
              W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
              }
-        );
+        ));
 
-        let primes = vec![
-            to_biguint(&key["p"]).expect("p"),
-            to_biguint(&key["q"]).expect("q"),
-        ];
-
-        let pkey = rsa::RsaPrivateKey::from_components(
-            to_biguint(&key["n"]).expect("n"),
-            to_biguint(&key["e"]).expect("e"),
-            to_biguint(&key["d"]).expect("d"),
-            primes,
-        )
-        .unwrap();
-
-        assert_eq!(&to_biguint(&key["dp"]).expect("dp"), pkey.dp().unwrap());
-        assert_eq!(&to_biguint(&key["dq"]).expect("dq"), pkey.dq().unwrap());
-
-        let payload = json!({
-            "iss": "joe",
-            "exp": 1300819380,
+        let custom = json!({
             "http://example.com/is_root": true
         });
 
-        let token = UnsignedToken::new_registered(payload);
+        let mut claims = Claims::from(custom);
+        claims.registered.issued_at = chrono::Utc.timestamp_opt(1300819380, 0).single();
+        claims.registered.issuer = Some("joe".into());
+
+        let token = UnsignedToken::new_registered(claims);
 
         let algorithm: crate::algorithms::rsa::Rsa<Sha256> = pkey.into();
         let signed = token.sign(&algorithm).unwrap();
@@ -324,8 +323,8 @@ mod test {
                 strip_whitespace(
                     "eyJhbGciOiJSUzI1NiJ9
             .
-            eyJleHAiOjEzMDA4MTkzODAsImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb
-            290Ijp0cnVlLCJpc3MiOiJqb2UifQ"
+            eyJpc3MiOiJqb2UiLCJpYXQiOjEzMDA4MTkzODAsImh0dHA6Ly9leGFtc
+            GxlLmNvbS9pc19yb290Ijp0cnVlfQ"
                 )
             )
         }
@@ -338,15 +337,15 @@ mod test {
                     "
             eyJhbGciOiJSUzI1NiJ9
             .
-            eyJleHAiOjEzMDA4MTkzODAsImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb
-            290Ijp0cnVlLCJpc3MiOiJqb2UifQ
+            eyJpc3MiOiJqb2UiLCJpYXQiOjEzMDA4MTkzODAsImh0dHA6Ly9leGFtc
+            GxlLmNvbS9pc19yb290Ijp0cnVlfQ
             .
-            NwAkuu3U9lhVJfpX4lCQt3CtDoBAdq8iXX5xbdPsezmbCPyz7VRsIk2Y_
-            UTVQHel6PXVFjcGrXI6txw2lMvpLRvwCRcP9YcUVCfvXNFNmTWcBwgkY_
-            gA17gSJhOIW_aZGA36dme5TpvhAnodnbpP0T50UnBQSlr1OAtJAQ1Iy9z
-            Nens83wr14K7V2bVHj3JbM0PDlQuiAEcQ1M6T5x8le8jLTrI7OKKWakLj
-            Kzm8sqeWqTMbLu89T0XPOT3T35G62UAOQsYPZqHxdyJ1KMuovCI1xuHvQ
-            3t-Dd_Rrz9uVupwg66eKyYihEVCllMSzZrEknUjaJ4sOcDEX9AMscrZRw"
+            OqzEd_gl5CDmUo9jVwC7yrlKSWUaAQoa2_4JSVzSem5nBjv5mx2PbkEZw
+            0qP6karpsUfa0qkNlvtIrdYCWS3GnHff7LBkJkN8tvJgI1zCY2QqIOD0e
+            E1yK3AGgxR0yMDHgY9SIFoXi5cK1UHPeiGkU7GlMmZf2zH-YFOQMK7__7
+            VdH1y7cap6j3xW4LczctcBjJRFRku7i_gAy9JiR34WsqolbxKOQPIGK8w
+            TE3Qo5BhB70IRMJL6O-jqgYVDAl0BrakNKqZtVTLss41ErM5Twyvin740
+            UPIE2oHq3cLzCzXcEPEIPqr4_jerU9Wc8vevZ3-wE5czssL6RgtzJjuyw"
                 )
             )
         }

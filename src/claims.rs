@@ -1,29 +1,22 @@
-use chrono::TimeZone;
+//! Claims for a JWT.
+//!
+//! Claims are one kind of loosely specified payload for a JWT.
+//! The set of registered claims is defined in [RFC 7519][], and can
+//! be extended with both public and private claims.
+//!
+//! [RegisteredClaims] provides a data model for the set of known
+//! registered claims, with optional fields. Since some claims can be any
+//! JSON value type, the fields are generic over the type of the contents.
+//!
+//! [Claims] wraps [RegisteredClaims] with a set of custom claims, which
+//! can be any struct which implements [serde::Serialize] and produces
+//! valid JSON.
+//!
+//! [RFC 7519]: https://tools.ietf.org/html/rfc7519#section-4
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "fmt")]
 use crate::fmt;
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
-pub struct NumericDate(#[serde(with = "crate::numeric_date")] chrono::DateTime<chrono::Utc>);
-
-impl NumericDate {
-    pub fn now() -> Self {
-        chrono::Utc::now().into()
-    }
-}
-
-impl<TZ: TimeZone> From<chrono::DateTime<TZ>> for NumericDate {
-    fn from(date: chrono::DateTime<TZ>) -> Self {
-        NumericDate(date.with_timezone(&chrono::Utc))
-    }
-}
-
-impl From<NumericDate> for chrono::DateTime<chrono::Utc> {
-    fn from(date: NumericDate) -> Self {
-        date.0
-    }
-}
 
 /// The signed header values for the JWS which are common to each
 /// request.
@@ -71,8 +64,12 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// provide for some small leeway, usually no more than a few minutes, to
     /// account for clock skew. Its value MUST be a number containing a
     /// NumericDate value. Use of this claim is OPTIONAL.
-    #[serde(rename = "exp", skip_serializing_if = "Option::is_none")]
-    pub expiration: Option<NumericDate>,
+    #[serde(
+        rename = "exp",
+        skip_serializing_if = "Option::is_none",
+        with = "crate::numeric_date"
+    )]
+    pub expiration: Option<chrono::DateTime<chrono::Utc>>,
 
     /// The "nbf" (not before) claim identifies the time before which the JWT
     /// MUST NOT be accepted for processing. The processing of the "nbf" claim
@@ -81,15 +78,23 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// for some small leeway, usually no more than a few minutes, to account
     /// for clock skew. Its value MUST be a number containing a NumericDate value.
     /// Use of this claim is OPTIONAL.
-    #[serde(rename = "nbf", skip_serializing_if = "Option::is_none")]
-    pub not_before: Option<NumericDate>,
+    #[serde(
+        rename = "nbf",
+        skip_serializing_if = "Option::is_none",
+        with = "crate::numeric_date"
+    )]
+    pub not_before: Option<chrono::DateTime<chrono::Utc>>,
 
     /// The "iat" (issued at) claim identifies the time at which the JWT was
     /// issued.  This claim can be used to determine the age of the JWT.  Its
     /// value MUST be a number containing a NumericDate value.  Use of this
     /// claim is OPTIONAL.
-    #[serde(rename = "iat", skip_serializing_if = "Option::is_none")]
-    pub issued_at: Option<NumericDate>,
+    #[serde(
+        rename = "iat",
+        skip_serializing_if = "Option::is_none",
+        with = "crate::numeric_date"
+    )]
+    pub issued_at: Option<chrono::DateTime<chrono::Utc>>,
 
     /// The "jti" (JWT ID) claim provides a unique identifier for the JWT. The identifier value MUST be assigned in a manner that ensures that there is a negligible probability that the same value will be accidentally assigned to a different data object; if the application uses multiple issuers, collisions MUST be prevented among values produced by different issuers as well. The "jti" claim can be used to prevent the JWT from being replayed. The "jti" value is a case- sensitive string. Use of this claim is OPTIONAL.
     #[serde(rename = "jti", skip_serializing_if = "Option::is_none")]
@@ -109,6 +114,12 @@ where
     }
 }
 
+/// The claims for the JWS.
+///
+/// Claims are one kind of loosely specified payload for a JWT.
+/// They consist of "registered" header values, specified in RFC 7519,
+/// and a set of custom claims, which can be any arbitrary key-value
+/// pairs seializable as JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Claims<C, ISS = String, SUB = String, AUD = String, JTI = String> {
     #[serde(flatten)]

@@ -48,10 +48,6 @@ impl crate::key::KeyInfo for rsa::RsaPrivateKey {
 ///
 pub type RsaPkcs1v15<D> = SigningKey<D>;
 
-impl super::Algorithm for RsaPkcs1v15<sha2::Sha256> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS256;
-}
-
 impl<D> super::SigningAlgorithm for RsaPkcs1v15<D>
 where
     D: digest::Digest,
@@ -71,12 +67,49 @@ where
     }
 }
 
+impl super::Algorithm for RsaPkcs1v15<sha2::Sha256> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS256;
+}
+
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
 }
 
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
+}
+
+pub type RsaPSSKey<D> = rsa::pss::BlindedSigningKey<D>;
+
+impl<D> super::SigningAlgorithm for RsaPSSKey<D>
+where
+    D: digest::Digest + digest::FixedOutputReset,
+    RsaPSSKey<D>: super::Algorithm,
+{
+    type Error = signature::Error;
+    type Signature = rsa::pss::Signature;
+    type Key = rsa::RsaPrivateKey;
+
+    fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
+        let message = format!("{}.{}", header, payload);
+        self.try_sign_with_rng(&mut OsRng, message.as_bytes())
+    }
+
+    fn key(&self) -> &Self::Key {
+        self.as_ref()
+    }
+}
+
+impl super::Algorithm for RsaPSSKey<sha2::Sha256> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::PS256;
+}
+
+impl super::Algorithm for RsaPSSKey<sha2::Sha384> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::PS384;
+}
+
+impl super::Algorithm for RsaPSSKey<sha2::Sha512> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::PS512;
 }
 
 #[cfg(test)]

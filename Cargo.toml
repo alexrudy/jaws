@@ -36,7 +36,7 @@ sha2 = "0.10.6"
 signature = "2.1.0"
 thiserror = "1.0.40"
 url = { version = "2.3.1", features = ["serde"] }
-zeroize = { version = "1.6.0", features = ["std", "serde"] }
+zeroize = { version = "1.6.0", features = ["std", "serde", "derive"] }
 p256 = { version = "0.13.1", features = ["ecdsa", "jwk", "std"] }
 ecdsa = { version = "0.16.6", features = ["signing", "std"] }
 p384 = "0.13.0"

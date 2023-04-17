@@ -22,9 +22,6 @@ use crate::fmt;
 /// request.
 ///
 /// Fields which are `None` are left out of the regsitered header.
-///
-/// The parameter `KI` is the key identifier, which must be serializable as
-/// JSON, but is otherwise unconstrained.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = String> {
     /// Claim issuer identifies the principal that issued the

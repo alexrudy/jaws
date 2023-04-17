@@ -8,14 +8,20 @@
 
 #[cfg(feature = "fmt")]
 use std::fmt::Write;
+use std::marker::PhantomData;
 
-use serde::{ser, Serialize};
+use base64ct::Encoding;
+use serde::{de, ser, Deserialize, Serialize};
 
 #[cfg(feature = "fmt")]
 use crate::fmt;
 use crate::{
+    algorithms::Signature,
     b64data::{Base64Data, Base64JSON},
-    jose::{JOSEHeader, JOSEHeaderBuilder},
+    jose::{
+        Header, JOSEHeader, JOSEHeaderBuilder, JOSERegisteredHeader, JOSERegisteredHeaderBuilder,
+        RegisteredHeader,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -70,6 +76,48 @@ where
     }
 }
 
+impl<'de, P> de::Deserialize<'de> for Payload<P>
+where
+    P: for<'d> Deserialize<'d>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PayloadVisitor<P>(PhantomData<P>);
+
+        impl<'de, P> de::Visitor<'de> for PayloadVisitor<P>
+        where
+            P: de::DeserializeOwned,
+        {
+            type Value = Payload<P>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a base64url encoded json document")
+            }
+
+            fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if v.is_empty() {
+                    return Ok(Payload::Empty);
+                }
+
+                let data = base64ct::Base64UrlUnpadded::decode_vec(v).map_err(|_| {
+                    E::invalid_value(de::Unexpected::Str(v), &"invalid base64url encoding")
+                })?;
+
+                let data = serde_json::from_slice(&data)
+                    .map_err(|err| E::custom(format!("invalid JSON: {err}")))?;
+                Ok(Payload::Json(data))
+            }
+        }
+
+        deserializer.deserialize_str(PayloadVisitor(PhantomData))
+    }
+}
+
 /// A JWS token wihtout an attached signature
 ///
 /// This token contains just the unsigned parts which are used as the
@@ -105,6 +153,7 @@ impl<H, P> UnsignedToken<H, P> {
         }
     }
 
+    /// The token payload.
     pub fn payload(&self) -> Option<&P> {
         match &self.payload {
             Payload::Json(data) => Some(&data.0),
@@ -112,8 +161,14 @@ impl<H, P> UnsignedToken<H, P> {
         }
     }
 
-    pub fn header(&self) -> &H {
+    /// The custom header fields.
+    pub fn custom(&self) -> &H {
         &self.header.custom
+    }
+
+    /// The registered header fields.
+    pub fn registered(&self) -> &JOSERegisteredHeaderBuilder {
+        &self.header.registered
     }
 }
 
@@ -122,6 +177,11 @@ where
     H: Serialize,
     P: Serialize,
 {
+    /// Sign this token using the given algorithm.
+    ///
+    /// This method consumes the token and returns a new one with the signature attached.
+    /// Once the signature is attached, the internal fields are no longer mutable (as that
+    /// would invalidate the signature), but they are still recoverable.
     pub fn sign<A>(self, algorithm: &A) -> Result<SignedToken<H, P, A>, TokenSigningError<A::Error>>
     where
         A: crate::algorithms::SigningAlgorithm,
@@ -163,6 +223,26 @@ where
     header: JOSEHeader<H, A::Key>,
     payload: Payload<P>,
     signature: Base64Data<A::Signature>,
+}
+
+impl<H, P, A> SignedToken<H, P, A>
+where
+    A: crate::algorithms::SigningAlgorithm,
+{
+    pub fn custom(&self) -> &H {
+        &self.header.header
+    }
+
+    pub fn registered(&self) -> &JOSERegisteredHeader<A::Key> {
+        &self.header.registered
+    }
+
+    pub fn payload(&self) -> Option<&P> {
+        match &self.payload {
+            Payload::Json(data) => Some(&data.0),
+            Payload::Empty => None,
+        }
+    }
 }
 
 #[cfg(feature = "fmt")]
@@ -258,6 +338,74 @@ where
 impl<'a, H, P, A> std::fmt::Display for CompactTokenFormatter<'a, H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
+    H: Serialize,
+    P: Serialize,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let header = Base64JSON(&self.header)
+            .serialized_value()
+            .expect("header can be JSON serialized");
+        let payload = self
+            .payload
+            .serialized_value()
+            .expect("payload can be JSON serialized");
+        let signature = self
+            .signature
+            .serialized_value()
+            .expect("signature is valid base64");
+        write!(f, "{}.{}.{}", header, payload, signature)
+    }
+}
+
+/// A JSON Web Token.
+///
+/// Directly serializing this type will produce the JSON form of the JWT.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(deserialize = "H: for<'d> Deserialize<'d>, P: for<'d> Deserialize<'d>"))]
+pub struct Token<H, P> {
+    #[serde(rename = "protected")]
+    header: Header<H>,
+    payload: Payload<P>,
+    signature: Base64Data<Signature>,
+}
+
+impl<H, P> Token<H, P> {
+    /// The custom header fields.
+    pub fn custom(&self) -> &H {
+        &self.header.header
+    }
+
+    /// The registred header fields.
+    pub fn registered(&self) -> &RegisteredHeader {
+        &self.header.registered
+    }
+
+    /// The payload of the JWT.
+    pub fn payload(&self) -> Option<&P> {
+        match &self.payload {
+            Payload::Json(data) => Some(&data.0),
+            Payload::Empty => None,
+        }
+    }
+
+    /// Compact JWT serialization formatter.
+    pub fn compact(&self) -> Compact<'_, H, P> {
+        Compact {
+            header: &self.header,
+            payload: &self.payload,
+            signature: &self.signature,
+        }
+    }
+}
+
+pub struct Compact<'a, H, P> {
+    header: &'a Header<H>,
+    payload: &'a Payload<P>,
+    signature: &'a Base64Data<Signature>,
+}
+
+impl<'a, H, P> std::fmt::Display for Compact<'a, H, P>
+where
     H: Serialize,
     P: Serialize,
 {

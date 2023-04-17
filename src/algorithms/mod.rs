@@ -60,3 +60,19 @@ pub trait SigningAlgorithm: Algorithm {
     /// Return a reference to the key used to sign the JWT.
     fn key(&self) -> &Self::Key;
 }
+
+/// A signature which has not been matched to an algorithm or key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+pub struct Signature(Vec<u8>);
+
+impl AsRef<[u8]> for Signature {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<&[u8]> for Signature {
+    fn from(bytes: &[u8]) -> Self {
+        Signature(bytes.to_vec())
+    }
+}

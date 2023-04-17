@@ -7,7 +7,7 @@ use std::{collections::BTreeMap, marker::PhantomData};
 
 use base64ct::Encoding;
 use digest::Digest;
-use serde::{ser::SerializeMap, Serialize};
+use serde::{ser::SerializeMap, Deserialize, Serialize};
 
 pub trait KeyInfo {
     const KEY_TYPE: &'static str;
@@ -60,13 +60,19 @@ where
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonWebKey {
+    #[serde(flatten)]
+    parameters: BTreeMap<String, serde_json::Value>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Thumbprint<Digest, Key> {
+pub struct Thumbprinter<Digest, Key> {
     digest: PhantomData<Digest>,
     key: JWK<Key>,
 }
 
-impl<D, K> Thumbprint<D, K> {
+impl<D, K> Thumbprinter<D, K> {
     pub fn new(key: K) -> Self {
         Self {
             digest: PhantomData,
@@ -75,7 +81,7 @@ impl<D, K> Thumbprint<D, K> {
     }
 }
 
-impl<D, K> Thumbprint<D, K>
+impl<D, K> Thumbprinter<D, K>
 where
     D: Digest,
     K: KeyInfo,
@@ -94,7 +100,7 @@ where
     }
 }
 
-impl<D, K> Serialize for Thumbprint<D, K>
+impl<D, K> Serialize for Thumbprinter<D, K>
 where
     K: KeyInfo,
     D: Digest,
@@ -104,6 +110,15 @@ where
         S: serde::Serializer,
     {
         serializer.serialize_str(&self.digest_base64())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Thumbprint(String);
+
+impl zeroize::Zeroize for Thumbprint {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
     }
 }
 
@@ -174,7 +189,7 @@ mod test {
              }
         ));
 
-        let thumb = Thumbprint::<sha2::Sha256, _>::new(key);
+        let thumb = Thumbprinter::<sha2::Sha256, _>::new(key);
 
         assert_eq!(
             thumb.digest_base64(),

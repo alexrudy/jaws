@@ -1,3 +1,20 @@
+//! RSA algorithms
+//!
+//! # PKCS#1 v1.5 (RS256, RS384, RS512)
+//! This algorithm is used to sign and verify JSON Web Tokens using the RSASSA-PKCS1-v1_5.
+//! A [rsa::pkcs1v15::SigningKey] signing key is used to provide the underlying signature
+//! algorithm.
+//!
+//! A key of size 2048 bits or larger MUST be used with these algorithms.
+//!
+//! The RSASSA-PKCS1-v1_5 SHA-256 digital signature is generated as
+//! follows: generate a digital signature of the JWS Signing Input using
+//! RSASSA-PKCS1-v1_5-SIGN and the SHA-256 hash function with the desired
+//! private key.  This is the JWS Signature value.
+//!
+//! # PSS (PS256, PS384, PS512)
+//! This algorithm is used to sign and verify JSON Web Tokens using the RSASSA-PSS.
+
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rsa::pkcs1v15::SigningKey;
 use rsa::rand_core::OsRng;
@@ -27,80 +44,39 @@ impl crate::key::KeyInfo for rsa::RsaPrivateKey {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Rsa<D>
-where
-    D: digest::Digest,
-{
-    key: SigningKey<D>,
-}
+/// Alogrithm wrapper for the Digital Signature with RSASSA-PKCS1-v1_5 algorithm.
+///
+pub type RsaPkcs1v15<D> = SigningKey<D>;
 
-impl<D> From<rsa::RsaPrivateKey> for Rsa<D>
-where
-    D: digest::Digest + pkcs8::AssociatedOid,
-{
-    fn from(key: rsa::RsaPrivateKey) -> Self {
-        Self {
-            key: SigningKey::new_with_prefix(key),
-        }
-    }
-}
-
-impl super::Algorithm for Rsa<sha2::Sha256> {
+impl super::Algorithm for RsaPkcs1v15<sha2::Sha256> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS256;
 }
 
-impl super::SigningAlgorithm for Rsa<sha2::Sha256> {
+impl<D> super::SigningAlgorithm for RsaPkcs1v15<D>
+where
+    D: digest::Digest,
+    RsaPkcs1v15<D>: super::Algorithm,
+{
     type Error = signature::Error;
     type Signature = rsa::pkcs1v15::Signature;
     type Key = rsa::RsaPrivateKey;
 
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
         let message = format!("{}.{}", header, payload);
-        self.key.try_sign_with_rng(&mut OsRng, message.as_bytes())
+        self.try_sign_with_rng(&mut OsRng, message.as_bytes())
     }
 
     fn key(&self) -> &Self::Key {
-        self.key.as_ref()
+        self.as_ref()
     }
 }
 
-impl super::Algorithm for Rsa<sha2::Sha384> {
+impl super::Algorithm for RsaPkcs1v15<sha2::Sha384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
 }
 
-impl super::SigningAlgorithm for Rsa<sha2::Sha384> {
-    type Error = signature::Error;
-    type Signature = rsa::pkcs1v15::Signature;
-    type Key = rsa::RsaPrivateKey;
-
-    fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
-        let message = format!("{}.{}", header, payload);
-        self.key.try_sign_with_rng(&mut OsRng, message.as_bytes())
-    }
-
-    fn key(&self) -> &Self::Key {
-        self.key.as_ref()
-    }
-}
-
-impl super::Algorithm for Rsa<sha2::Sha512> {
+impl super::Algorithm for RsaPkcs1v15<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
-}
-
-impl super::SigningAlgorithm for Rsa<sha2::Sha512> {
-    type Error = signature::Error;
-    type Signature = rsa::pkcs1v15::Signature;
-    type Key = rsa::RsaPrivateKey;
-
-    fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
-        let message = format!("{}.{}", header, payload);
-        self.key.try_sign_with_rng(&mut OsRng, message.as_bytes())
-    }
-
-    fn key(&self) -> &Self::Key {
-        self.key.as_ref()
-    }
 }
 
 #[cfg(test)]
@@ -159,7 +135,7 @@ mod test {
 
         let header = strip_whitespace("eyJhbGciOiJSUzI1NiJ9");
 
-        let algorithm: Rsa<Sha256> = pkey.into();
+        let algorithm: RsaPkcs1v15<Sha256> = pkey.into();
 
         let signature = algorithm.sign(&header, &payload).unwrap();
 

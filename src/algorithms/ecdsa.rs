@@ -1,3 +1,12 @@
+//! Elliptic Curve Digital Signature Algorithm (ECDSA) signing algorithms
+//!
+//! This module provides implementations of the ECDSA signing algorithms for use with JSON Web Tokens.
+//!
+//! # Supported Algorithms
+//!
+//! - ES256: ECDSA using P-256 and SHA-256
+//! - ES384: ECDSA using P-384 and SHA-384
+
 use std::ops::Add;
 
 use base64ct::Encoding;

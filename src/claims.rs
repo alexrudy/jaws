@@ -120,12 +120,18 @@ where
 /// They consist of "registered" header values, specified in RFC 7519,
 /// and a set of custom claims, which can be any arbitrary key-value
 /// pairs seializable as JSON.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
 pub struct Claims<C, ISS = String, SUB = String, AUD = String, JTI = String> {
     #[serde(flatten)]
     pub registered: RegisteredClaims<ISS, SUB, AUD, JTI>,
     #[serde(flatten)]
     pub claims: C,
+}
+
+impl<C, ISS, SUB, AUD, JTI> Claims<C, ISS, SUB, AUD, JTI> {
+    pub fn new(registered: RegisteredClaims<ISS, SUB, AUD, JTI>, claims: C) -> Self {
+        Self { registered, claims }
+    }
 }
 
 impl<T> From<T> for Claims<T> {

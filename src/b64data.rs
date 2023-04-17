@@ -1,3 +1,6 @@
+//! Base64 Data tools, which interact well with serde and are useful
+//! for building data structures for JWTs.
+
 #[cfg(feature = "fmt")]
 use std::fmt::Write;
 

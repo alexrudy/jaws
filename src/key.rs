@@ -1,3 +1,8 @@
+//! JSON Web Keys (RFC 7517)
+//!
+//! This module implements the JWK format for representing cryptographic keys.
+//! For now, it only supports serialization for Keys and Thumbprints.
+
 use std::{collections::BTreeMap, marker::PhantomData};
 
 use base64ct::Encoding;

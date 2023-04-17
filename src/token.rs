@@ -1,3 +1,11 @@
+//! JSON Web Tokens (RFC 7519)
+//!
+//! This module implements the JWS and JWE formats for representing JSON Web Tokens.
+//! It is designed to both accept registered headers and claims (see [crate::claims]) as
+//! well as custom payloads and entirely custom headers. All registered fields are optional
+//! except for the "alg" field in the JOSE header which is required to identify the signing
+//! algorithm in use.
+
 #[cfg(feature = "fmt")]
 use std::fmt::Write;
 
@@ -157,6 +165,38 @@ where
     signature: Base64Data<A::Signature>,
 }
 
+#[cfg(feature = "fmt")]
+impl<H, P, A> fmt::JWTFormat for SignedToken<H, P, A>
+where
+    A: crate::algorithms::SigningAlgorithm,
+    P: Serialize,
+    H: Serialize,
+{
+    fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
+        writeln!(f, "{{")?;
+        {
+            let mut f = f.indent();
+            write!(f, "\"protected\": ")?;
+            <JOSEHeader<H, A::Key> as fmt::JWTFormat>::fmt_indented_skip_first(
+                &self.header,
+                &mut f,
+            )?;
+            writeln!(f, ",")?;
+            write!(f, "\"payload\": ")?;
+            <Payload<P> as fmt::JWTFormat>::fmt_indented_skip_first(&self.payload, &mut f)?;
+            writeln!(f, ",")?;
+            write!(f, "\"signature\": ")?;
+            <Base64Data<A::Signature> as fmt::JWTFormat>::fmt_indented_skip_first(
+                &self.signature,
+                &mut f,
+            )?;
+        }
+        writeln!(f)?;
+        writeln!(f, "}}")?;
+        Ok(())
+    }
+}
+
 impl<H, P, A> SignedToken<H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
@@ -253,9 +293,42 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
+    fn rfc7515_example_a2_key() -> ::rsa::RsaPrivateKey {
+        rsa(&json!( {"kty":"RSA",
+              "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
+       HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
+       D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
+       SXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdV
+       MTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8
+       NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
+              "e":"AQAB",
+              "d":"Eq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyWPEAeP88vLNO97I
+       jlA7_GQ5sLKMgvfTeXZx9SE-7YwVol2NXOoAJe46sui395IW_GO-pWJ1O0
+       BkTGoVEn2bKVRUCgu-GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzjkn
+       439X0M_V51gfpRLI9JYanrC4D4qAdGcopV_0ZHHzQlBjudU2QvXt4ehNYT
+       CBr6XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl_x_jTj3ccPDVZFD9pIuhLh
+       BOneufuBiB4cS98l2SR_RQyGWSeWjnczT0QU91p1DhOVRuOopznQ",
+              "p":"4BzEEOtIpmVdVEZNCqS7baC4crd0pqnRH_5IB3jw3bcxGn6QLvnEtfdUdi
+       YrqBdss1l58BQ3KhooKeQTa9AB0Hw_Py5PJdTJNPY8cQn7ouZ2KKDcmnPG
+       BY5t7yLc1QlQ5xHdwW1VhvKn-nXqhJTBgIPgtldC-KDV5z-y2XDwGUc",
+              "q":"uQPEfgmVtjL0Uyyx88GZFF1fOunH3-7cepKmtH4pxhtCoHqpWmT8YAmZxa
+       ewHgHAjLYsp1ZSe7zFYHj7C6ul7TjeLQeZD_YwD66t62wDmpe_HlB-TnBA
+       -njbglfIsRLtXlnDzQkv5dTltRJ11BKBBypeeF6689rjcJIDEz9RWdc",
+              "dp":"BwKfV3Akq5_MFZDFZCnW-wzl-CCo83WoZvnLQwCTeDv8uzluRSnm71I3Q
+       CLdhrqE2e9YkxvuxdBfpT_PI7Yz-FOKnu1R6HsJeDCjn12Sk3vmAktV2zb
+       34MCdy7cpdTh_YVr7tss2u6vneTwrA86rZtu5Mbr1C1XsmvkxHQAdYo0",
+              "dq":"h_96-mK1R_7glhsum81dZxjTnYynPbZpHziZjeeHcXYsXaaMwkOlODsWa
+       7I9xXDoRwbKgB719rrmI2oKr6N3Do9U0ajaHF-NKJnwgjMd2w9cjz3_-ky
+       NlxAr2v4IKhGNpmM5iIgOS1VZnOZ68m6_pbLBSp3nssTdlqvd0tIiTHU",
+              "qi":"IYd7DHOhrWvxkwPQsRM2tOgrjbcrfvtQJipd-DlcxyVuuM9sQLdgjVk2o
+       y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
+       W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
+             }
+        ))
+    }
+
     #[test]
-    #[allow(non_snake_case)]
-    fn rfc7515_example_A2() {
+    fn rfc7515_example_a2() {
         // This test alters the example from RFC 7515, section A.2, since
         // the RFC does not require a specific JSON serialization format,
         // so we use the compact representation without newlines, as opposed
@@ -266,37 +339,7 @@ mod test {
         // See crate::algorithms::rsa::test::rfc7515_example_A2 for a test
         // which validates the signature against the RFC example.
 
-        let pkey = rsa(&json!( {"kty":"RSA",
-              "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
-             HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
-             D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
-             SXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdV
-             MTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8
-             NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
-              "e":"AQAB",
-              "d":"Eq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyWPEAeP88vLNO97I
-             jlA7_GQ5sLKMgvfTeXZx9SE-7YwVol2NXOoAJe46sui395IW_GO-pWJ1O0
-             BkTGoVEn2bKVRUCgu-GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzjkn
-             439X0M_V51gfpRLI9JYanrC4D4qAdGcopV_0ZHHzQlBjudU2QvXt4ehNYT
-             CBr6XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl_x_jTj3ccPDVZFD9pIuhLh
-             BOneufuBiB4cS98l2SR_RQyGWSeWjnczT0QU91p1DhOVRuOopznQ",
-              "p":"4BzEEOtIpmVdVEZNCqS7baC4crd0pqnRH_5IB3jw3bcxGn6QLvnEtfdUdi
-             YrqBdss1l58BQ3KhooKeQTa9AB0Hw_Py5PJdTJNPY8cQn7ouZ2KKDcmnPG
-             BY5t7yLc1QlQ5xHdwW1VhvKn-nXqhJTBgIPgtldC-KDV5z-y2XDwGUc",
-              "q":"uQPEfgmVtjL0Uyyx88GZFF1fOunH3-7cepKmtH4pxhtCoHqpWmT8YAmZxa
-             ewHgHAjLYsp1ZSe7zFYHj7C6ul7TjeLQeZD_YwD66t62wDmpe_HlB-TnBA
-             -njbglfIsRLtXlnDzQkv5dTltRJ11BKBBypeeF6689rjcJIDEz9RWdc",
-              "dp":"BwKfV3Akq5_MFZDFZCnW-wzl-CCo83WoZvnLQwCTeDv8uzluRSnm71I3Q
-             CLdhrqE2e9YkxvuxdBfpT_PI7Yz-FOKnu1R6HsJeDCjn12Sk3vmAktV2zb
-             34MCdy7cpdTh_YVr7tss2u6vneTwrA86rZtu5Mbr1C1XsmvkxHQAdYo0",
-              "dq":"h_96-mK1R_7glhsum81dZxjTnYynPbZpHziZjeeHcXYsXaaMwkOlODsWa
-             7I9xXDoRwbKgB719rrmI2oKr6N3Do9U0ajaHF-NKJnwgjMd2w9cjz3_-ky
-             NlxAr2v4IKhGNpmM5iIgOS1VZnOZ68m6_pbLBSp3nssTdlqvd0tIiTHU",
-              "qi":"IYd7DHOhrWvxkwPQsRM2tOgrjbcrfvtQJipd-DlcxyVuuM9sQLdgjVk2o
-             y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
-             W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
-             }
-        ));
+        let pkey = rfc7515_example_a2_key();
 
         let custom = json!({
             "http://example.com/is_root": true
@@ -308,7 +351,7 @@ mod test {
 
         let token = UnsignedToken::new_registered(claims);
 
-        let algorithm: crate::algorithms::rsa::Rsa<Sha256> = pkey.into();
+        let algorithm: crate::algorithms::rsa::RsaPkcs1v15<Sha256> = pkey.into();
         let signed = token.sign(&algorithm).unwrap();
         {
             let hdr = base64ct::Base64UrlUnpadded::encode_string(

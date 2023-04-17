@@ -1,3 +1,12 @@
+#![doc = include_str!("../README.md")]
+//!
+//! # Examples
+//!
+//! Creating a JWT with some registered and some custom claims:
+//! ```rust
+#![doc = include_str!("../examples/simple-jwt.rs")]
+//! ```
+
 pub mod algorithms;
 pub mod b64data;
 pub mod claims;

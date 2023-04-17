@@ -351,7 +351,8 @@ mod test {
 
         let token = UnsignedToken::new_registered(claims);
 
-        let algorithm: crate::algorithms::rsa::RsaPkcs1v15<Sha256> = pkey.into();
+        let algorithm: crate::algorithms::rsa::RsaPkcs1v15<Sha256> =
+            crate::algorithms::rsa::RsaPkcs1v15::new_with_prefix(pkey);
         let signed = token.sign(&algorithm).unwrap();
         {
             let hdr = base64ct::Base64UrlUnpadded::encode_string(

@@ -135,7 +135,7 @@ mod test {
 
         let header = strip_whitespace("eyJhbGciOiJSUzI1NiJ9");
 
-        let algorithm: RsaPkcs1v15<Sha256> = pkey.into();
+        let algorithm: RsaPkcs1v15<Sha256> = RsaPkcs1v15::new_with_prefix(pkey);
 
         let signature = algorithm.sign(&header, &payload).unwrap();
 

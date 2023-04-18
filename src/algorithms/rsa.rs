@@ -79,6 +79,7 @@ impl super::Algorithm for RsaPkcs1v15<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
 }
 
+/// Algorithm wrapper for RSA-PSS signatures, using [rsa::pss::BlindedSigningKey].
 pub type RsaPSSKey<D> = rsa::pss::BlindedSigningKey<D>;
 
 impl<D> super::SigningAlgorithm for RsaPSSKey<D>

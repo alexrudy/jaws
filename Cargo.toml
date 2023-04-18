@@ -41,6 +41,7 @@ p256 = { version = "0.13.1", features = ["ecdsa", "jwk", "std"] }
 ecdsa = { version = "0.16.6", features = ["signing", "std"] }
 p384 = "0.13.0"
 p521 = "0.13.0"
+hmac = "0.12.1"
 
 [features]
 default = ["fmt"]

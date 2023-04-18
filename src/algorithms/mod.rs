@@ -65,6 +65,16 @@ pub trait SigningAlgorithm: Algorithm {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Signature(Vec<u8>);
 
+impl Signature {
+    pub fn extend_from_slice(&mut self, other: &[u8]) {
+        self.0.extend_from_slice(other);
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Signature(Vec::with_capacity(capacity))
+    }
+}
+
 impl AsRef<[u8]> for Signature {
     fn as_ref(&self) -> &[u8] {
         &self.0
@@ -74,5 +84,11 @@ impl AsRef<[u8]> for Signature {
 impl From<&[u8]> for Signature {
     fn from(bytes: &[u8]) -> Self {
         Signature(bytes.to_vec())
+    }
+}
+
+impl From<Vec<u8>> for Signature {
+    fn from(bytes: Vec<u8>) -> Self {
+        Signature(bytes)
     }
 }

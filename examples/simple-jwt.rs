@@ -1,6 +1,7 @@
-use jaws::claims::RegisteredClaims;
-use jaws::fmt::JWTFormat;
-use jaws::{algorithms::rsa::RsaPkcs1v15, claims::Claims, token::UnsignedToken};
+use jaws::algorithms::rsa::RsaPkcs1v15;
+use jaws::JWTFormat;
+use jaws::UnsignedToken;
+use jaws::{Claims, RegisteredClaims};
 use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;
 use sha2::Sha256;

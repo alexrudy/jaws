@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_code)]
+#![deny(missing_docs)]
 
 pub mod algorithms;
 pub mod b64data;

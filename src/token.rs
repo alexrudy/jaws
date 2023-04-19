@@ -26,9 +26,18 @@ use crate::{
     },
 };
 
+/// A JWT Playload. Most payloads are JSON objects, which are serialized, and then converted
+/// to a base64url string. However, some payloads are empty, and are represented as an empty
+/// string, and therefore not base64url encoded.
+///
+/// It is hard to express this empty type naturally in the Rust type system in a way that interacts
+/// well with [serde_json].
 #[derive(Debug, Clone)]
 pub enum Payload<P> {
+    /// A payload which will be serialized as JSON and then base64url encoded.
     Json(Base64JSON<P>),
+
+    /// An empty payload. This is represented as an empty string, and is not base64url encoded.s
     Empty,
 }
 
@@ -203,11 +212,20 @@ where
     }
 }
 
+/// An error which occured while signing a token.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenSigningError<E> {
+    /// An error which occured during the cryptographic parts of the signing process.
+    ///
+    /// Maps the signing error from the specific algorithm into this error type.
+    /// Most signatures don't produce errors, but when they do, they'll appear here.
     #[error("signing: {0}")]
     Signing(E),
 
+    /// An error which occured while serializing the parts of the token to be signed.
+    ///
+    /// This will occur if some part of the header or payload can't be successfully serialized
+    /// as JSON.
     #[error("serializing: {0}")]
     Serialization(#[from] serde_json::Error),
 }
@@ -246,6 +264,7 @@ where
         &self.header.registered
     }
 
+    /// JWT header data.
     pub fn header(&self) -> &SignedHeader<H, A::Key> {
         &self.header
     }
@@ -315,6 +334,8 @@ where
     }
 }
 
+/// Delayed formatting structure for printing the compact form of the message
+/// of a JWT.
 pub struct MessageTokenFormatter<'a, H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
@@ -391,6 +412,8 @@ pub struct VerifiedToken<H, P> {
 }
 
 impl<H, P> VerifiedToken<H, P> {
+    /// Convert this token into an unsigned token, which is stripped of any signature
+    /// information, and can be re-signed with a new key.
     pub fn into_unsigned(self) -> UnsignedToken<H, P> {
         UnsignedToken {
             header: self.header.into(),
@@ -398,6 +421,7 @@ impl<H, P> VerifiedToken<H, P> {
         }
     }
 
+    /// Convert this token into a signed token in its final form.
     pub fn into_token(self) -> Token<H, P> {
         Token {
             header: self.header,
@@ -478,18 +502,27 @@ impl<H, P> Token<H, P> {
     }
 }
 
+/// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenVerifyingError<E> {
+    /// The verification failed during the cryptographic process, meaning
+    /// that the signature was invalid, or the algorithm was invalid.
     #[error("verifying: {0}")]
     Verify(E),
 
+    /// An error occured while re-serailizing the header or payload for
+    /// signature verification. This indicates that something is probably
+    /// wrong with your custom types.
     #[error("serializing: {0}")]
     Serialization(#[from] serde_json::Error),
 
+    /// The algorithm specified in the header does not match the algorithm
+    /// of the verifier.
     #[error("algorithm mismatch: expected {0:?}, got {1:?}")]
     Algorithm(AlgorithmIdentifier, AlgorithmIdentifier),
 }
 
+/// A delayed-format alias which will produce the compact form of a JWT, a `.` deliminated string.
 pub struct Compact<'a, H, P> {
     header: &'a Header<H>,
     payload: &'a Payload<P>,

@@ -164,6 +164,14 @@ impl<H, P> UnsignedToken<H, P> {
         }
     }
 
+    /// Create an unsigned token with an empty payload.
+    pub fn empty(custom: H) -> Self {
+        Self {
+            header: UnsignedHeader::new(custom),
+            payload: Payload::Empty,
+        }
+    }
+
     /// The token payload.
     pub fn payload(&self) -> Option<&P> {
         match &self.payload {

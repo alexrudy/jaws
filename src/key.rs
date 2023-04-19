@@ -15,6 +15,14 @@ pub trait KeyInfo {
     fn parameters(&self) -> Vec<(String, serde_json::Value)>;
 }
 
+pub trait KeyBuilder {
+    const KEY_TYPE: &'static str;
+
+    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, serde_json::Error>
+    where
+        Self: Sized;
+}
+
 pub trait DeserializeKey {
     type Key: KeyInfo;
 

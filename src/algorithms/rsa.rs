@@ -45,7 +45,6 @@ impl crate::key::KeyInfo for rsa::RsaPrivateKey {
 }
 
 /// Alogrithm wrapper for the Digital Signature with RSASSA-PKCS1-v1_5 algorithm.
-///
 pub type RsaPkcs1v15<D> = SigningKey<D>;
 
 impl<D> super::SigningAlgorithm for RsaPkcs1v15<D>

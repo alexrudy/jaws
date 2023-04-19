@@ -1,4 +1,8 @@
 /// Serialization and deserialization of `chrono::DateTime` as a numeric date.
+///
+/// The serialization format is a JSON numeric value representing the number of
+/// seconds from 1970-01-01T00:00:00Z UTC until the specified UTC date/time,
+/// ignoring leap seconds.
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{de, de::Deserialize, Deserializer, Serializer};
 

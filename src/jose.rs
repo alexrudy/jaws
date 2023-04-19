@@ -26,7 +26,7 @@ pub struct Certificate;
 /// to `true` when you'd like to serialize the signing key in the JOSE header
 /// as a JSON Web Key (JWK).
 #[derive(Debug, Clone, Default)]
-pub struct JOSERegisteredHeaderBuilder {
+pub struct UnsignedRegisteredHeader {
     /// URL of the JWK Set containing the key used to sign the JWS.
     ///
     /// See [JOSERegisteredHeader::jwk_set_url].
@@ -88,22 +88,25 @@ pub struct JOSERegisteredHeaderBuilder {
 /// takes a key as a parameter to the `build` method, and fills in these fields if they
 /// are requested, at that time.
 #[derive(Debug, Clone, Default)]
-pub struct JOSEHeaderBuilder<H> {
-    pub registered: JOSERegisteredHeaderBuilder,
+pub struct UnsignedHeader<H> {
+    /// The registered fields of the JOSE header, but without references to the signing key.
+    pub registered: UnsignedRegisteredHeader,
+
+    /// The custom JOSE header fields.
     pub custom: H,
 }
 
-impl JOSEHeaderBuilder<()> {
+impl UnsignedHeader<()> {
     /// Create a new JOSE header builder with no custom header.
-    pub fn new_registered() -> JOSEHeaderBuilder<()> {
-        JOSEHeaderBuilder {
+    pub fn new_registered() -> UnsignedHeader<()> {
+        UnsignedHeader {
             registered: Default::default(),
             custom: (),
         }
     }
 }
 
-impl<H> JOSEHeaderBuilder<H> {
+impl<H> UnsignedHeader<H> {
     /// Create a new JOSE header builder with the given custom header.
     pub fn new(custom: H) -> Self {
         Self {
@@ -113,12 +116,12 @@ impl<H> JOSEHeaderBuilder<H> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn build<A>(self, key: &A::Key) -> JOSEHeader<H, A::Key>
+    pub(crate) fn sign<A>(self, key: &A::Key) -> SignedHeader<H, A::Key>
     where
         A: crate::algorithms::SigningAlgorithm,
         A::Key: Clone,
     {
-        let registered = JOSERegisteredHeader {
+        let registered = SignedRegisteredHeader {
             jwk_set_url: self.registered.jwk_set_url,
             r#type: self.registered.r#type,
             key: if self.registered.key {
@@ -143,10 +146,10 @@ impl<H> JOSEHeaderBuilder<H> {
             critical: self.registered.critical,
         };
 
-        JOSEHeader {
+        SignedHeader {
             algorithm: A::IDENTIFIER,
             registered,
-            header: self.custom,
+            custom: self.custom,
         }
     }
 }
@@ -162,7 +165,7 @@ impl<H> JOSEHeaderBuilder<H> {
 /// to be included in this structure.
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(bound = "Key: crate::key::KeyInfo")]
-pub struct JOSERegisteredHeader<Key = ()> {
+pub struct SignedRegisteredHeader<Key = ()> {
     /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC3986][]) that refers to a
     /// resource for a set of JSON-encoded public keys, one of which corresponds to
     /// the key used to digitally sign the JWS. The keys MUST be encoded as a JWK
@@ -349,10 +352,27 @@ pub struct JOSERegisteredHeader<Key = ()> {
     pub critical: Option<Vec<String>>,
 }
 
-impl<Key> JOSERegisteredHeader<Key> {
+impl<Key> SignedRegisteredHeader<Key> {
     /// Create a new builder for a JWS Header.
-    pub fn builder() -> JOSERegisteredHeaderBuilder {
-        JOSERegisteredHeaderBuilder::default()
+    pub fn builder() -> UnsignedRegisteredHeader {
+        UnsignedRegisteredHeader::default()
+    }
+}
+
+impl<Key> From<SignedRegisteredHeader<Key>> for UnsignedRegisteredHeader {
+    fn from(header: SignedRegisteredHeader<Key>) -> Self {
+        UnsignedRegisteredHeader {
+            jwk_set_url: header.jwk_set_url,
+            r#type: header.r#type,
+            key: header.key.is_some(),
+            key_id: header.key_id,
+            certificate_url: header.certificate_url,
+            certificate_chain: header.certificate_chain,
+            thumbprint: header.thumbprint.is_some(),
+            thumbprint_256: header.thumbprint_sha256.is_some(),
+            content_type: header.content_type,
+            critical: header.critical,
+        }
     }
 }
 
@@ -361,7 +381,8 @@ impl<Key> JOSERegisteredHeader<Key> {
 /// properties of the JWS.
 #[derive(Debug, Clone, Serialize)]
 #[serde(bound = "Key: crate::key::KeyInfo, H: Serialize")]
-pub struct JOSEHeader<H, Key = ()> {
+#[non_exhaustive]
+pub struct SignedHeader<H, Key = ()> {
     /// The "alg" (algorithm) Header Parameter identifies the cryptographic
     /// algorithm used to secure the JWS.  The JWS Signature value is not
     /// valid if the "alg" value does not represent a supported algorithm or
@@ -381,7 +402,7 @@ pub struct JOSEHeader<H, Key = ()> {
     ///
     /// [JWA]: https://tools.ietf.org/html/rfc7518
     #[serde(rename = "alg")]
-    pub(crate) algorithm: AlgorithmIdentifier,
+    pub algorithm: AlgorithmIdentifier,
 
     /// The set of registered header parameters from [JWS][] and [JWA][].
     ///
@@ -390,16 +411,16 @@ pub struct JOSEHeader<H, Key = ()> {
     /// [JWA]: https://datatracker.ietf.org/doc/html/rfc7518
     /// [JWS]: https://datatracker.ietf.org/doc/html/rfc7515
     #[serde(flatten)]
-    pub registered: JOSERegisteredHeader<Key>,
+    pub registered: SignedRegisteredHeader<Key>,
 
     /// The set of unregistered header parameters, which are custom provided
     /// by the type parameter H.
     #[serde(flatten)]
-    pub header: H,
+    pub custom: H,
 }
 
 #[cfg(feature = "fmt")]
-impl<H, Key> fmt::JWTFormat for JOSEHeader<H, Key>
+impl<H, Key> fmt::JWTFormat for SignedHeader<H, Key>
 where
     H: Serialize,
     Key: crate::key::KeyInfo,
@@ -409,22 +430,31 @@ where
     }
 }
 
-impl<H, Key> JOSEHeader<H, Key> {
+impl<H, Key> SignedHeader<H, Key> {
     /// Create a new JOSE header with default field values
     /// for registered fields, and a custom header object.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(custom: H) -> JOSEHeaderBuilder<H> {
-        JOSEHeaderBuilder::new(custom)
+    pub fn new(custom: H) -> UnsignedHeader<H> {
+        UnsignedHeader::new(custom)
     }
 }
 
-impl<H, Key> JOSEHeader<H, Key>
+impl<H, Key> SignedHeader<H, Key>
 where
     H: Default,
 {
     /// Create a new JOSE header with default field values.
-    pub fn builder() -> JOSEHeaderBuilder<H> {
-        JOSEHeaderBuilder::default()
+    pub fn builder() -> UnsignedHeader<H> {
+        UnsignedHeader::default()
+    }
+}
+
+impl<H, Key> From<SignedHeader<H, Key>> for UnsignedHeader<H> {
+    fn from(header: SignedHeader<H, Key>) -> Self {
+        UnsignedHeader {
+            registered: header.registered.into(),
+            custom: header.custom,
+        }
     }
 }
 
@@ -625,10 +655,28 @@ pub struct RegisteredHeader {
     pub critical: Option<Vec<String>>,
 }
 
+impl From<RegisteredHeader> for UnsignedRegisteredHeader {
+    fn from(header: RegisteredHeader) -> Self {
+        UnsignedRegisteredHeader {
+            jwk_set_url: header.jwk_set_url,
+            r#type: header.r#type,
+            key: header.key.is_some(),
+            key_id: header.key_id,
+            certificate_url: header.certificate_url,
+            certificate_chain: header.certificate_chain,
+            thumbprint: header.thumbprint.is_some(),
+            thumbprint_256: header.thumbprint_sha256.is_some(),
+            content_type: header.content_type,
+            critical: header.critical,
+        }
+    }
+}
+
 /// The JOSE Header is a JSON object that represents the cryptographic operations
 /// applied to the JWS Protected Header and the JWS Payload and optionally additional
 /// properties of the JWS.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Header<H> {
     /// The "alg" (algorithm) Header Parameter identifies the cryptographic
     /// algorithm used to secure the JWS.  The JWS Signature value is not
@@ -649,7 +697,7 @@ pub struct Header<H> {
     ///
     /// [JWA]: https://tools.ietf.org/html/rfc7518
     #[serde(rename = "alg")]
-    pub(crate) algorithm: AlgorithmIdentifier,
+    pub algorithm: AlgorithmIdentifier,
 
     /// The set of registered header parameters from [JWS][] and [JWA][].
     ///
@@ -663,5 +711,14 @@ pub struct Header<H> {
     /// The set of unregistered header parameters, which are custom provided
     /// by the type parameter H.
     #[serde(flatten)]
-    pub header: H,
+    pub custom: H,
+}
+
+impl<H> From<Header<H>> for UnsignedHeader<H> {
+    fn from(header: Header<H>) -> Self {
+        UnsignedHeader {
+            registered: header.registered.into(),
+            custom: header.custom,
+        }
+    }
 }

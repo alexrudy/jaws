@@ -61,6 +61,22 @@ pub trait SigningAlgorithm: Algorithm {
     fn key(&self) -> &Self::Key;
 }
 
+pub trait VerifyAlgorithm: Algorithm {
+    /// Error type returned when verification fails.
+    type Error;
+
+    /// The inner key type (e.g. [::rsa::RsaPublicKey]) used to complete the registered
+    /// header values.
+    type Key: key::KeyInfo;
+
+    /// Verify the signature of the JWT, when provided with the base64url-encoded header
+    /// and payload.
+    fn verify(&self, header: &str, payload: &str, signature: &[u8]) -> Result<(), Self::Error>;
+
+    /// Return a reference to the key used to verify the JWT.
+    fn key(&self) -> &Self::Key;
+}
+
 /// A signature which has not been matched to an algorithm or key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Signature(Vec<u8>);

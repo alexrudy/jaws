@@ -1,10 +1,12 @@
-//! JSON Web Tokens (RFC 7519)
+//! JSON Web Tokens ([RFC 7519][RFC7519])
 //!
 //! This module implements the JWS and JWE formats for representing JSON Web Tokens.
 //! It is designed to both accept registered headers and claims (see [crate::claims]) as
 //! well as custom payloads and entirely custom headers. All registered fields are optional
 //! except for the "alg" field in the JOSE header which is required to identify the signing
 //! algorithm in use.
+//!
+//! [RFC7519]: https://tools.ietf.org/html/rfc7519
 
 #[cfg(feature = "fmt")]
 use std::fmt::Write;
@@ -16,11 +18,11 @@ use serde::{de, ser, Deserialize, Serialize};
 #[cfg(feature = "fmt")]
 use crate::fmt;
 use crate::{
-    algorithms::Signature,
+    algorithms::{AlgorithmIdentifier, Signature},
     b64data::{Base64Data, Base64JSON},
     jose::{
-        Header, JOSEHeader, JOSEHeaderBuilder, JOSERegisteredHeader, JOSERegisteredHeaderBuilder,
-        RegisteredHeader,
+        Header, RegisteredHeader, SignedHeader, SignedRegisteredHeader, UnsignedHeader,
+        UnsignedRegisteredHeader,
     },
 };
 
@@ -125,7 +127,7 @@ where
 #[derive(Debug, Clone)]
 pub struct UnsignedToken<H, P> {
     /// The JOSE header in unconstructed form.
-    pub header: JOSEHeaderBuilder<H>,
+    pub header: UnsignedHeader<H>,
 
     /// The payload of the token.
     payload: Payload<P>,
@@ -135,7 +137,7 @@ impl<P> UnsignedToken<(), P> {
     /// Create a new JWT with only the registered header values.
     pub fn new_registered(payload: P) -> UnsignedToken<(), P> {
         UnsignedToken {
-            header: JOSEHeaderBuilder::new_registered(),
+            header: UnsignedHeader::new_registered(),
             payload: payload.into(),
         }
     }
@@ -148,7 +150,7 @@ impl<H, P> UnsignedToken<H, P> {
     /// registered header fields.
     pub fn new(custom: H, payload: P) -> Self {
         Self {
-            header: JOSEHeaderBuilder::new(custom),
+            header: UnsignedHeader::new(custom),
             payload: payload.into(),
         }
     }
@@ -167,7 +169,7 @@ impl<H, P> UnsignedToken<H, P> {
     }
 
     /// The registered header fields.
-    pub fn registered(&self) -> &JOSERegisteredHeaderBuilder {
+    pub fn registered(&self) -> &UnsignedRegisteredHeader {
         &self.header.registered
     }
 }
@@ -187,7 +189,7 @@ where
         A: crate::algorithms::SigningAlgorithm,
         A::Key: Clone,
     {
-        let headers = self.header.build::<A>(algorithm.key());
+        let headers = self.header.sign::<A>(algorithm.key());
         let header = Base64JSON(&headers).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
@@ -213,6 +215,11 @@ pub enum TokenSigningError<E> {
 /// A JWT with an attached signature, suitable for serialization.
 ///
 /// Directly serializing this type will produce the JSON form of the JWT.
+///
+/// This type only supports JWTs with signatures which are verified (i.e. they were
+/// verified from the [Token] type or were created and signed by this library).
+///
+/// For a general possibly unverified token, see [Token].
 #[derive(Debug, Clone, Serialize)]
 #[serde(bound = "H: Serialize, P: Serialize, A: crate::algorithms::SigningAlgorithm")]
 pub struct SignedToken<H, P, A>
@@ -220,7 +227,7 @@ where
     A: crate::algorithms::SigningAlgorithm,
 {
     #[serde(rename = "protected")]
-    header: JOSEHeader<H, A::Key>,
+    header: SignedHeader<H, A::Key>,
     payload: Payload<P>,
     signature: Base64Data<A::Signature>,
 }
@@ -229,14 +236,21 @@ impl<H, P, A> SignedToken<H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
 {
+    /// JWT custom header data.
     pub fn custom(&self) -> &H {
-        &self.header.header
+        &self.header.custom
     }
 
-    pub fn registered(&self) -> &JOSERegisteredHeader<A::Key> {
+    /// JWT registered header data.
+    pub fn registered(&self) -> &SignedRegisteredHeader<A::Key> {
         &self.header.registered
     }
 
+    pub fn header(&self) -> &SignedHeader<H, A::Key> {
+        &self.header
+    }
+
+    /// JWT payload data.
     pub fn payload(&self) -> Option<&P> {
         match &self.payload {
             Payload::Json(data) => Some(&data.0),
@@ -257,7 +271,7 @@ where
         {
             let mut f = f.indent();
             write!(f, "\"protected\": ")?;
-            <JOSEHeader<H, A::Key> as fmt::JWTFormat>::fmt_indented_skip_first(
+            <SignedHeader<H, A::Key> as fmt::JWTFormat>::fmt_indented_skip_first(
                 &self.header,
                 &mut f,
             )?;
@@ -281,6 +295,8 @@ impl<H, P, A> SignedToken<H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
 {
+    /// Format the token in the compact form which is a url-safe
+    /// string.
     pub fn compact(&self) -> CompactTokenFormatter<'_, H, P, A> {
         CompactTokenFormatter {
             header: &self.header,
@@ -289,6 +305,8 @@ where
         }
     }
 
+    /// Format the token in compact format with only the message parts
+    /// (omitting the signature).
     pub fn message(&self) -> MessageTokenFormatter<'_, H, P, A> {
         MessageTokenFormatter {
             header: &self.header,
@@ -301,7 +319,7 @@ pub struct MessageTokenFormatter<'a, H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
 {
-    header: &'a JOSEHeader<H, A::Key>,
+    header: &'a SignedHeader<H, A::Key>,
     payload: &'a Payload<P>,
 }
 
@@ -330,7 +348,7 @@ pub struct CompactTokenFormatter<'a, H, P, A>
 where
     A: crate::algorithms::SigningAlgorithm,
 {
-    header: &'a JOSEHeader<H, A::Key>,
+    header: &'a SignedHeader<H, A::Key>,
     payload: &'a Payload<P>,
     signature: &'a Base64Data<A::Signature>,
 }
@@ -357,6 +375,38 @@ where
     }
 }
 
+/// A JWT with an attached signature which has been verified.
+///
+/// Directly serializing this type will produce the JSON form of the JWT.
+///
+/// This type only supports JWTs with signatures which are verified (i.e. they were
+/// verified from the [Token] type or were created and signed by this library).
+///
+/// For a general possibly unverified token, see [Token].
+#[derive(Debug, Clone)]
+pub struct VerifiedToken<H, P> {
+    header: Header<H>,
+    payload: Payload<P>,
+    signature: Base64Data<Signature>,
+}
+
+impl<H, P> VerifiedToken<H, P> {
+    pub fn into_unsigned(self) -> UnsignedToken<H, P> {
+        UnsignedToken {
+            header: self.header.into(),
+            payload: self.payload,
+        }
+    }
+
+    pub fn into_token(self) -> Token<H, P> {
+        Token {
+            header: self.header,
+            payload: self.payload,
+            signature: self.signature,
+        }
+    }
+}
+
 /// A JSON Web Token.
 ///
 /// Directly serializing this type will produce the JSON form of the JWT.
@@ -372,7 +422,7 @@ pub struct Token<H, P> {
 impl<H, P> Token<H, P> {
     /// The custom header fields.
     pub fn custom(&self) -> &H {
-        &self.header.header
+        &self.header.custom
     }
 
     /// The registred header fields.
@@ -396,6 +446,48 @@ impl<H, P> Token<H, P> {
             signature: &self.signature,
         }
     }
+
+    /// Verify the signature of the token.
+    pub fn verify<A>(
+        self,
+        algorithm: A,
+    ) -> Result<VerifiedToken<H, P>, TokenVerifyingError<A::Error>>
+    where
+        A: crate::algorithms::VerifyAlgorithm,
+        P: Serialize,
+        H: Serialize,
+    {
+        if A::IDENTIFIER != self.header.algorithm {
+            return Err(TokenVerifyingError::Algorithm(
+                A::IDENTIFIER,
+                self.header.algorithm,
+            ));
+        }
+
+        let signature = self.signature.0;
+        let header = Base64JSON(&self.header).serialized_value()?;
+        let payload = self.payload.serialized_value()?;
+        algorithm
+            .verify(&header, &payload, signature.as_ref())
+            .map_err(TokenVerifyingError::Verify)?;
+        Ok(VerifiedToken {
+            header: self.header,
+            payload: self.payload,
+            signature: signature.into(),
+        })
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TokenVerifyingError<E> {
+    #[error("verifying: {0}")]
+    Verify(E),
+
+    #[error("serializing: {0}")]
+    Serialization(#[from] serde_json::Error),
+
+    #[error("algorithm mismatch: expected {0:?}, got {1:?}")]
+    Algorithm(AlgorithmIdentifier, AlgorithmIdentifier),
 }
 
 pub struct Compact<'a, H, P> {

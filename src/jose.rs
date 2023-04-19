@@ -9,6 +9,7 @@
 //! [rfc7515]: https://tools.ietf.org/html/rfc7515
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha1::Sha1;
 use sha2::Sha256;
 use url::Url;
@@ -85,6 +86,42 @@ pub struct UnsignedRegisteredHeader {
     pub critical: Option<Vec<String>>,
 }
 
+#[cfg(feature = "fmt")]
+impl UnsignedRegisteredHeader {
+    fn parameters(&self) -> serde_json::Value {
+        let mut data = json!({
+            "jku": self.jwk_set_url,
+            "typ": self.r#type,
+            "kid": self.key_id,
+            "x5u": self.certificate_url,
+            "x5c": self.certificate_chain,
+            "cty": self.content_type,
+            "crit": self.critical,
+        });
+
+        if self.key {
+            data["jwk"] = json!({"kty": "<key type>"});
+        }
+
+        if self.thumbprint {
+            data["x5t"] = json!("<thumbprint>");
+        }
+
+        if self.thumbprint_256 {
+            data["x5t#256"] = json!("<thumbprint>");
+        }
+
+        data
+    }
+}
+
+#[cfg(feature = "fmt")]
+impl fmt::JWTFormat for UnsignedRegisteredHeader {
+    fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
+        Base64JSON(&self.parameters()).fmt(f)
+    }
+}
+
 /// Builder header for JOSE headers.
 ///
 /// Some registered fields depend on the key used to sign the JWT, e.g. "thumbprint".
@@ -155,6 +192,24 @@ impl<H> UnsignedHeader<H> {
             registered,
             custom: self.custom,
         }
+    }
+}
+
+#[cfg(feature = "fmt")]
+impl<H> fmt::JWTFormat for UnsignedHeader<H>
+where
+    H: Serialize,
+{
+    fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
+        let mut data = self.registered.parameters();
+        data.as_object_mut().unwrap().append(
+            serde_json::to_value(&self.custom)
+                .unwrap()
+                .as_object_mut()
+                .unwrap(),
+        );
+
+        Base64JSON(data).fmt(f)
     }
 }
 

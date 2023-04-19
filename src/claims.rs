@@ -119,13 +119,20 @@ where
 /// pairs seializable as JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
 pub struct Claims<C, ISS = String, SUB = String, AUD = String, JTI = String> {
+    /// Registered claims, which are enumerated specifically. See [RegisteredClaims].
     #[serde(flatten)]
     pub registered: RegisteredClaims<ISS, SUB, AUD, JTI>,
+
+    /// Custom claims, which are any arbitrary JSON objects. Custom claims must implement
+    /// `Serialize` to be used to create JWT tokens. `Deserialize` is required to read
+    /// custom claims.
     #[serde(flatten)]
     pub claims: C,
 }
 
 impl<C, ISS, SUB, AUD, JTI> Claims<C, ISS, SUB, AUD, JTI> {
+    /// Create a new set of claims. Claims can also be created by constructing the
+    /// struct literal.
     pub fn new(registered: RegisteredClaims<ISS, SUB, AUD, JTI>, claims: C) -> Self {
         Self { registered, claims }
     }

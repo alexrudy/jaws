@@ -1,10 +1,12 @@
-//! JOSE Header implementation (RFC 7515)
+//! JOSE Header implementation ([RFC 7515][rfc7515])
 //!
 //! The header format for JOSE, a JSON object with both registered and custom fields.
 //!
 //! This implementation tries to ensure that your fields are consistent, so e.g. it does
 //! not allow you to set the algorithm ("alg") header unless you are actually singing the
 //! key.
+//!
+//! [rfc7515]: https://tools.ietf.org/html/rfc7515
 
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
@@ -29,47 +31,47 @@ pub struct Certificate;
 pub struct UnsignedRegisteredHeader {
     /// URL of the JWK Set containing the key used to sign the JWS.
     ///
-    /// See [JOSERegisteredHeader::jwk_set_url].
+    /// See [SignedRegisteredHeader::jwk_set_url].
     pub jwk_set_url: Option<Url>,
 
     /// Message type for this JWT
     ///
-    /// See [JOSERegisteredHeader::type].
+    /// See [SignedRegisteredHeader::type].
     pub r#type: Option<String>,
 
     /// Whether to include the signing key in the JOSE header as a JWK.
     ///
-    /// See [JOSERegisteredHeader::key].
+    /// See [SignedRegisteredHeader::key].
     pub key: bool,
 
     /// Key ID of the signing key.
     ///
-    /// See [JOSERegisteredHeader::key_id].
+    /// See [SignedRegisteredHeader::key_id].
     pub key_id: Option<String>,
 
     /// URI for the X.509 certificate or certificate chain corresponding to the key used to sign the JWS.
     ///
-    /// See [JOSERegisteredHeader::certificate_url].
+    /// See [SignedRegisteredHeader::certificate_url].
     pub certificate_url: Option<Url>,
 
     /// X.509 certificate or certificate chain corresponding to the key used to sign the JWS.
     ///
-    /// See [JOSERegisteredHeader::certificate_chain].
+    /// See [SignedRegisteredHeader::certificate_chain].
     pub certificate_chain: Option<Vec<Certificate>>,
 
     /// Whether to include the X.509 certificate thumbprint in the JOSE header with the SHA1 digest.
     ///
-    /// See [JOSERegisteredHeader::thumbprint].
+    /// See [SignedRegisteredHeader::thumbprint].
     pub thumbprint: bool,
 
     /// Whether to include the X.509 certificate thumbprint in the JOSE header with the SHA256 digest.
     ///
-    /// See [JOSERegisteredHeader::thumbprint_sha256].
+    /// See [SignedRegisteredHeader::thumbprint_sha256].
     pub thumbprint_256: bool,
 
     /// Content MIME type of the JWT, using the "application/" prefix.
     ///
-    /// See [JOSERegisteredHeader::content_type].
+    /// See [SignedRegisteredHeader::content_type].
     pub content_type: Option<String>,
 
     /// List of header values which are considered critical to the cryptographic integrity of this
@@ -77,7 +79,7 @@ pub struct UnsignedRegisteredHeader {
     /// empty vector. If you are using a custom algorithm, you should set this to the list of
     /// header fields which are critical to the cryptographic integrity of the message.
     ///
-    /// See [JOSERegisteredHeader::critical].
+    /// See [SignedRegisteredHeader::critical].
     pub critical: Option<Vec<String>>,
 }
 
@@ -160,7 +162,7 @@ impl<H> UnsignedHeader<H> {
 /// key where that is reqiured. This type is used to ensure that fields
 /// derived from cryptographic keys are consistent with the keys and algorithms
 /// used to sign the entire token. To construct a JOSE header, use the
-/// [JOSEHeaderBuilder] type, which accepts bool for the fields derived from
+/// [UnsignedHeader] type, which accepts bool for the fields derived from
 /// the signing key, and setting such fields to `true` will cause their values
 /// to be included in this structure.
 #[derive(Debug, Clone, Serialize, Default)]
@@ -464,7 +466,7 @@ impl<H, Key> From<SignedHeader<H, Key>> for UnsignedHeader<H> {
 /// key where that is reqiured. This type is used to ensure that fields
 /// derived from cryptographic keys are consistent with the keys and algorithms
 /// used to sign the entire token. To construct a JOSE header, use the
-/// [JOSEHeaderBuilder] type, which accepts bool for the fields derived from
+/// [UnsignedHeader] type, which accepts bool for the fields derived from
 /// the signing key, and setting such fields to `true` will cause their values
 /// to be included in this structure.
 #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, Deserialize)]

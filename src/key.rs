@@ -1,7 +1,9 @@
-//! JSON Web Keys (RFC 7517)
+//! JSON Web Keys ([RFC 7517][RFC7517])
 //!
 //! This module implements the JWK format for representing cryptographic keys.
 //! For now, it only supports serialization for Keys and Thumbprints.
+//!
+//! [RFC7517]: https://tools.ietf.org/html/rfc7517
 
 use std::{collections::BTreeMap, marker::PhantomData};
 

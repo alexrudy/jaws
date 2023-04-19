@@ -1,6 +1,7 @@
 //! Utilities for formatting JWT request and response data in a human
-//! readable style, similar to that used in RFC8885
+//! readable style, similar to that used in [RFC 8885][RFC8885]
 //!
+//! [RFC8885]: https://tools.ietf.org/html/rfc8885
 
 use std::fmt;
 

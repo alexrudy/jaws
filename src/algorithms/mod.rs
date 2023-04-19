@@ -1,6 +1,10 @@
-//! JSON Web Algorithms (RFC 7518)
+//! JSON Web Algorithms ([RFC 7518][RFC7518])
 //!
 //! This module implements the JWA format for representing cryptographic algorithms.
+//!
+//! See the submodules for specific algorithm implementations for signing.
+//!
+//! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +67,7 @@ pub enum AlgorithmIdentifier {
 /// A trait to associate an alogritm identifier with an algorithm.
 ///
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
-/// They are set in the [crate::jose::JOSEHeader] automatically when signing the JWT.
+/// They are set in the [crate::jose::SignedHeader] automatically when signing the JWT.
 pub trait Algorithm {
     /// The identifier for this algorithm when used in a JWT registered header.
     ///

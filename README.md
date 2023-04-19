@@ -151,7 +151,7 @@ for a few reasons:
 
 ## On Unsafe Code
 
-There are no uses of unsafe code in this crate which are required for the primary JWT functionality. The only uses of unsafe code are in the [`jaws::fmt`] module to provide efficient formatting methods.
+There are no uses of unsafe code in this crate which are required for the primary JWT functionality. The only uses of unsafe code are in the [`jaws::fmt`][crate::fmt] module to provide efficient formatting methods.
 
 However, the `fmt` feature is not required for most functionality, and rather is most useful for debugging the contents of JWTs. If you are concerned about the use of unsafe code, you can disable the `fmt` feature to remove the unsafe code.
 

@@ -183,3 +183,28 @@ where
         serializer.serialize_str(&inner)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use serde_json::{json, Value};
+
+    use super::*;
+
+    #[test]
+    fn test_base64_data() {
+        let data = Base64Data::from(vec![1, 2, 3, 4]);
+        let serialized = serde_json::to_string(&data).unwrap();
+        assert_eq!(serialized, r#""AQIDBA""#);
+        let deserialized: Base64Data<Vec<u8>> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, data);
+    }
+
+    #[test]
+    fn test_base64_json() {
+        let data = Base64JSON::from(json!({"foo": "bar"}));
+        let serialized = serde_json::to_string(&data).unwrap();
+        assert_eq!(serialized, r#""eyJmb28iOiJiYXIifQ""#);
+        let deserialized: Base64JSON<Value> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, data);
+    }
+}

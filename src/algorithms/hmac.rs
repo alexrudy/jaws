@@ -17,33 +17,31 @@ pub struct HmacKey {
 }
 
 impl HmacKey {
+    /// Create a new HMAC key with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             key: Vec::with_capacity(capacity),
         }
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            key: bytes.to_vec(),
-        }
-    }
-
-    pub fn reserve(&mut self, additional: usize) {
-        self.key.reserve(additional);
-    }
-
-    pub fn shrink_to_fit(&mut self) {
-        self.key.shrink_to_fit();
-    }
-
+    /// Length of the HMAC key.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.key.len()
     }
 
+    /// Resize the HMAC key, filling the rest of the key with a given value.
     pub fn resize(&mut self, new_len: usize, value: u8) {
         self.key.resize(new_len, value);
+    }
+}
+
+impl<T> From<T> for HmacKey
+where
+    T: Into<Vec<u8>>,
+{
+    fn from(key: T) -> Self {
+        Self { key: key.into() }
     }
 }
 
@@ -89,11 +87,15 @@ where
     D: digest::Digest + digest::core_api::BlockSizeUser,
     hmac::SimpleHmac<D>: Mac,
 {
+    /// Create a new HMAC digest wrapper with a given signing key.
+    ///
+    /// Signing keys are arbitrary bytes.
     pub fn new(key: HmacKey) -> Self {
         let digest = SimpleHmac::new_from_slice(key.as_ref()).expect("Valid key");
         Self { key, digest }
     }
 
+    /// Reference to the HMAC key.
     pub fn key(&self) -> &HmacKey {
         &self.key
     }

@@ -759,3 +759,13 @@ where
         }
     }
 }
+
+#[cfg(feature = "fmt")]
+impl<H> fmt::JWTFormat for Header<H>
+where
+    H: Serialize,
+{
+    fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
+        Base64JSON(self).fmt(f)
+    }
+}

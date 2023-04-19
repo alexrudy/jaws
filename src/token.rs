@@ -519,6 +519,34 @@ impl<H, P> Token<H, P> {
     }
 }
 
+#[cfg(feature = "fmt")]
+impl<H, P> fmt::JWTFormat for Token<H, P>
+where
+    P: Serialize,
+    H: Serialize,
+{
+    fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
+        writeln!(f, "{{")?;
+        {
+            let mut f = f.indent();
+            write!(f, "\"protected\": ")?;
+            <Header<H> as fmt::JWTFormat>::fmt_indented_skip_first(&self.header, &mut f)?;
+            writeln!(f, ",")?;
+            write!(f, "\"payload\": ")?;
+            <Payload<P> as fmt::JWTFormat>::fmt_indented_skip_first(&self.payload, &mut f)?;
+            writeln!(f, ",")?;
+            write!(f, "\"signature\": ")?;
+            <Base64Data<Signature> as fmt::JWTFormat>::fmt_indented_skip_first(
+                &self.signature,
+                &mut f,
+            )?;
+        }
+        writeln!(f)?;
+        writeln!(f, "}}")?;
+        Ok(())
+    }
+}
+
 /// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenVerifyingError<E> {

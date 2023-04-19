@@ -82,7 +82,7 @@ pub trait SigningAlgorithm: Algorithm {
 
     /// The inner key type (e.g. [::rsa::RsaPrivateKey]) used to complete the registered
     /// header values.
-    type Key: key::KeyInfo;
+    type Key: key::SerializeJWK;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
@@ -103,7 +103,7 @@ pub trait VerifyAlgorithm: Algorithm {
 
     /// The inner key type (e.g. [::rsa::RsaPublicKey]) used to complete the registered
     /// header values.
-    type Key: key::KeyInfo;
+    type Key: key::SerializeJWK;
 
     /// Verify the signature of the JWT, when provided with the base64url-encoded header
     /// and payload.

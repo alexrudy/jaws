@@ -21,9 +21,11 @@ use rsa::rand_core::OsRng;
 use rsa::signature::RandomizedSigner;
 use rsa::PublicKeyParts;
 
-impl crate::key::KeyInfo for rsa::RsaPublicKey {
+impl crate::key::JWKeyType for rsa::RsaPublicKey {
     const KEY_TYPE: &'static str = "RSA";
+}
 
+impl crate::key::SerializeJWK for rsa::RsaPublicKey {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         let mut params = Vec::with_capacity(2);
 
@@ -36,9 +38,11 @@ impl crate::key::KeyInfo for rsa::RsaPublicKey {
     }
 }
 
-impl crate::key::KeyInfo for rsa::RsaPrivateKey {
+impl crate::key::JWKeyType for rsa::RsaPrivateKey {
     const KEY_TYPE: &'static str = "RSA";
+}
 
+impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         self.to_public_key().parameters()
     }

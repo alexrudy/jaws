@@ -83,7 +83,14 @@ pub use elliptic_curve::SecretKey;
 pub use p256::NistP256;
 pub use p384::NistP384;
 
-impl<C> crate::key::KeyInfo for SecretKey<C>
+impl<C> crate::key::JWKeyType for SecretKey<C>
+where
+    C: elliptic_curve::Curve,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl<C> crate::key::SerializeJWK for SecretKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
@@ -91,8 +98,6 @@ where
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    const KEY_TYPE: &'static str = "EC";
-
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         let mut params = Vec::with_capacity(2);
 

@@ -9,13 +9,18 @@ use base64ct::Encoding;
 use digest::Digest;
 use serde::{ser::SerializeMap, Deserialize, Serialize};
 
-pub trait KeyInfo {
+/// Trait for keys which can be used as a JWK.
+pub trait JWKeyType {
     const KEY_TYPE: &'static str;
+}
 
+/// Trait for keys which can be serialized as a JWK.
+pub trait SerializeJWK: JWKeyType {
     fn parameters(&self) -> Vec<(String, serde_json::Value)>;
 }
 
-pub trait KeyBuilder {
+/// Trait for keys which can be deserialized from a JWK.
+pub trait DeserializeJWK: JWKeyType {
     const KEY_TYPE: &'static str;
 
     fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, serde_json::Error>
@@ -24,7 +29,7 @@ pub trait KeyBuilder {
 }
 
 pub trait DeserializeKey {
-    type Key: KeyInfo;
+    type Key: SerializeJWK;
 
     fn deserialize_key<'de, D>(deserializer: D) -> Result<Self::Key, D::Error>
     where
@@ -42,7 +47,7 @@ impl<K> From<K> for JWK<K> {
 
 impl<Key> Serialize for JWK<Key>
 where
-    Key: KeyInfo,
+    Key: SerializeJWK,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -92,7 +97,7 @@ impl<D, K> Thumbprinter<D, K> {
 impl<D, K> Thumbprinter<D, K>
 where
     D: Digest,
-    K: KeyInfo,
+    K: SerializeJWK,
 {
     pub fn digest(&self) -> Vec<u8> {
         let thumb = serde_json::to_vec(&self.key).expect("Valid JSON format");
@@ -110,7 +115,7 @@ where
 
 impl<D, K> Serialize for Thumbprinter<D, K>
 where
-    K: KeyInfo,
+    K: SerializeJWK,
     D: Digest,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

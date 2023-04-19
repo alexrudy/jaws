@@ -164,7 +164,7 @@ impl<H> UnsignedHeader<H> {
 /// the signing key, and setting such fields to `true` will cause their values
 /// to be included in this structure.
 #[derive(Debug, Clone, Serialize, Default)]
-#[serde(bound = "Key: crate::key::KeyInfo")]
+#[serde(bound = "Key: crate::key::SerializeJWK")]
 pub struct SignedRegisteredHeader<Key = ()> {
     /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC3986][]) that refers to a
     /// resource for a set of JSON-encoded public keys, one of which corresponds to
@@ -380,7 +380,7 @@ impl<Key> From<SignedRegisteredHeader<Key>> for UnsignedRegisteredHeader {
 /// applied to the JWS Protected Header and the JWS Payload and optionally additional
 /// properties of the JWS.
 #[derive(Debug, Clone, Serialize)]
-#[serde(bound = "Key: crate::key::KeyInfo, H: Serialize")]
+#[serde(bound = "Key: crate::key::SerializeJWK, H: Serialize")]
 #[non_exhaustive]
 pub struct SignedHeader<H, Key = ()> {
     /// The "alg" (algorithm) Header Parameter identifies the cryptographic
@@ -423,7 +423,7 @@ pub struct SignedHeader<H, Key = ()> {
 impl<H, Key> fmt::JWTFormat for SignedHeader<H, Key>
 where
     H: Serialize,
-    Key: crate::key::KeyInfo,
+    Key: crate::key::SerializeJWK,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
         Base64JSON(self).fmt(f)

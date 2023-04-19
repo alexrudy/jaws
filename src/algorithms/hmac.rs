@@ -8,7 +8,7 @@ use base64ct::Encoding;
 use digest::Mac;
 use hmac::SimpleHmac;
 
-use crate::key::KeyInfo;
+use crate::key::{JWKeyType, SerializeJWK};
 
 /// A key used to seed an HMAC signature.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Default)]
@@ -57,9 +57,11 @@ impl AsRef<[u8]> for HmacKey {
     }
 }
 
-impl KeyInfo for HmacKey {
+impl JWKeyType for HmacKey {
     const KEY_TYPE: &'static str = "oct";
+}
 
+impl SerializeJWK for HmacKey {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         vec![(
             "k".to_string(),

@@ -14,7 +14,7 @@ use url::Url;
 use crate::algorithms::AlgorithmIdentifier;
 use crate::b64data::Base64JSON;
 use crate::fmt;
-use crate::key::{JsonWebKey, Thumbprint, Thumbprinter, JWK};
+use crate::key::{JsonWebKey, JsonWebKeyBuilder, Thumbprint, Thumbprinter};
 
 /// Stub type to represent an X.509 certificate
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -223,7 +223,7 @@ pub struct SignedRegisteredHeader<Key = ()> {
     ///
     /// [JWK]: https://tools.ietf.org/html/rfc7517
     #[serde(rename = "jwk", skip_serializing_if = "Option::is_none")]
-    pub key: Option<JWK<Key>>,
+    pub key: Option<JsonWebKeyBuilder<Key>>,
 
     /// The "kid" (key ID) Header Parameter is a hint indicating which key was used
     /// to secure the [JWS][].  This parameter allows originators to explicitly signal a

@@ -11,41 +11,37 @@ use serde::{ser::SerializeMap, Deserialize, Serialize};
 
 /// Trait for keys which can be used as a JWK.
 pub trait JWKeyType {
+    /// The string used to identify the JWK type in the `kty` field.
     const KEY_TYPE: &'static str;
 }
 
 /// Trait for keys which can be serialized as a JWK.
 pub trait SerializeJWK: JWKeyType {
+    /// Return a list of parameters to be serialized in the JWK.
     fn parameters(&self) -> Vec<(String, serde_json::Value)>;
 }
 
 /// Trait for keys which can be deserialized from a JWK.
 pub trait DeserializeJWK: JWKeyType {
-    const KEY_TYPE: &'static str;
-
+    /// From a set of parameters, build a key.
     fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, serde_json::Error>
     where
         Self: Sized;
 }
 
-pub trait DeserializeKey {
-    type Key: SerializeJWK;
-
-    fn deserialize_key<'de, D>(deserializer: D) -> Result<Self::Key, D::Error>
-    where
-        D: serde::Deserializer<'de>;
-}
-
+/// A JSON Web Key with the original key contained inside.
+///
+/// The actual key isn't produced until this is serialized.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct JWK<K>(K);
+pub struct JsonWebKeyBuilder<K>(K);
 
-impl<K> From<K> for JWK<K> {
+impl<K> From<K> for JsonWebKeyBuilder<K> {
     fn from(key: K) -> Self {
         Self(key)
     }
 }
 
-impl<Key> Serialize for JWK<Key>
+impl<Key> Serialize for JsonWebKeyBuilder<Key>
 where
     Key: SerializeJWK,
 {
@@ -73,23 +69,34 @@ where
     }
 }
 
+/// JSON Web Key in serialized form.
+///
+/// This struct just contains the parameters of the JWK.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonWebKey {
+    #[serde(rename = "kty")]
+    key_type: String,
+
     #[serde(flatten)]
     parameters: BTreeMap<String, serde_json::Value>,
 }
 
+/// A JSON Web Key Thumbprint (RFC 7638) calculator.
+///
+/// This type contains the raw parts to build a JWK and then digest
+/// them to form a thumbprint.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Thumbprinter<Digest, Key> {
     digest: PhantomData<Digest>,
-    key: JWK<Key>,
+    key: JsonWebKeyBuilder<Key>,
 }
 
 impl<D, K> Thumbprinter<D, K> {
+    /// Create a new JWK Thumbprinter from a key.
     pub fn new(key: K) -> Self {
         Self {
             digest: PhantomData,
-            key: JWK::from(key),
+            key: JsonWebKeyBuilder::from(key),
         }
     }
 }
@@ -99,6 +106,7 @@ where
     D: Digest,
     K: SerializeJWK,
 {
+    /// Compute the raw digest of the JWK.
     pub fn digest(&self) -> Vec<u8> {
         let thumb = serde_json::to_vec(&self.key).expect("Valid JSON format");
 
@@ -108,6 +116,7 @@ where
         digest.to_vec()
     }
 
+    /// Compute the base64url-encoded digest of the JWK.
     pub fn digest_base64(&self) -> String {
         base64ct::Base64UrlUnpadded::encode_string(&self.digest())
     }
@@ -126,14 +135,19 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// A computed thumbprint.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    zeroize::Zeroize,
+    zeroize::ZeroizeOnDrop,
+)]
 pub struct Thumbprint(String);
-
-impl zeroize::Zeroize for Thumbprint {
-    fn zeroize(&mut self) {
-        self.0.zeroize();
-    }
-}
 
 #[cfg(test)]
 pub(crate) mod jwk_reader {

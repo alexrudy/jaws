@@ -146,3 +146,54 @@ impl<T> From<T> for Claims<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use chrono::TimeZone;
+    use serde_json::json;
+
+    #[test]
+    fn claim_iss_integer() {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+        struct CustomClaims {
+            foo: String,
+        }
+
+        let claims = Claims::new(
+            RegisteredClaims::<i32> {
+                issuer: Some(123),
+                ..Default::default()
+            },
+            CustomClaims {
+                foo: "bar".to_string(),
+            },
+        );
+
+        let json = serde_json::to_value(claims).unwrap();
+        assert_eq!(json, json!({"iss":123,"foo":"bar"}));
+    }
+
+    #[test]
+    fn claim_nbf() {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+        struct CustomClaims {
+            foo: String,
+        }
+
+        let claims = Claims::new(
+            RegisteredClaims::<i32> {
+                not_before: chrono::Utc
+                    .with_ymd_and_hms(2023, 4, 18, 21, 54, 39)
+                    .single(),
+                ..Default::default()
+            },
+            CustomClaims {
+                foo: "bar".to_string(),
+            },
+        );
+
+        let json = serde_json::to_value(claims).unwrap();
+        assert_eq!(json["nbf"].as_u64(), Some(1681854879));
+    }
+}

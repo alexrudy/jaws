@@ -168,12 +168,12 @@ impl<H> UnsignedHeader<H> {
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(bound = "Key: crate::key::SerializeJWK")]
 pub struct SignedRegisteredHeader<Key = ()> {
-    /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC3986][]) that refers to a
+    /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a
     /// resource for a set of JSON-encoded public keys, one of which corresponds to
     /// the key used to digitally sign the JWS. The keys MUST be encoded as a JWK
     /// Set ([JWK][]). The protocol used to acquire the resource MUST provide integrity
     /// protection; an HTTP GET request to retrieve the JWK Set MUST use Transport
-    /// Layer Security (TLS) ([RFC2818][]) ([RFC5246][]); and the identity of the server
+    /// Layer Security (TLS) ([RFC 2818][RFC2818]) ([RFC 5246][RFC5246]); and the identity of the server
     /// MUST be validated, as per Section 6 of [RFC 6125][RFC6125]. Also, see Section
     /// 8 on TLS requirements. Use of this Header Parameter is OPTIONAL.
     ///
@@ -195,7 +195,7 @@ pub struct SignedRegisteredHeader<Key = ()> {
     /// processing of this parameter is performed by the JWS application. Use of this
     /// Header Parameter is OPTIONAL.
     ///
-    /// Per [RFC2045][], all media type values, subtype values, and parameter names are
+    /// Per [RFC 2045][RFC2045], all media type values, subtype values, and parameter names are
     /// case insensitive. However, parameter values are case sensitive unless otherwise
     /// specified for the specific parameter.
     ///
@@ -242,9 +242,9 @@ pub struct SignedRegisteredHeader<Key = ()> {
     #[serde(rename = "kid", skip_serializing_if = "Option::is_none")]
     pub key_id: Option<String>,
 
-    /// The "x5u" (X.509 URL) Header Parameter is a URI ([RFC3986][]) that refers to a
+    /// The "x5u" (X.509 URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a
     /// resource for the X.509 public key certificate or certificate chain
-    /// ([RFC5280][]) corresponding to the key used to digitally sign the JWS.  The
+    /// ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign the JWS.  The
     /// identified resource MUST provide a representation of the certificate or
     /// certificate chain that conforms to [RFC 5280][RFC5280] in PEM-encoded form,
     /// with each certificate delimited as specified in Section 6.1 of [RFC 4945][RFC4945].
@@ -253,7 +253,7 @@ pub struct SignedRegisteredHeader<Key = ()> {
     /// be followed by additional certificates, with each subsequent certificate
     /// being the one used to certify the previous one.  The protocol used to
     /// acquire the resource MUST provide integrity protection; an HTTP GET request
-    /// to retrieve the certificate MUST use TLS ([RFC2818][]) ([RFC5246][]); and the
+    /// to retrieve the certificate MUST use TLS ([RFC 2818][RFC2818]) ([RFC 5246][RFC5246]); and the
     /// identity of the server MUST be validated, as per Section 6 of [RFC 6125][RFC6125].
     /// Also, see Section 8 on TLS requirements.  Use of this Header Parameter is OPTIONAL.
     ///
@@ -268,7 +268,7 @@ pub struct SignedRegisteredHeader<Key = ()> {
     pub certificate_url: Option<Url>,
 
     /// The "x5c" (X.509 certificate chain) Header Parameter contains the X.509 public
-    /// key certificate or certificate chain ([RFC5280][]) corresponding to the key used
+    /// key certificate or certificate chain ([RFC 5280][RFC5280]) corresponding to the key used
     /// to digitally sign the JWS. The certificate or certificate chain is represented
     /// as a JSON array of certificate value strings. Each string in the array is a
     /// base64-encoded (Section 4 of [RFC 4648][RFC4648] -- not base64url-encoded) DER
@@ -288,7 +288,7 @@ pub struct SignedRegisteredHeader<Key = ()> {
 
     /// The "x5t" (X.509 certificate SHA-1 thumbprint) Header Parameter is a
     /// base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC5280][]) corresponding to the key used to digitally sign
+    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
     /// the JWS. Note that certificate thumbprints are also sometimes known as
     /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
     ///
@@ -298,7 +298,7 @@ pub struct SignedRegisteredHeader<Key = ()> {
 
     /// The "x5t#S256" (X.509 certificate SHA-256 thumbprint) Header Parameter is a
     /// base64url-encoded SHA-256 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC5280][]) corresponding to the key used to digitally sign
+    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
     /// the JWS. Note that certificate thumbprints are also sometimes known as
     /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
     ///
@@ -471,12 +471,12 @@ impl<H, Key> From<SignedHeader<H, Key>> for UnsignedHeader<H> {
 /// to be included in this structure.
 #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, Deserialize)]
 pub struct RegisteredHeader {
-    /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC3986][]) that refers to a
+    /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a
     /// resource for a set of JSON-encoded public keys, one of which corresponds to
     /// the key used to digitally sign the JWS. The keys MUST be encoded as a JWK
     /// Set ([JWK][]). The protocol used to acquire the resource MUST provide integrity
     /// protection; an HTTP GET request to retrieve the JWK Set MUST use Transport
-    /// Layer Security (TLS) ([RFC2818][]) ([RFC5246][]); and the identity of the server
+    /// Layer Security (TLS) ([RFC 2818][RFC2818]) ([RFC 5246][RFC5246]); and the identity of the server
     /// MUST be validated, as per Section 6 of [RFC 6125][RFC6125]. Also, see Section
     /// 8 on TLS requirements. Use of this Header Parameter is OPTIONAL.
     ///
@@ -498,7 +498,7 @@ pub struct RegisteredHeader {
     /// processing of this parameter is performed by the JWS application. Use of this
     /// Header Parameter is OPTIONAL.
     ///
-    /// Per [RFC2045][], all media type values, subtype values, and parameter names are
+    /// Per [RFC 2045][RFC2045], all media type values, subtype values, and parameter names are
     /// case insensitive. However, parameter values are case sensitive unless otherwise
     /// specified for the specific parameter.
     ///
@@ -545,9 +545,9 @@ pub struct RegisteredHeader {
     #[serde(rename = "kid", skip_serializing_if = "Option::is_none")]
     pub key_id: Option<String>,
 
-    /// The "x5u" (X.509 URL) Header Parameter is a URI ([RFC3986][]) that refers to a
+    /// The "x5u" (X.509 URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a
     /// resource for the X.509 public key certificate or certificate chain
-    /// ([RFC5280][]) corresponding to the key used to digitally sign the JWS.  The
+    /// ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign the JWS.  The
     /// identified resource MUST provide a representation of the certificate or
     /// certificate chain that conforms to [RFC 5280][RFC5280] in PEM-encoded form,
     /// with each certificate delimited as specified in Section 6.1 of [RFC 4945][RFC4945].
@@ -556,7 +556,7 @@ pub struct RegisteredHeader {
     /// be followed by additional certificates, with each subsequent certificate
     /// being the one used to certify the previous one.  The protocol used to
     /// acquire the resource MUST provide integrity protection; an HTTP GET request
-    /// to retrieve the certificate MUST use TLS ([RFC2818][]) ([RFC5246][]); and the
+    /// to retrieve the certificate MUST use TLS ([RFC 2818][RFC2818]) ([RFC 5246][RFC5246]); and the
     /// identity of the server MUST be validated, as per Section 6 of [RFC 6125][RFC6125].
     /// Also, see Section 8 on TLS requirements.  Use of this Header Parameter is OPTIONAL.
     ///
@@ -571,7 +571,7 @@ pub struct RegisteredHeader {
     pub certificate_url: Option<Url>,
 
     /// The "x5c" (X.509 certificate chain) Header Parameter contains the X.509 public
-    /// key certificate or certificate chain ([RFC5280][]) corresponding to the key used
+    /// key certificate or certificate chain ([RFC 5280][RFC5280]) corresponding to the key used
     /// to digitally sign the JWS. The certificate or certificate chain is represented
     /// as a JSON array of certificate value strings. Each string in the array is a
     /// base64-encoded (Section 4 of [RFC 4648][RFC4648] -- not base64url-encoded) DER
@@ -591,7 +591,7 @@ pub struct RegisteredHeader {
 
     /// The "x5t" (X.509 certificate SHA-1 thumbprint) Header Parameter is a
     /// base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC5280][]) corresponding to the key used to digitally sign
+    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
     /// the JWS. Note that certificate thumbprints are also sometimes known as
     /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
     ///
@@ -601,7 +601,7 @@ pub struct RegisteredHeader {
 
     /// The "x5t#S256" (X.509 certificate SHA-256 thumbprint) Header Parameter is a
     /// base64url-encoded SHA-256 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC5280][]) corresponding to the key used to digitally sign
+    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
     /// the JWS. Note that certificate thumbprints are also sometimes known as
     /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
     ///

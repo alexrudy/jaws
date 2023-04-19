@@ -149,6 +149,12 @@ for a few reasons:
 3. I wanted broad support for the [RustCrypto][] ecosystem, and where possible, I've tried to implement JWTs on top of native [RustCrypto][] traits. For example, the `RS256` signing algorithm is represented by the [`rsa::pkcs1v15::SigningKey<sha2::SHA256>`][rsa::pkcs1v15::SigningKey] type, with no additional wrappers.
 4. I also wanted to provide a strong high level interface which makes examples easy to use and easy to follow. I hope that despite the copious comments in my example above, it is clear that JAWS APIs are pretty easy to use.
 
+## On Unsafe Code
+
+There are no uses of unsafe code in this crate which are required for the primary JWT functionality. The only uses of unsafe code are in the [`jaws::fmt`] module to provide efficient formatting methods.
+
+However, the `fmt` feature is not required for most functionality, and rather is most useful for debugging the contents of JWTs. If you are concerned about the use of unsafe code, you can disable the `fmt` feature to remove the unsafe code.
+
 [RustCrypto]: https://github.com/RustCrypto
 [RFC8555]: https://tools.ietf.org/html/rfc8555
 [JWK]: https://tools.ietf.org/html/rfc7517

@@ -102,6 +102,7 @@ impl<'i, W: fmt::Write> IndentWriter<'i, W> {
         data.serialize(&mut ser).unwrap();
 
         // SAFETY: serde-json does not emit invalid UTF-8
+        #[allow(unsafe_code)]
         let data = unsafe { String::from_utf8_unchecked(writer) };
 
         self.write_str(&data)

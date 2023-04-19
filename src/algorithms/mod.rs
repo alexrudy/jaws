@@ -16,19 +16,46 @@ pub mod rsa;
 /// Not all of them are implemented herin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum AlgorithmIdentifier {
+    /// Hash-based Message Authentication Code using SHA-256
     HS256,
+
+    /// Hash-based Message Authentication Code using SHA-384
     HS384,
+
+    /// Hash-based Message Authentication Code using SHA-512
     HS512,
+
+    /// RSA PKCS#1 v1.5 signature using SHA-256
     RS256,
+
+    /// RSA PKCS#1 v1.5 signature using SHA-348
     RS384,
+
+    /// RSA PKCS#1 v1.5 signature using SHA-512
     RS512,
+
+    /// ECDSA using P-256 and SHA-256
     ES256,
+
+    /// ECDSA using P-384 and SHA-384
     ES384,
+
+    /// ECDSA using P-521 and SHA-512
     ES512,
+
+    /// RSASSA-PSS using SHA-256 and MGF1 with SHA-256
     PS256,
+
+    /// RSASSA-PSS using SHA-384 and MGF1 with SHA-384
     PS384,
+
+    /// RSASSA-PSS using SHA-512 and MGF1 with SHA-512
     PS512,
+
+    /// EdDSA using Ed25519
     EdDSA,
+
+    /// No signature is applied.
     #[serde(rename = "none")]
     None,
 }
@@ -38,10 +65,15 @@ pub enum AlgorithmIdentifier {
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
 /// They are set in the [crate::jose::JOSEHeader] automatically when signing the JWT.
 pub trait Algorithm {
+    /// The identifier for this algorithm when used in a JWT registered header.
+    ///
+    /// This is the `alg` field in the JOSE header.
     const IDENTIFIER: AlgorithmIdentifier;
 }
 
 /// A trait to represent an algorithm which can sign a JWT.
+///
+/// This trait should apply to signing keys.
 pub trait SigningAlgorithm: Algorithm {
     /// Error type returned when signing fails.
     type Error;
@@ -61,6 +93,10 @@ pub trait SigningAlgorithm: Algorithm {
     fn key(&self) -> &Self::Key;
 }
 
+/// A trait to represent an algorithm which can verify a JWT.
+///
+/// This trait should apply to the equivalent of public keys, which have enough information
+/// to verify a JWT signature, but not necessarily to sing it.
 pub trait VerifyAlgorithm: Algorithm {
     /// Error type returned when verification fails.
     type Error;
@@ -78,14 +114,20 @@ pub trait VerifyAlgorithm: Algorithm {
 }
 
 /// A signature which has not been matched to an algorithm or key.
+///
+/// This is a basic signature `struct` which can be used to store any signature
+/// on the heap. It is used to store the signature of a JWT before it is verified,
+/// or if a signature has a variable length.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Signature(Vec<u8>);
 
 impl Signature {
+    /// Add to this signature from a byte slice.
     pub fn extend_from_slice(&mut self, other: &[u8]) {
         self.0.extend_from_slice(other);
     }
 
+    /// Create a new signature with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Signature(Vec::with_capacity(capacity))
     }

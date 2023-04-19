@@ -13,8 +13,10 @@ use sha1::Sha1;
 use sha2::Sha256;
 use url::Url;
 
-use crate::algorithms::AlgorithmIdentifier;
 use crate::b64data::Base64JSON;
+use crate::{algorithms::AlgorithmIdentifier, key::SerializeJWK};
+
+#[cfg(feature = "fmt")]
 use crate::fmt;
 use crate::key::{JsonWebKey, JsonWebKeyBuilder, Thumbprint, Thumbprinter};
 
@@ -378,6 +380,26 @@ impl<Key> From<SignedRegisteredHeader<Key>> for UnsignedRegisteredHeader {
     }
 }
 
+impl<Key> From<SignedRegisteredHeader<Key>> for RegisteredHeader
+where
+    Key: crate::key::SerializeJWK,
+{
+    fn from(header: SignedRegisteredHeader<Key>) -> Self {
+        RegisteredHeader {
+            jwk_set_url: header.jwk_set_url,
+            r#type: header.r#type,
+            key: header.key.map(|k| k.into()),
+            key_id: header.key_id,
+            certificate_url: header.certificate_url,
+            certificate_chain: header.certificate_chain,
+            thumbprint: header.thumbprint.map(|t| t.thumbprint()),
+            thumbprint_sha256: header.thumbprint_sha256.map(|t| t.thumbprint()),
+            content_type: header.content_type,
+            critical: header.critical,
+        }
+    }
+}
+
 /// The JOSE Header is a JSON object that represents the cryptographic operations
 /// applied to the JWS Protected Header and the JWS Payload and optionally additional
 /// properties of the JWS.
@@ -719,6 +741,19 @@ pub struct Header<H> {
 impl<H> From<Header<H>> for UnsignedHeader<H> {
     fn from(header: Header<H>) -> Self {
         UnsignedHeader {
+            registered: header.registered.into(),
+            custom: header.custom,
+        }
+    }
+}
+
+impl<H, K> From<SignedHeader<H, K>> for Header<H>
+where
+    K: SerializeJWK,
+{
+    fn from(header: SignedHeader<H, K>) -> Self {
+        Header {
+            algorithm: header.algorithm,
             registered: header.registered.into(),
             custom: header.custom,
         }

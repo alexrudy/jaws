@@ -284,6 +284,15 @@ where
             Payload::Empty => None,
         }
     }
+
+    /// Create a generic token, independent of key type.
+    pub fn into_token(self) -> Token<H, P> {
+        Token {
+            header: self.header.into(),
+            payload: self.payload,
+            signature: Signature::from(self.signature.0.as_ref()).into(),
+        }
+    }
 }
 
 #[cfg(feature = "fmt")]

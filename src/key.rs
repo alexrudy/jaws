@@ -83,6 +83,18 @@ pub struct JsonWebKey {
     parameters: BTreeMap<String, serde_json::Value>,
 }
 
+impl<K> From<JsonWebKeyBuilder<K>> for JsonWebKey
+where
+    K: SerializeJWK,
+{
+    fn from(key: JsonWebKeyBuilder<K>) -> Self {
+        JsonWebKey {
+            key_type: K::KEY_TYPE.into(),
+            parameters: key.0.parameters().into_iter().collect(),
+        }
+    }
+}
+
 /// A JSON Web Key Thumbprint (RFC 7638) calculator.
 ///
 /// This type contains the raw parts to build a JWK and then digest
@@ -119,8 +131,8 @@ where
     }
 
     /// Compute the base64url-encoded digest of the JWK.
-    pub fn digest_base64(&self) -> String {
-        base64ct::Base64UrlUnpadded::encode_string(&self.digest())
+    pub fn thumbprint(&self) -> Thumbprint {
+        Thumbprint(base64ct::Base64UrlUnpadded::encode_string(&self.digest()))
     }
 }
 
@@ -133,7 +145,7 @@ where
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.digest_base64())
+        serializer.serialize_str(&self.thumbprint())
     }
 }
 
@@ -150,6 +162,14 @@ where
     zeroize::ZeroizeOnDrop,
 )]
 pub struct Thumbprint(String);
+
+impl std::ops::Deref for Thumbprint {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod jwk_reader {
@@ -199,6 +219,7 @@ pub(crate) mod jwk_reader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::ops::Deref;
 
     use serde_json::json;
 
@@ -221,7 +242,7 @@ mod test {
         let thumb = Thumbprinter::<sha2::Sha256, _>::new(key);
 
         assert_eq!(
-            thumb.digest_base64(),
+            thumb.thumbprint().deref(),
             "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
         );
     }

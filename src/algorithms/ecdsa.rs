@@ -76,21 +76,21 @@ use elliptic_curve::{
     ops::Invert,
     sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint},
     subtle::CtOption,
-    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, Scalar,
+    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, PublicKey, Scalar,
 };
 
 pub use elliptic_curve::SecretKey;
 pub use p256::NistP256;
 pub use p384::NistP384;
 
-impl<C> crate::key::JWKeyType for SecretKey<C>
+impl<C> crate::key::JWKeyType for PublicKey<C>
 where
-    C: elliptic_curve::Curve,
+    C: elliptic_curve::Curve + elliptic_curve::CurveArithmetic,
 {
     const KEY_TYPE: &'static str = "EC";
 }
 
-impl<C> crate::key::SerializeJWK for SecretKey<C>
+impl<C> crate::key::SerializeJWK for PublicKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
@@ -105,7 +105,7 @@ where
             "crv".to_owned(),
             serde_json::Value::String(C::CRV.to_owned()),
         ));
-        let point = self.public_key().to_encoded_point(false);
+        let point = self.to_encoded_point(false);
         let Coordinates::Uncompressed { x, y } = point.coordinates() else {panic!("can't extract jwk coordinates")};
 
         params.push((
@@ -118,6 +118,49 @@ where
         ));
         params
     }
+}
+
+impl<C> crate::key::SerializeJWK for SecretKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.public_key().parameters()
+    }
+}
+impl<C> crate::key::SerializeJWK for ecdsa::SigningKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        todo!()
+    }
+}
+
+impl<C> crate::key::JWKeyType for ecdsa::SigningKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl<C> crate::key::JWKeyType for SecretKey<C>
+where
+    C: elliptic_curve::Curve,
+{
+    const KEY_TYPE: &'static str = "EC";
 }
 
 impl super::Algorithm for SecretKey<NistP256> {

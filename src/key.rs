@@ -17,10 +17,26 @@ pub trait JWKeyType {
     const KEY_TYPE: &'static str;
 }
 
+impl<T> JWKeyType for &T
+where
+    T: JWKeyType,
+{
+    const KEY_TYPE: &'static str = T::KEY_TYPE;
+}
+
 /// Trait for keys which can be serialized as a JWK.
 pub trait SerializeJWK: JWKeyType {
     /// Return a list of parameters to be serialized in the JWK.
     fn parameters(&self) -> Vec<(String, serde_json::Value)>;
+}
+
+impl<T> SerializeJWK for &T
+where
+    T: SerializeJWK,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        (*self).parameters()
+    }
 }
 
 /// Trait for keys which can be deserialized from a JWK.
@@ -162,6 +178,12 @@ where
     zeroize::ZeroizeOnDrop,
 )]
 pub struct Thumbprint(String);
+
+impl std::fmt::Display for Thumbprint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl std::ops::Deref for Thumbprint {
     type Target = str;

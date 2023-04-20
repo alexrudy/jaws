@@ -220,6 +220,31 @@ where
     }
 }
 
+#[cfg(feature = "fmt")]
+impl<H, P> fmt::JWTFormat for UnsignedToken<H, P>
+where
+    H: Serialize,
+    P: Serialize,
+{
+    fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
+        writeln!(f, "{{")?;
+        {
+            let mut f = f.indent();
+            write!(f, "\"protected\": ")?;
+            <UnsignedHeader<H> as fmt::JWTFormat>::fmt_indented_skip_first(&self.header, &mut f)?;
+            writeln!(f, ",")?;
+            write!(f, "\"payload\": ")?;
+            <Payload<P> as fmt::JWTFormat>::fmt_indented_skip_first(&self.payload, &mut f)?;
+            writeln!(f, ",")?;
+            write!(f, "\"signature\": ")?;
+            write!(f, "<signature>")?;
+        }
+        writeln!(f)?;
+        writeln!(f, "}}")?;
+        Ok(())
+    }
+}
+
 /// An error which occured while signing a token.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenSigningError<E> {

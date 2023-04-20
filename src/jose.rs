@@ -14,7 +14,7 @@ use sha1::Sha1;
 use sha2::Sha256;
 use url::Url;
 
-use crate::b64data::Base64JSON;
+use crate::base64data::Base64JSON;
 use crate::{algorithms::AlgorithmIdentifier, key::SerializeJWK};
 
 #[cfg(feature = "fmt")]

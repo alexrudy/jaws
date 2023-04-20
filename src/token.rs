@@ -19,7 +19,7 @@ use serde::{de, ser, Deserialize, Serialize};
 use crate::fmt;
 use crate::{
     algorithms::{AlgorithmIdentifier, Signature},
-    b64data::{Base64Data, Base64JSON},
+    base64data::{Base64Data, Base64JSON},
     jose::{
         Header, RegisteredHeader, SignedHeader, SignedRegisteredHeader, UnsignedHeader,
         UnsignedRegisteredHeader,

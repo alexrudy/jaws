@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 pub mod algorithms;
-pub mod b64data;
+pub mod base64data;
 pub mod claims;
 
 #[cfg(feature = "fmt")]

@@ -5,11 +5,15 @@
 //!
 //! [RFC7517]: https://tools.ietf.org/html/rfc7517
 
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::{collections::BTreeMap, hash::Hash, marker::PhantomData};
 
 use base64ct::Encoding;
 use digest::Digest;
-use serde::{ser::SerializeMap, Deserialize, Serialize};
+use serde::{
+    de,
+    ser::{self, SerializeMap},
+    Deserialize, Serialize,
+};
 
 /// Trait for keys which can be used as a JWK.
 pub trait JWKeyType {
@@ -47,6 +51,11 @@ pub trait DeserializeJWK: JWKeyType {
         Self: Sized;
 }
 
+pub trait KeyDerivedBuilder<Key>: From<Key> {
+    type Value;
+
+    fn build(self) -> Self::Value;
+}
 /// A JSON Web Key with the original key contained inside.
 ///
 /// The actual key isn't produced until this is serialized.
@@ -87,6 +96,17 @@ where
     }
 }
 
+impl<Key> KeyDerivedBuilder<Key> for JsonWebKeyBuilder<Key>
+where
+    Key: SerializeJWK,
+{
+    type Value = JsonWebKey;
+
+    fn build(self) -> Self::Value {
+        JsonWebKey::from(self)
+    }
+}
+
 /// JSON Web Key in serialized form.
 ///
 /// This struct just contains the parameters of the JWK.
@@ -97,6 +117,12 @@ pub struct JsonWebKey {
 
     #[serde(flatten)]
     parameters: BTreeMap<String, serde_json::Value>,
+}
+
+impl JsonWebKey {
+    pub fn builder<Key>(key: Key) -> JsonWebKeyBuilder<Key> {
+        JsonWebKeyBuilder::from(key)
+    }
 }
 
 impl<K> From<JsonWebKeyBuilder<K>> for JsonWebKey
@@ -147,8 +173,8 @@ where
     }
 
     /// Compute the base64url-encoded digest of the JWK.
-    pub fn thumbprint(&self) -> Thumbprint {
-        Thumbprint(base64ct::Base64UrlUnpadded::encode_string(&self.digest()))
+    pub fn thumbprint(&self) -> Thumbprint<D> {
+        Thumbprint::new(base64ct::Base64UrlUnpadded::encode_string(&self.digest()))
     }
 }
 
@@ -165,31 +191,109 @@ where
     }
 }
 
-/// A computed thumbprint.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    Serialize,
-    Deserialize,
-    zeroize::Zeroize,
-    zeroize::ZeroizeOnDrop,
-)]
-pub struct Thumbprint(String);
+impl<D, K> KeyDerivedBuilder<K> for Thumbprinter<D, K>
+where
+    K: SerializeJWK,
+    D: Digest,
+{
+    type Value = Thumbprint<D>;
 
-impl std::fmt::Display for Thumbprint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+    fn build(self) -> Self::Value {
+        self.thumbprint()
     }
 }
 
-impl std::ops::Deref for Thumbprint {
+impl<D, K> From<K> for Thumbprinter<D, K> {
+    fn from(key: K) -> Self {
+        Self::new(key)
+    }
+}
+
+/// A computed thumbprint.
+#[derive(Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+pub struct Thumbprint<Digest> {
+    thumbprint: String,
+    digest: PhantomData<Digest>,
+}
+
+impl<Digest> Clone for Thumbprint<Digest> {
+    fn clone(&self) -> Self {
+        Self {
+            thumbprint: self.thumbprint.clone(),
+            digest: PhantomData,
+        }
+    }
+}
+
+impl<Digest> Hash for Thumbprint<Digest> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.thumbprint.hash(state);
+    }
+}
+
+impl<Digest> PartialEq for Thumbprint<Digest> {
+    fn eq(&self, other: &Self) -> bool {
+        self.thumbprint == other.thumbprint && self.digest == other.digest
+    }
+}
+
+impl<Digest> Eq for Thumbprint<Digest> {}
+
+impl<Digest> Thumbprint<Digest> {
+    pub fn new(thumbprint: String) -> Self {
+        Self {
+            thumbprint,
+            digest: PhantomData,
+        }
+    }
+}
+
+impl<Digest> ser::Serialize for Thumbprint<Digest> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.thumbprint.as_str())
+    }
+}
+
+struct ThumbprintVisitor<D>(PhantomData<D>);
+
+impl<'de, D> de::Visitor<'de> for ThumbprintVisitor<D> {
+    type Value = Thumbprint<D>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("thumbprint digest as base64url string")
+    }
+
+    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Thumbprint::new(v.to_owned()))
+    }
+}
+
+impl<'de, Digest> de::Deserialize<'de> for Thumbprint<Digest> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ThumbprintVisitor(PhantomData))
+    }
+}
+
+impl<Digest> std::fmt::Display for Thumbprint<Digest> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.thumbprint)
+    }
+}
+
+impl<Digest> std::ops::Deref for Thumbprint<Digest> {
     type Target = str;
 
     fn deref(&self) -> &str {
-        &self.0
+        &self.thumbprint
     }
 }
 

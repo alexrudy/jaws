@@ -73,6 +73,8 @@ pub trait Algorithm {
     ///
     /// This is the `alg` field in the JOSE header.
     const IDENTIFIER: AlgorithmIdentifier;
+
+    type Signature: AsRef<[u8]>;
 }
 
 /// A trait to represent an algorithm which can sign a JWT.
@@ -81,8 +83,6 @@ pub trait Algorithm {
 pub trait SigningAlgorithm: Algorithm {
     /// Error type returned when signing fails.
     type Error;
-    /// Signature type returned upon sucess. This is the JWS Signature value.
-    type Signature: AsRef<[u8]>;
 
     /// The inner key type (e.g. [::rsa::RsaPrivateKey]) used to complete the registered
     /// header values.
@@ -111,7 +111,12 @@ pub trait VerifyAlgorithm: Algorithm {
 
     /// Verify the signature of the JWT, when provided with the base64url-encoded header
     /// and payload.
-    fn verify(&self, header: &str, payload: &str, signature: &[u8]) -> Result<(), Self::Error>;
+    fn verify(
+        &self,
+        header: &str,
+        payload: &str,
+        signature: &[u8],
+    ) -> Result<Self::Signature, Self::Error>;
 
     /// Return a reference to the key used to verify the JWT.
     fn key(&self) -> &Self::Key;

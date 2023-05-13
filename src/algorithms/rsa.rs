@@ -54,10 +54,9 @@ pub type RsaPkcs1v15<D> = SigningKey<D>;
 impl<D> super::SigningAlgorithm for RsaPkcs1v15<D>
 where
     D: digest::Digest,
-    RsaPkcs1v15<D>: super::Algorithm,
+    RsaPkcs1v15<D>: super::Algorithm<Signature = rsa::pkcs1v15::Signature>,
 {
     type Error = signature::Error;
-    type Signature = rsa::pkcs1v15::Signature;
     type Key = rsa::RsaPrivateKey;
 
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
@@ -72,14 +71,17 @@ where
 
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha256> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS256;
+    type Signature = rsa::pkcs1v15::Signature;
 }
 
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
+    type Signature = rsa::pkcs1v15::Signature;
 }
 
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
+    type Signature = rsa::pkcs1v15::Signature;
 }
 
 /// Algorithm wrapper for RSA-PSS signatures, using [rsa::pss::BlindedSigningKey].
@@ -88,10 +90,9 @@ pub type RsaPSSKey<D> = rsa::pss::BlindedSigningKey<D>;
 impl<D> super::SigningAlgorithm for RsaPSSKey<D>
 where
     D: digest::Digest + digest::FixedOutputReset,
-    RsaPSSKey<D>: super::Algorithm,
+    RsaPSSKey<D>: super::Algorithm<Signature = rsa::pss::Signature>,
 {
     type Error = signature::Error;
-    type Signature = rsa::pss::Signature;
     type Key = rsa::RsaPrivateKey;
 
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
@@ -106,14 +107,17 @@ where
 
 impl super::Algorithm for RsaPSSKey<sha2::Sha256> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::PS256;
+    type Signature = rsa::pss::Signature;
 }
 
 impl super::Algorithm for RsaPSSKey<sha2::Sha384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::PS384;
+    type Signature = rsa::pss::Signature;
 }
 
 impl super::Algorithm for RsaPSSKey<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::PS512;
+    type Signature = rsa::pss::Signature;
 }
 
 #[cfg(test)]

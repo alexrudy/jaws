@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_code)]
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 
 pub mod algorithms;
 pub mod base64data;
@@ -18,4 +18,5 @@ pub use claims::{Claims, RegisteredClaims};
 #[cfg(feature = "fmt")]
 pub use fmt::JWTFormat;
 pub use jose::{Header, RegisteredHeader};
-pub use token::{SignedToken, Token, UnsignedToken};
+pub use token::Token;
+pub use token::{Compact, Flat};

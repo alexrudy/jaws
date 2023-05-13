@@ -1,10 +1,11 @@
+use jaws::Compact;
 // JAWS provides JWT format for printing JWTs in a style similar to the example above,
 // which is directly inspired by the way the ACME standard shows JWTs.
 use jaws::JWTFormat;
 
 // JAWS provides strongly typed support for tokens, so we can only build an UnsignedToken,
 // which we can sign to create a SignedToken or a plain Token.
-use jaws::UnsignedToken;
+use jaws::Token;
 
 // JAWS provides type-safe support for JWT claims.
 use jaws::{Claims, RegisteredClaims};
@@ -61,10 +62,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The unit type can be used here because it implements [serde::Serialize],
     // but a custom type could be passed if we wanted to have custom header
     // fields.
-    let mut token = UnsignedToken::new((), claims);
+    let mut token = Token::new((), claims, Compact::default());
     // We can modify the headers freely before signing the JWT. In this case,
     // we provide the `typ` header, which is optional in the JWT spec.
-    token.header.registered.r#type = Some("JWT".to_string());
+    token.header_mut().registered.r#type = Some("JWT".to_string());
 
     // Sign the token with the algorithm, and print the result.
     let signed = token.sign(&alg).unwrap();
@@ -74,10 +75,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Type: {:?}, Algorithm: {:?}",
         signed.header().registered.r#type,
-        signed.header().algorithm,
+        signed.header().algorithm(),
     );
 
-    println!("Token: {}", signed.compact());
+    println!("Token: {}", signed.rendered().unwrap());
     println!("JWT:");
     println!("{}", signed.formatted());
 

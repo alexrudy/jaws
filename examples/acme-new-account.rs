@@ -1,6 +1,7 @@
 use jaws::algorithms::rsa::RsaPkcs1v15;
+use jaws::Compact;
 use jaws::JWTFormat;
-use jaws::UnsignedToken;
+use jaws::Token;
 use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;
 use sha2::Sha256;
@@ -63,10 +64,9 @@ fn main() {
     });
 
     // Create a token with the default headers, and no custom headers.
-    let mut token = UnsignedToken::new(header, payload);
-    // To request that we include the JWK, we just set the `key` field to true.
-    // The key will be filled in once we sign the token.
-    token.header.registered.key = true;
+    let mut token = Token::new(payload, header, Compact::default());
+    // Request that the token header include a JWK field.
+    token.header_mut().jwk().derived();
 
     // Sign the token with the algorithm and key we specified above.
     let signed = token.sign(&alg).unwrap();

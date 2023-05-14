@@ -105,14 +105,17 @@ where
 
 impl super::Algorithm for Hmac<sha2::Sha256> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::HS256;
+    type Signature = digest::Output<SimpleHmac<sha2::Sha256>>;
 }
 
 impl super::Algorithm for Hmac<sha2::Sha384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::HS384;
+    type Signature = digest::Output<SimpleHmac<sha2::Sha384>>;
 }
 
 impl super::Algorithm for Hmac<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::HS512;
+    type Signature = digest::Output<SimpleHmac<sha2::Sha512>>;
 }
 
 impl<D> super::SigningAlgorithm for Hmac<D>
@@ -123,10 +126,9 @@ where
         + digest::FixedOutput
         + digest::core_api::CoreProxy
         + Clone,
-    Hmac<D>: super::Algorithm,
+    Hmac<D>: super::Algorithm<Signature = digest::Output<SimpleHmac<D>>>,
 {
     type Error = Infallible;
-    type Signature = digest::Output<SimpleHmac<D>>;
     type Key = HmacKey;
 
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {

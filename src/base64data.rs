@@ -47,6 +47,15 @@ where
     }
 }
 
+impl<T> AsRef<[u8]> for Base64Data<T>
+where
+    T: AsRef<[u8]>,
+{
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 struct Base64Visitor<T>(PhantomData<T>);
 
 impl<'de, T> de::Visitor<'de> for Base64Visitor<T>
@@ -110,6 +119,12 @@ where
     pub(crate) fn serialized_value(&self) -> Result<String, serde_json::Error> {
         let inner = serde_json::to_vec(&self.0)?;
         Ok(base64ct::Base64UrlUnpadded::encode_string(&inner))
+    }
+}
+
+impl<T> AsRef<T> for Base64JSON<T> {
+    fn as_ref(&self) -> &T {
+        &self.0
     }
 }
 

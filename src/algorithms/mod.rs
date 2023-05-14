@@ -67,7 +67,7 @@ pub enum AlgorithmIdentifier {
 /// A trait to associate an alogritm identifier with an algorithm.
 ///
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
-/// They are set in the [crate::jose::SignedHeader] automatically when signing the JWT.
+/// They are set in the [crate::jose::Header] automatically when signing the JWT.
 pub trait Algorithm {
     /// The identifier for this algorithm when used in a JWT registered header.
     ///

@@ -80,7 +80,7 @@ impl super::Algorithm for RsaPkcs1v15<sha2::Sha384> {
 }
 
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha512> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS512;
     type Signature = rsa::pkcs1v15::Signature;
 }
 

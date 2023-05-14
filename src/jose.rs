@@ -70,17 +70,17 @@ where
 pub struct Unsigned {
     /// Whether to include the signing key in the JOSE header as a JWK.
     ///
-    /// See [SignedRegisteredHeader::key].
+    /// See [Rendered::key] for field details.
     pub key: KeyDerivation<JsonWebKey>,
 
     /// Whether to include the X.509 certificate thumbprint in the JOSE header with the SHA1 digest.
     ///
-    /// See [SignedRegisteredHeader::thumbprint].
+    /// See [Rendered::thumbprint] for field details.
     pub thumbprint: KeyDerivation<Thumbprint<Sha1>>,
 
     /// Whether to include the X.509 certificate thumbprint in the JOSE header with the SHA256 digest.
     ///
-    /// See [SignedRegisteredHeader::thumbprint_sha256].
+    /// See [Rendered::thumbprint_sha256] for field details.
     pub thumbprint_sha256: KeyDerivation<Thumbprint<Sha256>>,
 }
 
@@ -342,9 +342,8 @@ pub struct Rendered {
 /// key where that is reqiured. This type is used to ensure that fields
 /// derived from cryptographic keys are consistent with the keys and algorithms
 /// used to sign the entire token. To construct a JOSE header, use the
-/// [UnsignedHeader] type, which accepts bool for the fields derived from
-/// the signing key, and setting such fields to `true` will cause their values
-/// to be included in this structure.
+/// [Header::jwk()] method to set the included JWK, or the [Header::thumbprint()]
+/// and [Header::thumbprint_sha256()] methods to set the included X.509 thumbprint.
 #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, Deserialize)]
 pub struct RegisteredHeader {
     /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a

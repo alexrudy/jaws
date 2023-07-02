@@ -141,7 +141,7 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        todo!()
+        todo!("parameters for ecdsa signing key in JWK forms")
     }
 }
 

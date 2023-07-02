@@ -157,7 +157,7 @@ impl<H> UnsignedHeader<H> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn sign<A>(self, key: &A::Key) -> SignedHeader<H, A::Key>
+    pub fn sign<A>(self, key: &A::Key) -> SignedHeader<H, A::Key>
     where
         A: crate::algorithms::SigningAlgorithm,
         A::Key: Clone,

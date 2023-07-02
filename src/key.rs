@@ -67,7 +67,7 @@ where
     where
         S: serde::Serializer,
     {
-        // Asseble keys first so that we can order them.
+        // Assemble keys first so that we can order them.
         let mut keys = BTreeMap::new();
         keys.insert(
             "kty".to_owned(),
@@ -90,7 +90,7 @@ where
 /// JSON Web Key in serialized form.
 ///
 /// This struct just contains the parameters of the JWK.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct JsonWebKey {
     #[serde(rename = "kty")]
     key_type: String,
@@ -108,6 +108,28 @@ where
             key_type: K::KEY_TYPE.into(),
             parameters: key.0.parameters().into_iter().collect(),
         }
+    }
+}
+
+impl Serialize for JsonWebKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Assemble keys first so that we can order them.
+        let mut keys = self.parameters.clone();
+        keys.insert(
+            "kty".to_owned(),
+            serde_json::Value::String(self.key_type.clone()),
+        );
+
+        // Put them back so we can serialize them in lexical order.
+        let mut map = serializer.serialize_map(Some(keys.len()))?;
+        for (key, value) in keys {
+            map.serialize_entry(&key, &value)?;
+        }
+
+        map.end()
     }
 }
 

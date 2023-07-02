@@ -213,7 +213,7 @@ where
             .sign(&header, &payload)
             .map_err(TokenSigningError::Signing)?;
         Ok(SignedToken {
-            header: headers,
+            header: headers.into(),
             payload: self.payload,
             signature: signature.into(),
         })
@@ -278,7 +278,7 @@ where
     A: crate::algorithms::SigningAlgorithm,
 {
     #[serde(rename = "protected")]
-    header: SignedHeader<H, A::Key>,
+    header: Base64JSON<SignedHeader<H, A::Key>>,
     payload: Payload<P>,
     signature: Base64Data<A::Signature>,
 }
@@ -289,17 +289,17 @@ where
 {
     /// JWT custom header data.
     pub fn custom(&self) -> &H {
-        &self.header.custom
+        &self.header.0.custom
     }
 
     /// JWT registered header data.
     pub fn registered(&self) -> &SignedRegisteredHeader<A::Key> {
-        &self.header.registered
+        &self.header.0.registered
     }
 
     /// JWT header data.
     pub fn header(&self) -> &SignedHeader<H, A::Key> {
-        &self.header
+        &self.header.0
     }
 
     /// JWT payload data.
@@ -313,7 +313,7 @@ where
     /// Create a generic token, independent of key type.
     pub fn into_token(self) -> Token<H, P> {
         Token {
-            header: self.header.into(),
+            header: Base64JSON(self.header.0.into()),
             payload: self.payload,
             signature: Signature::from(self.signature.0.as_ref()).into(),
         }
@@ -333,7 +333,7 @@ where
             let mut f = f.indent();
             write!(f, "\"protected\": ")?;
             <SignedHeader<H, A::Key> as fmt::JWTFormat>::fmt_indented_skip_first(
-                &self.header,
+                &self.header.0,
                 &mut f,
             )?;
             writeln!(f, ",")?;
@@ -360,7 +360,7 @@ where
     /// string.
     pub fn compact(&self) -> CompactTokenFormatter<'_, H, P, A> {
         CompactTokenFormatter {
-            header: &self.header,
+            header: &self.header.0,
             payload: &self.payload,
             signature: &self.signature,
         }
@@ -370,7 +370,7 @@ where
     /// (omitting the signature).
     pub fn message(&self) -> MessageTokenFormatter<'_, H, P, A> {
         MessageTokenFormatter {
-            header: &self.header,
+            header: &self.header.0,
             payload: &self.payload,
         }
     }
@@ -466,7 +466,7 @@ impl<H, P> VerifiedToken<H, P> {
     /// Convert this token into a signed token in its final form.
     pub fn into_token(self) -> Token<H, P> {
         Token {
-            header: self.header,
+            header: Base64JSON(self.header),
             payload: self.payload,
             signature: self.signature,
         }
@@ -480,7 +480,7 @@ impl<H, P> VerifiedToken<H, P> {
 #[serde(bound(deserialize = "H: for<'d> Deserialize<'d>, P: for<'d> Deserialize<'d>"))]
 pub struct Token<H, P> {
     #[serde(rename = "protected")]
-    header: Header<H>,
+    header: Base64JSON<Header<H>>,
     payload: Payload<P>,
     signature: Base64Data<Signature>,
 }
@@ -488,12 +488,12 @@ pub struct Token<H, P> {
 impl<H, P> Token<H, P> {
     /// The custom header fields.
     pub fn custom(&self) -> &H {
-        &self.header.custom
+        &self.header.0.custom
     }
 
     /// The registred header fields.
     pub fn registered(&self) -> &RegisteredHeader {
-        &self.header.registered
+        &self.header.0.registered
     }
 
     /// The payload of the JWT.
@@ -507,7 +507,7 @@ impl<H, P> Token<H, P> {
     /// Compact JWT serialization formatter.
     pub fn compact(&self) -> Compact<'_, H, P> {
         Compact {
-            header: &self.header,
+            header: &self.header.0,
             payload: &self.payload,
             signature: &self.signature,
         }
@@ -523,10 +523,10 @@ impl<H, P> Token<H, P> {
         P: Serialize,
         H: Serialize,
     {
-        if A::IDENTIFIER != self.header.algorithm {
+        if A::IDENTIFIER != self.header.0.algorithm {
             return Err(TokenVerifyingError::Algorithm(
                 A::IDENTIFIER,
-                self.header.algorithm,
+                self.header.0.algorithm,
             ));
         }
 
@@ -537,7 +537,7 @@ impl<H, P> Token<H, P> {
             .verify(&header, &payload, signature.as_ref())
             .map_err(TokenVerifyingError::Verify)?;
         Ok(VerifiedToken {
-            header: self.header,
+            header: self.header.0,
             payload: self.payload,
             signature: signature.into(),
         })
@@ -555,7 +555,7 @@ where
         {
             let mut f = f.indent();
             write!(f, "\"protected\": ")?;
-            <Header<H> as fmt::JWTFormat>::fmt_indented_skip_first(&self.header, &mut f)?;
+            <Header<H> as fmt::JWTFormat>::fmt_indented_skip_first(&self.header.0, &mut f)?;
             writeln!(f, ",")?;
             write!(f, "\"payload\": ")?;
             <Payload<P> as fmt::JWTFormat>::fmt_indented_skip_first(&self.payload, &mut f)?;
@@ -625,7 +625,6 @@ mod test {
     use super::*;
     use crate::claims::Claims;
 
-    use base64ct::Encoding;
     use chrono::TimeZone;
     use serde_json::json;
     use sha2::Sha256;
@@ -698,10 +697,8 @@ mod test {
             crate::algorithms::rsa::RsaPkcs1v15::new_with_prefix(pkey);
         let signed = token.sign(&algorithm).unwrap();
         {
-            let hdr = base64ct::Base64UrlUnpadded::encode_string(
-                &serde_json::to_vec(&signed.header).unwrap(),
-            );
-            assert_eq!(hdr, "eyJhbGciOiJSUzI1NiJ9")
+            let hdr = serde_json::to_string(&signed.header).unwrap();
+            assert_eq!(hdr.trim_matches('"'), "eyJhbGciOiJSUzI1NiJ9")
         }
         {
             let msg = signed.message();

@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The unit type can be used here because it implements [serde::Serialize],
     // but a custom type could be passed if we wanted to have custom header
     // fields.
-    let mut token = Token::new((), claims, Compact::default());
+    let mut token = Token::new((), claims, Compact);
     // We can modify the headers freely before signing the JWT. In this case,
     // we provide the `typ` header, which is optional in the JWT spec.
     token.header_mut().registered.r#type = Some("JWT".to_string());

@@ -634,11 +634,11 @@ where
         let Value::Object(header) = header else {
             panic!("expected header")
         };
-        map.extend(header.into_iter());
+        map.extend(header);
         let Value::Object(value) = value else {
             panic!("expected algorithm header")
         };
-        map.extend(value.into_iter());
+        map.extend(value);
 
         custom
     }
@@ -671,11 +671,11 @@ where
         let Value::Object(header) = header else {
             panic!("expected header")
         };
-        map.extend(header.into_iter());
+        map.extend(header);
         let Value::Object(value) = value else {
             panic!("expected algorithm header")
         };
-        map.extend(value.into_iter());
+        map.extend(value);
 
         custom
     }

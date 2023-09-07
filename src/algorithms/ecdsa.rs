@@ -106,7 +106,9 @@ where
             serde_json::Value::String(C::CRV.to_owned()),
         ));
         let point = self.to_encoded_point(false);
-        let Coordinates::Uncompressed { x, y } = point.coordinates() else {panic!("can't extract jwk coordinates")};
+        let Coordinates::Uncompressed { x, y } = point.coordinates() else {
+            panic!("can't extract jwk coordinates")
+        };
 
         params.push((
             "x".to_owned(),

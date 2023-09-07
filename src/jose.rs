@@ -631,9 +631,13 @@ where
         let mut custom = serde_json::to_value(&self.custom).unwrap();
 
         let map = custom.as_object_mut().unwrap();
-        let Value::Object(header) = header else { panic!("expected header")};
+        let Value::Object(header) = header else {
+            panic!("expected header")
+        };
         map.extend(header.into_iter());
-        let Value::Object(value) = value else { panic!("expected algorithm header")};
+        let Value::Object(value) = value else {
+            panic!("expected algorithm header")
+        };
         map.extend(value.into_iter());
 
         custom
@@ -664,9 +668,13 @@ where
         let mut custom = serde_json::to_value(&self.custom).unwrap();
 
         let map = custom.as_object_mut().unwrap();
-        let Value::Object(header) = header else { panic!("expected header")};
+        let Value::Object(header) = header else {
+            panic!("expected header")
+        };
         map.extend(header.into_iter());
-        let Value::Object(value) = value else { panic!("expected algorithm header")};
+        let Value::Object(value) = value else {
+            panic!("expected algorithm header")
+        };
         map.extend(value.into_iter());
 
         custom

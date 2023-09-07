@@ -25,6 +25,8 @@ use crate::key::{JsonWebKey, JsonWebKeyBuilder, KeyDerivedBuilder, Thumbprint, T
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Certificate;
 
+/// A builder for the registered JOSE header fields for using JWTs,
+/// when those fields are derived from the signing key.
 #[derive(Debug, Clone, Default)]
 pub enum KeyDerivation<Value> {
     #[default]
@@ -34,14 +36,17 @@ pub enum KeyDerivation<Value> {
 }
 
 impl<Value> KeyDerivation<Value> {
+    /// Set this field to be omitteded from the rendered JOSE header.
     pub fn omit(&mut self) {
         *self = Self::Omit;
     }
 
+    /// Set this field to be derived from the signing key.
     pub fn derived(&mut self) {
         *self = Self::Derived;
     }
 
+    /// Set this field to be set explicitly, with a given JSON value.
     pub fn explicit(&mut self, value: Value) {
         *self = Self::Explicit(value);
     }
@@ -112,6 +117,12 @@ impl fmt::JWTFormat for Unsigned {
     }
 }
 
+/// A builder for the registered JOSE header fields for using JWTs.
+///
+/// Some header values must be set explicitly, while others can
+/// be derived from the signing key. This type helps to keep track
+/// of that distinction, allowing a field to be marked as derived
+/// from the signing key.
 #[derive(Debug, Default)]
 pub enum DerivedKey<Builder, Key>
 where
@@ -192,6 +203,8 @@ where
     }
 }
 
+/// The registered fields of a JOSE header, which are interdependent
+/// with the signing key.
 #[derive(Debug, Clone, Serialize)]
 #[serde(bound(serialize = "Key: SerializeJWK + Clone"))]
 pub struct Signed<Key>
@@ -283,6 +296,11 @@ where
     }
 }
 
+/// The registered fields of a JOSE header, which are interdependent
+/// with the signing key, rendered into their typed form.
+///
+/// This is different from [Signed] in that it contains the actual data,
+/// and not thd derivation, so the fields may be in inconsistent states.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rendered {
     /// The "alg" (algorithm) Header Parameter identifies the cryptographic
@@ -570,14 +588,17 @@ impl<H> Header<H, Unsigned> {
         }
     }
 
+    /// Access the JWK setting for the header.
     pub fn jwk(&mut self) -> &mut KeyDerivation<JsonWebKey> {
         &mut self.state.key
     }
 
+    /// Access the JWK thumbprint setting for the header.
     pub fn thumbprint(&mut self) -> &mut KeyDerivation<Thumbprint<Sha1>> {
         &mut self.state.thumbprint
     }
 
+    /// Access the JWK thumbprint setting for the header.
     pub fn thumbprint_sha256(&mut self) -> &mut KeyDerivation<Thumbprint<Sha256>> {
         &mut self.state.thumbprint_sha256
     }
@@ -587,10 +608,14 @@ impl<H, Key> Header<H, Signed<Key>>
 where
     Key: SerializeJWK,
 {
+    /// JWK signing algorithm in use.
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
         &self.state.algorithm
     }
 
+    /// Render a signed JWK header into its rendered
+    /// form, where the derived fields have been built
+    /// as necessary.
     pub fn render(self) -> Header<H, Rendered> {
         let state = Rendered {
             algorithm: self.state.algorithm,
@@ -694,5 +719,6 @@ where
     }
 }
 
+/// Errors returned by [Header::verify()].
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyHeaderError {}

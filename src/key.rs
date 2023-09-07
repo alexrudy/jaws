@@ -120,6 +120,9 @@ pub struct JsonWebKey {
 }
 
 impl JsonWebKey {
+    /// Create a builder for a new JWK.
+    ///
+    /// The builder ensures that the JWK fields are set consistently.
     pub fn builder<Key>(key: Key) -> JsonWebKeyBuilder<Key> {
         JsonWebKeyBuilder::from(key)
     }

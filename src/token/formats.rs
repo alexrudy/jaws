@@ -6,26 +6,47 @@ use super::{HasSignature, MaybeSigned};
 use super::{Payload, Token};
 use crate::base64data::{Base64Data, Base64JSON};
 
+/// A token format that serializes the token as a compact string.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Compact;
 
 impl Compact {
+    /// Creates a new `Compact` token format.
+    ///
+    /// Since no extra information is needed, the header and payload
+    /// are stored in the token itself.
     pub fn new() -> Compact {
         Compact
     }
 }
 
+/// A token format that serializes the token as a single JSON object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flat<U> {
     unprotected: U,
 }
 
 impl<U> Flat<U> {
+    /// Creates a new `Flat` token format with the given unprotected header.
     pub fn new(unprotected: U) -> Self {
         Self { unprotected }
     }
+
+    /// Returns a reference to the unprotected header.
+    pub fn unprotected(&self) -> &U {
+        &self.unprotected
+    }
+
+    /// Returns a mutable reference to the unprotected header.
+    pub fn unprotected_mut(&mut self) -> &mut U {
+        &mut self.unprotected
+    }
 }
 
+/// Error returned when a token cannot be formatted as a string.
+///
+/// This error can occur when serializing the header or payload, or
+/// when writing to the writer.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenFormattingError {
     /// An error occured while serailizing the header or payload.
@@ -39,7 +60,9 @@ pub enum TokenFormattingError {
     IO(#[from] std::fmt::Error),
 }
 
+/// Trait for token formats, defining how they are serialized.
 pub trait TokenFormat {
+    /// Render the token to the given writer.
     fn render<S>(
         &self,
         writer: &mut impl Write,

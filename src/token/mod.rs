@@ -132,6 +132,37 @@ where
     }
 }
 
+/// A JSON web token, generic over the signing state, format, and payload.
+///
+/// Tokens can change state using the `sign`, `verify`, and `unverify` methods.
+/// The format can generally not be changed after constructing the token.
+///
+/// JAWS does not support the general JWS format, only the compact format and
+/// the flat format.
+///
+/// # Examples
+///
+/// ## Creating a compact token
+/// ```
+/// use jaws::token::Token;
+///
+/// let token = Token::compact((), ());
+/// ```
+///
+/// This token will have no payload, and no custom headers, but it is still usable:
+/// ```
+/// # use jaws::token::Token;
+/// # let token = Token::compact((), ());
+///
+/// use jaws::fmt::JWTFormat;
+///
+/// println!("{}", token.formatted());
+/// ```
+///
+/// ## Transitioning a token between states
+///
+/// See [`Token::sign`], [`Token::verify`], and [`Token::unverify`].
+///
 #[derive(Debug, Clone)]
 pub struct Token<P, State: MaybeSigned = Unsigned<()>, Fmt: TokenFormat = Compact> {
     payload: Payload<P>,
@@ -140,10 +171,22 @@ pub struct Token<P, State: MaybeSigned = Unsigned<()>, Fmt: TokenFormat = Compac
 }
 
 impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
+    /// Token header values
+    ///
+    /// # Example: No custom headers, only registered headers.
+    ///
+    /// ```
+    /// use jaws::token::Token;
+    ///
+    /// let token = Token::compact((), ());
+    /// let header = token.header();
+    /// assert_eq!(&header.registered.r#type, &None);
+    /// ```
     pub fn header(&self) -> &Header<State::Header, State::HeaderState> {
         self.state.header()
     }
 
+    /// Mutable access to Token header values
     pub fn header_mut(&mut self) -> &mut Header<State::Header, State::HeaderState> {
         self.state.header_mut()
     }
@@ -153,6 +196,9 @@ impl<P, H, Fmt> Token<P, Unsigned<H>, Fmt>
 where
     Fmt: TokenFormat,
 {
+    /// Create a new token with the given header and payload, in a given format.
+    ///
+    /// See also [`Token::compact`] and [`Token::flat`] to create a token in a specific format.
     pub fn new(header: H, payload: P, fmt: Fmt) -> Self {
         Token {
             payload: Payload::Json(payload.into()),
@@ -165,6 +211,13 @@ where
 }
 
 impl<P, H> Token<P, Unsigned<H>, Compact> {
+    /// Create a new token with the given header and payload, in the compact format.
+    ///
+    /// See also [`Token::new`] and [`Token::flat`] to create a token in a specific format.
+    ///
+    /// The compact format is the format with base64url encoded header and payload, separated
+    /// by a dot, and with the signature appended.
+    ///
     pub fn compact(header: H, payload: P) -> Token<P, Unsigned<H>, Compact> {
         Token::new(header, payload, Compact::new())
     }
@@ -174,16 +227,26 @@ impl<P, U, H> Token<P, Unsigned<H>, Flat<U>>
 where
     U: Serialize,
 {
+    /// Create a new token with the given header and payload, in the flat format.
+    ///
+    /// See also [`Token::new`] and [`Token::compact`] to create a token in a specific format.
+    ///
+    /// The flat format is the format with a JSON object containing the header, payload, and
+    /// signature, all in the same object. It can also include additional JSON data as "unprotected"\
+    /// headers, which are not signed and cannot be verified.
     pub fn flat(header: H, unprotected: U, payload: P) -> Token<P, Unsigned<H>, Flat<U>> {
         Token::new(header, payload, Flat::new(unprotected))
     }
 }
 
+/// Token serialization and message packing.
 impl<P, S, Fmt> Token<P, S, Fmt>
 where
     S: MaybeSigned,
     Fmt: TokenFormat,
 {
+    /// Get the payload and header of the token, serialized in the compact format,
+    /// suitable as input into a signature algorithm.
     pub fn message(&self) -> Result<String, serde_json::Error>
     where
         P: Serialize,
@@ -198,6 +261,9 @@ where
         Ok(msg)
     }
 
+    /// Get the payload and header of the token, serialized including signature data.
+    ///
+    /// This method is only available when the token is in a signed state.
     pub fn rendered(&self) -> Result<String, TokenFormattingError>
     where
         P: Serialize,
@@ -252,7 +318,12 @@ where
     H: Serialize,
     P: Serialize,
 {
-    /// Verify the signature of the token.
+    /// Verify the signature of the token with the given algorithm.
+    ///
+    /// This method consumes the token and returns a new one with the signature verified.
+    ///
+    /// The algorithm must be uniquely specified for verification, otherwise the token
+    /// could perform a signature downgrade attack.
     #[allow(clippy::type_complexity)]
     pub fn verify<A>(
         self,
@@ -295,6 +366,10 @@ where
     Fmt: TokenFormat,
     Alg: SigningAlgorithm,
 {
+    /// Transition the token back into an unverified state.
+    ///
+    /// This method consumes the token and returns a new one, which still includes the signature
+    /// but which is no longer considered verified.
     pub fn unverify(self) -> Token<P, Unverified<H>, Fmt> {
         Token {
             payload: self.payload,

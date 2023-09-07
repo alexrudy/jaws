@@ -23,7 +23,7 @@
 //! use elliptic_curve::FieldBytes;
 //! use base64ct::{Encoding, Base64UrlUnpadded};
 //!
-//! use jaws::{Claims, RegisteredClaims, UnsignedToken};
+//! use jaws::{Claims, RegisteredClaims, Token};
 //! use jaws::JWTFormat;
 //!
 //! // Create a new ECDSA signing key for the P-256 curve
@@ -50,13 +50,13 @@
 //! // The unit type can be used here because it implements [serde::Serialize],
 //! // but a custom type could be passed if we wanted to have custom header
 //! // fields.
-//! let mut token = UnsignedToken::new((), claims);
-//! token.header.registered.r#type = Some("JWT".to_string());
+//! let mut token = Token::compact((), claims);
+//! token.header_mut().registered.r#type = Some("JWT".to_string());
 //!
 //! // Sign the token with the ECDSA key, and print the result.
 //! let signed = token.sign(&key).unwrap();
 //! // Print out the compact form you would use as a token
-//! println!("{}", signed.compact());
+//! println!("{}", signed.rendered().unwrap());
 //!
 //! // Print out the formatted form useful for debugging
 //! println!("{}", signed.formatted());
@@ -76,21 +76,21 @@ use elliptic_curve::{
     ops::Invert,
     sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint},
     subtle::CtOption,
-    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, Scalar,
+    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, PublicKey, Scalar,
 };
 
 pub use elliptic_curve::SecretKey;
 pub use p256::NistP256;
 pub use p384::NistP384;
 
-impl<C> crate::key::JWKeyType for SecretKey<C>
+impl<C> crate::key::JWKeyType for PublicKey<C>
 where
-    C: elliptic_curve::Curve,
+    C: elliptic_curve::Curve + elliptic_curve::CurveArithmetic,
 {
     const KEY_TYPE: &'static str = "EC";
 }
 
-impl<C> crate::key::SerializeJWK for SecretKey<C>
+impl<C> crate::key::SerializeJWK for PublicKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
@@ -105,8 +105,10 @@ where
             "crv".to_owned(),
             serde_json::Value::String(C::CRV.to_owned()),
         ));
-        let point = self.public_key().to_encoded_point(false);
-        let Coordinates::Uncompressed { x, y } = point.coordinates() else {panic!("can't extract jwk coordinates")};
+        let point = self.to_encoded_point(false);
+        let Coordinates::Uncompressed { x, y } = point.coordinates() else {
+            panic!("can't extract jwk coordinates")
+        };
 
         params.push((
             "x".to_owned(),
@@ -120,12 +122,57 @@ where
     }
 }
 
+impl<C> crate::key::SerializeJWK for SecretKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.public_key().parameters()
+    }
+}
+impl<C> crate::key::SerializeJWK for ecdsa::SigningKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        todo!()
+    }
+}
+
+impl<C> crate::key::JWKeyType for ecdsa::SigningKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl<C> crate::key::JWKeyType for SecretKey<C>
+where
+    C: elliptic_curve::Curve,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
 impl super::Algorithm for SecretKey<NistP256> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES256;
+    type Signature = ecdsa::SignatureBytes<NistP256>;
 }
 
 impl super::Algorithm for SecretKey<NistP384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES384;
+    type Signature = ecdsa::SignatureBytes<NistP384>;
 }
 
 impl<C> super::SigningAlgorithm for SecretKey<C>
@@ -136,20 +183,21 @@ where
     MaxSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
     FieldBytesSize<C>: ModulusSize,
-    SecretKey<C>: super::Algorithm,
+    SecretKey<C>: super::Algorithm<Signature = ecdsa::SignatureBytes<C>>,
     <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
 {
     type Error = ecdsa::Error;
-    type Signature = ecdsa::SignatureBytes<C>;
     type Key = SecretKey<C>;
 
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
         let message = format!("{}.{}", header, payload);
-        <::ecdsa::SigningKey<C> as signature::Signer<::ecdsa::Signature<C>>>::try_sign(
-            &self.into(),
-            message.as_bytes(),
-        )
-        .map(|sig| sig.to_bytes())
+        let signature =
+            <::ecdsa::SigningKey<C> as signature::Signer<::ecdsa::Signature<C>>>::try_sign(
+                &self.into(),
+                message.as_bytes(),
+            )
+            .map(|sig| sig.to_bytes())?;
+        Ok(signature)
     }
 
     fn key(&self) -> &Self::Key {

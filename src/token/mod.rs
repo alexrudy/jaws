@@ -415,7 +415,8 @@ where
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
         let header = self.state.header().value();
-        let payload = serde_json::to_value(&self.payload).unwrap();
+        let payload =
+            serde_json::to_value(&self.payload).expect("payload should serialize to json:");
 
         let token = serde_json::json!({
             "header": header,

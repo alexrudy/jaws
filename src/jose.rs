@@ -653,9 +653,16 @@ where
     pub(crate) fn value(&self) -> serde_json::Value {
         let value = self.state.parameters();
         let header = serde_json::to_value(&self.registered).unwrap();
-        let mut custom = serde_json::to_value(&self.custom).unwrap();
+        let custom = serde_json::to_value(&self.custom).unwrap();
 
-        let map = custom.as_object_mut().unwrap();
+        let mut map = serde_json::Map::new();
+
+        match custom {
+            Value::Object(custom) => map.extend(custom),
+            Value::Null => {}
+            _ => panic!("custom headers are objects"),
+        };
+
         let Value::Object(header) = header else {
             panic!("expected header")
         };
@@ -665,7 +672,7 @@ where
         };
         map.extend(value);
 
-        custom
+        map.into()
     }
 }
 

@@ -719,6 +719,6 @@ where
     }
 }
 
-/// Errors returned by [Header::verify()].
+/// Errors returned when verifying a header.
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyHeaderError {}

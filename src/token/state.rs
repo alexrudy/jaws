@@ -22,10 +22,10 @@ pub trait MaybeSigned {
     /// and deserializing.
     type Header;
 
-    /// Get a reference to the header. The same as [`Token::header`].
+    /// Get a reference to the header. The same as [`crate::Token::header`].
     fn header(&self) -> &jose::Header<Self::Header, Self::HeaderState>;
 
-    /// Get a mutable reference to the header. The same as [`Token::header_mut`].
+    /// Get a mutable reference to the header. The same as [`crate::Token::header_mut`].
     fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState>;
 
     /// Returns true if the token is signed.

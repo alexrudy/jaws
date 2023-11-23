@@ -11,7 +11,7 @@ use super::HeaderState;
 /// The registered fields of a JOSE header, which are interdependent
 /// with the signing key, rendered into their typed form.
 ///
-/// This is different from [SignedHeader] in that it contains the actual data,
+/// This is different from [super::SignedHeader] in that it contains the actual data,
 /// and not thd derivation, so the fields may be in inconsistent states.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderedHeader {

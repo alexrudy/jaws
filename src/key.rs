@@ -110,7 +110,7 @@ where
 /// JSON Web Key in serialized form.
 ///
 /// This struct just contains the parameters of the JWK.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct JsonWebKey {
     #[serde(rename = "kty")]
     key_type: String,
@@ -137,6 +137,29 @@ where
             key_type: K::KEY_TYPE.into(),
             parameters: key.0.parameters().into_iter().collect(),
         }
+    }
+}
+
+impl Serialize for JsonWebKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // JWKs must serialize keys in alphabetical order.
+
+        let mut entries = self
+            .parameters
+            .iter()
+            .map(|(key, value)| (key.as_str(), value))
+            .collect::<BTreeMap<_, _>>();
+        let kty = serde_json::Value::String(self.key_type.clone());
+        entries.insert("kty", &kty);
+
+        let mut map = serializer.serialize_map(Some(entries.len()))?;
+        for (key, value) in entries {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
     }
 }
 

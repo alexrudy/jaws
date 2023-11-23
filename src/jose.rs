@@ -193,11 +193,15 @@ impl<Builder, Key> DerivedKey<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,
     <Builder as KeyDerivedBuilder<Key>>::Value: Serialize,
+    Key: Clone,
 {
-    fn parameter(&self, key: &str) -> Option<serde_json::Value> {
+    fn parameter(&self) -> Option<serde_json::Value> {
         match self {
             DerivedKey::Omit => None,
-            DerivedKey::Derived(_) => Some(json!(format!("<{key}>"))),
+            DerivedKey::Derived(key) => Some(
+                serde_json::to_value(Builder::from(key.clone()).build())
+                    .expect("failed to serialize derived key"),
+            ),
             DerivedKey::Explicit(value) => serde_json::to_value(value).ok(),
         }
     }
@@ -265,20 +269,22 @@ where
 #[cfg(feature = "fmt")]
 impl<Key> Signed<Key>
 where
-    Key: SerializeJWK,
+    Key: SerializeJWK + Clone,
 {
     fn parameters(&self) -> serde_json::Value {
         let mut data = json!({});
 
-        if let Some(value) = self.key.parameter("jwk") {
+        data["alg"] = serde_json::to_value(self.algorithm).unwrap();
+
+        if let Some(value) = self.key.parameter() {
             data["jwk"] = value;
         }
 
-        if let Some(value) = self.thumbprint.parameter("x5t") {
+        if let Some(value) = self.thumbprint.parameter() {
             data["x5t"] = value;
         }
 
-        if let Some(value) = self.thumbprint_sha256.parameter("x5t#S256") {
+        if let Some(value) = self.thumbprint_sha256.parameter() {
             data["x5t#S256"] = value;
         }
 
@@ -289,7 +295,7 @@ where
 #[cfg(feature = "fmt")]
 impl<Key> fmt::JWTFormat for Signed<Key>
 where
-    Key: SerializeJWK,
+    Key: SerializeJWK + Clone,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
         Base64JSON(&self.parameters()).fmt(f)
@@ -692,7 +698,7 @@ where
 impl<H, Key> Header<H, Signed<Key>>
 where
     H: Serialize,
-    Key: SerializeJWK,
+    Key: SerializeJWK + Clone,
 {
     pub(crate) fn value(&self) -> serde_json::Value {
         let value = self.state.parameters();
@@ -717,7 +723,7 @@ where
 impl<H, Key> fmt::JWTFormat for Header<H, Signed<Key>>
 where
     H: Serialize,
-    Key: SerializeJWK,
+    Key: SerializeJWK + Clone,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
         let value = self.value();

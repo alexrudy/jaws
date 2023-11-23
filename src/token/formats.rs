@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use serde::{Deserialize, Serialize};
+use serde::{ser, Deserialize, Serialize};
 
 use super::{HasSignature, MaybeSigned};
 use super::{Payload, Token};
@@ -20,13 +20,14 @@ impl Compact {
     }
 }
 
-/// A token format that serializes the token as a single JSON object.
+/// A token format that serializes the token as a single JSON object,
+/// with the unprotected header as a top-level field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Flat<U> {
+pub struct FlatUnprotected<U> {
     unprotected: U,
 }
 
-impl<U> Flat<U> {
+impl<U> FlatUnprotected<U> {
     /// Creates a new `Flat` token format with the given unprotected header.
     pub fn new(unprotected: U) -> Self {
         Self { unprotected }
@@ -42,6 +43,10 @@ impl<U> Flat<U> {
         &mut self.unprotected
     }
 }
+
+/// A token format that serializes the token as a single JSON object.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Flat;
 
 /// Error returned when a token cannot be formatted as a string.
 ///
@@ -103,7 +108,7 @@ struct FlatToken<'t, P, U> {
     signature: String,
 }
 
-impl<U> TokenFormat for Flat<U>
+impl<U> TokenFormat for FlatUnprotected<U>
 where
     U: Serialize,
 {
@@ -132,5 +137,98 @@ where
         write!(writer, "{}", data)?;
 
         Ok(())
+    }
+}
+
+impl<P, S, U> Serialize for Token<P, S, FlatUnprotected<U>>
+where
+    S: HasSignature,
+    <S as MaybeSigned>::Header: Serialize,
+    <S as MaybeSigned>::HeaderState: Serialize,
+    U: Serialize,
+    P: Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: ser::Serializer,
+    {
+        let header = Base64JSON(self.state.header())
+            .serialized_value()
+            .map_err(ser::Error::custom)?;
+        let signature = Base64Data(self.state.signature())
+            .serialized_value()
+            .map_err(ser::Error::custom)?;
+
+        let flat = FlatToken {
+            payload: &self.payload,
+            protected: header,
+            unprotected: &self.fmt.unprotected,
+            signature,
+        };
+
+        flat.serialize(serializer)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct FlatSimpleToken<'t, P> {
+    payload: &'t Payload<P>,
+    protected: String,
+    signature: String,
+}
+
+impl TokenFormat for Flat {
+    fn render<S>(
+        &self,
+        writer: &mut impl Write,
+        token: &Token<impl Serialize, S, Self>,
+    ) -> Result<(), TokenFormattingError>
+    where
+        Self: Sized,
+        S: HasSignature,
+        <S as MaybeSigned>::Header: Serialize,
+        <S as MaybeSigned>::HeaderState: Serialize,
+    {
+        let header = Base64JSON(&token.state.header()).serialized_value()?;
+        let signature = Base64Data(token.state.signature()).serialized_value()?;
+
+        let flat = FlatSimpleToken {
+            payload: &token.payload,
+            protected: header,
+            signature,
+        };
+
+        let data = serde_json::to_string(&flat)?;
+        write!(writer, "{}", data)?;
+
+        Ok(())
+    }
+}
+
+impl<P, S> Serialize for Token<P, S, Flat>
+where
+    S: HasSignature,
+    <S as MaybeSigned>::Header: Serialize,
+    <S as MaybeSigned>::HeaderState: Serialize,
+    P: Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: ser::Serializer,
+    {
+        let header = Base64JSON(self.state.header())
+            .serialized_value()
+            .map_err(ser::Error::custom)?;
+        let signature = Base64Data(self.state.signature())
+            .serialized_value()
+            .map_err(ser::Error::custom)?;
+
+        let flat = FlatSimpleToken {
+            payload: &self.payload,
+            protected: header,
+            signature,
+        };
+
+        flat.serialize(serializer)
     }
 }

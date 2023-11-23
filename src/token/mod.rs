@@ -26,7 +26,7 @@ use crate::{
 mod formats;
 mod state;
 
-pub use self::formats::{Compact, Flat, TokenFormat, TokenFormattingError};
+pub use self::formats::{Compact, Flat, FlatUnprotected, TokenFormat, TokenFormattingError};
 pub use self::state::{HasSignature, MaybeSigned, Signed, Unsigned, Unverified, Verified};
 
 /// A JWT Playload. Most payloads are JSON objects, which are serialized, and then converted
@@ -223,10 +223,7 @@ impl<P, H> Token<P, Unsigned<H>, Compact> {
     }
 }
 
-impl<P, U, H> Token<P, Unsigned<H>, Flat<U>>
-where
-    U: Serialize,
-{
+impl<P, H> Token<P, Unsigned<H>, Flat> {
     /// Create a new token with the given header and payload, in the flat format.
     ///
     /// See also [`Token::new`] and [`Token::compact`] to create a token in a specific format.
@@ -234,8 +231,8 @@ where
     /// The flat format is the format with a JSON object containing the header, payload, and
     /// signature, all in the same object. It can also include additional JSON data as "unprotected"\
     /// headers, which are not signed and cannot be verified.
-    pub fn flat(header: H, unprotected: U, payload: P) -> Token<P, Unsigned<H>, Flat<U>> {
-        Token::new(header, payload, Flat::new(unprotected))
+    pub fn flat(header: H, payload: P) -> Token<P, Unsigned<H>, Flat> {
+        Token::new(header, payload, Flat)
     }
 }
 

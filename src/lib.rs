@@ -19,4 +19,4 @@ pub use claims::{Claims, RegisteredClaims};
 pub use fmt::JWTFormat;
 pub use jose::{Header, RegisteredHeader};
 pub use token::Token;
-pub use token::{Compact, Flat};
+pub use token::{Compact, Flat, FlatUnprotected};

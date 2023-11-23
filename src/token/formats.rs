@@ -154,10 +154,10 @@ where
     {
         let header = Base64JSON(self.state.header())
             .serialized_value()
-            .map_err(|err| ser::Error::custom(err))?;
+            .map_err(ser::Error::custom)?;
         let signature = Base64Data(self.state.signature())
             .serialized_value()
-            .map_err(|err| ser::Error::custom(err))?;
+            .map_err(ser::Error::custom)?;
 
         let flat = FlatToken {
             payload: &self.payload,
@@ -218,10 +218,10 @@ where
     {
         let header = Base64JSON(self.state.header())
             .serialized_value()
-            .map_err(|err| ser::Error::custom(err))?;
+            .map_err(ser::Error::custom)?;
         let signature = Base64Data(self.state.signature())
             .serialized_value()
-            .map_err(|err| ser::Error::custom(err))?;
+            .map_err(ser::Error::custom)?;
 
         let flat = FlatSimpleToken {
             payload: &self.payload,

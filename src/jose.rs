@@ -22,6 +22,9 @@ use crate::fmt;
 use crate::key::{JsonWebKey, JsonWebKeyBuilder, KeyDerivedBuilder, Thumbprint, Thumbprinter};
 
 /// Stub type to represent an X.509 certificate
+///
+/// This type should be replaced with a proper representation of an X.509
+/// certificate, but that is not yet implemeted for this library.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Certificate;
 
@@ -29,9 +32,14 @@ pub struct Certificate;
 /// when those fields are derived from the signing key.
 #[derive(Debug, Clone, Default)]
 pub enum KeyDerivation<Value> {
+    /// Omit this value from the rendered JOSE header.
     #[default]
     Omit,
+
+    /// Derive this value from the signing key used to sign the token.
     Derived,
+
+    /// Provide an explicit value for this field.
     Explicit(Value),
 }
 
@@ -72,25 +80,25 @@ where
 /// to `true` when you'd like to serialize the signing key in the JOSE header
 /// as a JSON Web Key (JWK).
 #[derive(Debug, Clone, Default)]
-pub struct Unsigned {
+pub struct UnsignedHeader {
     /// Whether to include the signing key in the JOSE header as a JWK.
     ///
-    /// See [Rendered::key] for field details.
+    /// See [RenderedHeader::key] for field details.
     pub key: KeyDerivation<JsonWebKey>,
 
     /// Whether to include the X.509 certificate thumbprint in the JOSE header with the SHA1 digest.
     ///
-    /// See [Rendered::thumbprint] for field details.
+    /// See [RenderedHeader::thumbprint] for field details.
     pub thumbprint: KeyDerivation<Thumbprint<Sha1>>,
 
     /// Whether to include the X.509 certificate thumbprint in the JOSE header with the SHA256 digest.
     ///
-    /// See [Rendered::thumbprint_sha256] for field details.
+    /// See [RenderedHeader::thumbprint_sha256] for field details.
     pub thumbprint_sha256: KeyDerivation<Thumbprint<Sha256>>,
 }
 
 #[cfg(feature = "fmt")]
-impl Unsigned {
+impl UnsignedHeader {
     fn parameters(&self) -> serde_json::Value {
         let mut data = json!({});
 
@@ -111,7 +119,7 @@ impl Unsigned {
 }
 
 #[cfg(feature = "fmt")]
-impl fmt::JWTFormat for Unsigned {
+impl fmt::JWTFormat for UnsignedHeader {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
         Base64JSON(&self.parameters()).fmt(f)
     }
@@ -124,7 +132,7 @@ impl fmt::JWTFormat for Unsigned {
 /// of that distinction, allowing a field to be marked as derived
 /// from the signing key.
 #[derive(Debug, Default)]
-pub enum DerivedKey<Builder, Key>
+enum DerivedKeyValue<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,
 {
@@ -134,7 +142,7 @@ where
     Explicit(Builder::Value),
 }
 
-impl<Builder, Key> Clone for DerivedKey<Builder, Key>
+impl<Builder, Key> Clone for DerivedKeyValue<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,
     <Builder as KeyDerivedBuilder<Key>>::Value: Clone,
@@ -149,19 +157,19 @@ where
     }
 }
 
-impl<Builder, Key> DerivedKey<Builder, Key>
+impl<Builder, Key> DerivedKeyValue<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,
 {
     fn is_none(&self) -> bool {
-        matches!(self, DerivedKey::Omit)
+        matches!(self, DerivedKeyValue::Omit)
     }
 
     fn build(self) -> Option<Builder::Value> {
         match self {
-            DerivedKey::Omit => None,
-            DerivedKey::Derived(key) => Some(Builder::from(key).build()),
-            DerivedKey::Explicit(value) => Some(value),
+            DerivedKeyValue::Omit => None,
+            DerivedKeyValue::Derived(key) => Some(Builder::from(key).build()),
+            DerivedKeyValue::Explicit(value) => Some(value),
         }
     }
 
@@ -170,14 +178,14 @@ where
         Key: Clone,
     {
         match derivation {
-            KeyDerivation::Omit => DerivedKey::Omit,
-            KeyDerivation::Derived => DerivedKey::Derived(key.clone()),
-            KeyDerivation::Explicit(value) => DerivedKey::Explicit(value),
+            KeyDerivation::Omit => DerivedKeyValue::Omit,
+            KeyDerivation::Derived => DerivedKeyValue::Derived(key.clone()),
+            KeyDerivation::Explicit(value) => DerivedKeyValue::Explicit(value),
         }
     }
 }
 
-impl<Builder, Key> ser::Serialize for DerivedKey<Builder, Key>
+impl<Builder, Key> ser::Serialize for DerivedKeyValue<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,
     <Builder as KeyDerivedBuilder<Key>>::Value: Serialize + Clone,
@@ -189,7 +197,7 @@ where
 }
 
 #[cfg(feature = "fmt")]
-impl<Builder, Key> DerivedKey<Builder, Key>
+impl<Builder, Key> DerivedKeyValue<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,
     <Builder as KeyDerivedBuilder<Key>>::Value: Serialize,
@@ -197,12 +205,27 @@ where
 {
     fn parameter(&self) -> Option<serde_json::Value> {
         match self {
-            DerivedKey::Omit => None,
-            DerivedKey::Derived(key) => Some(
+            DerivedKeyValue::Omit => None,
+            DerivedKeyValue::Derived(key) => Some(
                 serde_json::to_value(Builder::from(key.clone()).build())
                     .expect("failed to serialize derived key"),
             ),
-            DerivedKey::Explicit(value) => serde_json::to_value(value).ok(),
+            DerivedKeyValue::Explicit(value) => serde_json::to_value(value).ok(),
+        }
+    }
+}
+
+impl<Builder, Key> DerivedKeyValue<Builder, Key>
+where
+    Builder: KeyDerivedBuilder<Key>,
+    <Builder as KeyDerivedBuilder<Key>>::Value: Serialize + Clone,
+    Key: Clone,
+{
+    fn value(&self) -> Option<Builder::Value> {
+        match self {
+            DerivedKeyValue::Omit => None,
+            DerivedKeyValue::Derived(key) => Some(Builder::from(key.clone()).build()),
+            DerivedKeyValue::Explicit(value) => Some(value.clone()),
         }
     }
 }
@@ -211,63 +234,29 @@ where
 /// with the signing key.
 #[derive(Debug, Clone, Serialize)]
 #[serde(bound(serialize = "Key: SerializeJWK + Clone"))]
-pub struct Signed<Key>
+pub struct SignedHeader<Key>
 where
     Key: SerializeJWK,
 {
-    /// The "alg" (algorithm) Header Parameter identifies the cryptographic
-    /// algorithm used to secure the JWS.  The JWS Signature value is not
-    /// valid if the "alg" value does not represent a supported algorithm or
-    /// if there is not a key for use with that algorithm associated with the
-    /// party that digitally signed or MACed the content.  "alg" values
-    /// should either be registered in the IANA "JSON Web Signature and
-    /// Encryption Algorithms" registry established by [JWA][] or be a value
-    /// that contains a Collision-Resistant Name.  The "alg" value is a case-
-    /// sensitive ASCII string containing a StringOrURI value.  This Header
-    /// Parameter MUST be present and MUST be understood and processed by
-    /// implementations.
-    ///
-    /// A list of defined "alg" values for this use can be found in the IANA
-    /// "JSON Web Signature and Encryption Algorithms" registry established
-    /// by [JWA][]; the initial contents of this registry are the values
-    /// defined in Section 3.1 of [JWA][].
-    ///
-    /// [JWA]: https://tools.ietf.org/html/rfc7518
+    #[doc = include_str!("../docs/jose/algorithm.md")]
     #[serde(rename = "alg")]
-    pub algorithm: AlgorithmIdentifier,
+    algorithm: AlgorithmIdentifier,
 
-    /// The "jwk" (JSON Web Key) Header Parameter is the public key that
-    /// corresponds to the key used to digitally sign the JWS.  This key is
-    /// represented as a JSON Web Key [JWK][].  Use of this Header Parameter is
-    /// OPTIONAL.
-    ///
-    /// [JWK]: https://tools.ietf.org/html/rfc7517
-    #[serde(rename = "jwk", skip_serializing_if = "DerivedKey::is_none")]
-    pub key: DerivedKey<JsonWebKeyBuilder<Key>, Key>,
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    #[serde(rename = "jwk", skip_serializing_if = "DerivedKeyValue::is_none")]
+    key: DerivedKeyValue<JsonWebKeyBuilder<Key>, Key>,
 
-    /// The "x5t" (X.509 certificate SHA-1 thumbprint) Header Parameter is a
-    /// base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
-    /// the JWS. Note that certificate thumbprints are also sometimes known as
-    /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [RFC5280]: https://tools.ietf.org/html/rfc5280
-    #[serde(rename = "x5t", skip_serializing_if = "DerivedKey::is_none")]
-    pub thumbprint: DerivedKey<Thumbprinter<Sha1, Key>, Key>,
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    #[serde(rename = "x5t", skip_serializing_if = "DerivedKeyValue::is_none")]
+    thumbprint: DerivedKeyValue<Thumbprinter<Sha1, Key>, Key>,
 
-    /// The "x5t#S256" (X.509 certificate SHA-256 thumbprint) Header Parameter is a
-    /// base64url-encoded SHA-256 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
-    /// the JWS. Note that certificate thumbprints are also sometimes known as
-    /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [RFC5280]: https://tools.ietf.org/html/rfc5280
-    #[serde(rename = "x5t#S256", skip_serializing_if = "DerivedKey::is_none")]
-    pub thumbprint_sha256: DerivedKey<Thumbprinter<Sha256, Key>, Key>,
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    #[serde(rename = "x5t#S256", skip_serializing_if = "DerivedKeyValue::is_none")]
+    thumbprint_sha256: DerivedKeyValue<Thumbprinter<Sha256, Key>, Key>,
 }
 
 #[cfg(feature = "fmt")]
-impl<Key> Signed<Key>
+impl<Key> SignedHeader<Key>
 where
     Key: SerializeJWK + Clone,
 {
@@ -293,7 +282,7 @@ where
 }
 
 #[cfg(feature = "fmt")]
-impl<Key> fmt::JWTFormat for Signed<Key>
+impl<Key> fmt::JWTFormat for SignedHeader<Key>
 where
     Key: SerializeJWK + Clone,
 {
@@ -305,57 +294,23 @@ where
 /// The registered fields of a JOSE header, which are interdependent
 /// with the signing key, rendered into their typed form.
 ///
-/// This is different from [Signed] in that it contains the actual data,
+/// This is different from [SignedHeader] in that it contains the actual data,
 /// and not thd derivation, so the fields may be in inconsistent states.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Rendered {
-    /// The "alg" (algorithm) Header Parameter identifies the cryptographic
-    /// algorithm used to secure the JWS.  The JWS Signature value is not
-    /// valid if the "alg" value does not represent a supported algorithm or
-    /// if there is not a key for use with that algorithm associated with the
-    /// party that digitally signed or MACed the content.  "alg" values
-    /// should either be registered in the IANA "JSON Web Signature and
-    /// Encryption Algorithms" registry established by [JWA][] or be a value
-    /// that contains a Collision-Resistant Name.  The "alg" value is a case-
-    /// sensitive ASCII string containing a StringOrURI value.  This Header
-    /// Parameter MUST be present and MUST be understood and processed by
-    /// implementations.
-    ///
-    /// A list of defined "alg" values for this use can be found in the IANA
-    /// "JSON Web Signature and Encryption Algorithms" registry established
-    /// by [JWA][]; the initial contents of this registry are the values
-    /// defined in Section 3.1 of [JWA][].
-    ///
-    /// [JWA]: https://tools.ietf.org/html/rfc7518
+pub struct RenderedHeader {
+    #[doc = include_str!("../docs/jose/algorithm.md")]
     #[serde(rename = "alg")]
     pub algorithm: AlgorithmIdentifier,
 
-    /// The "jwk" (JSON Web Key) Header Parameter is the public key that
-    /// corresponds to the key used to digitally sign the JWS.  This key is
-    /// represented as a JSON Web Key [JWK][].  Use of this Header Parameter is
-    /// OPTIONAL.
-    ///
-    /// [JWK]: https://tools.ietf.org/html/rfc7517
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
     #[serde(rename = "jwk", skip_serializing_if = "Option::is_none")]
     pub key: Option<JsonWebKey>,
 
-    /// The "x5t" (X.509 certificate SHA-1 thumbprint) Header Parameter is a
-    /// base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
-    /// the JWS. Note that certificate thumbprints are also sometimes known as
-    /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [RFC5280]: https://tools.ietf.org/html/rfc5280
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
     #[serde(rename = "x5t", skip_serializing_if = "Option::is_none")]
     pub thumbprint: Option<Thumbprint<Sha1>>,
 
-    /// The "x5t#S256" (X.509 certificate SHA-256 thumbprint) Header Parameter is a
-    /// base64url-encoded SHA-256 thumbprint (a.k.a. digest) of the DER encoding of the
-    /// X.509 certificate ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign
-    /// the JWS. Note that certificate thumbprints are also sometimes known as
-    /// certificate fingerprints. Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [RFC5280]: https://tools.ietf.org/html/rfc5280
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
     #[serde(rename = "x5t#S256", skip_serializing_if = "Option::is_none")]
     pub thumbprint_sha256: Option<Thumbprint<Sha256>>,
 }
@@ -369,162 +324,34 @@ pub struct Rendered {
 /// [Header::jwk()] method to set the included JWK, or the [Header::thumbprint()]
 /// and [Header::thumbprint_sha256()] methods to set the included X.509 thumbprint.
 #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, Deserialize)]
-pub struct RegisteredHeader {
-    /// The "jku" (JWK Set URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a
-    /// resource for a set of JSON-encoded public keys, one of which corresponds to
-    /// the key used to digitally sign the JWS. The keys MUST be encoded as a JWK
-    /// Set ([JWK][]). The protocol used to acquire the resource MUST provide integrity
-    /// protection; an HTTP GET request to retrieve the JWK Set MUST use Transport
-    /// Layer Security (TLS) ([RFC 2818][RFC2818]) ([RFC 5246][RFC5246]); and the identity of the server
-    /// MUST be validated, as per Section 6 of [RFC 6125][RFC6125]. Also, see Section
-    /// 8 on TLS requirements. Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [JWK]: https://tools.ietf.org/html/rfc7517
-    /// [RFC2818]: https://tools.ietf.org/html/rfc2818
-    /// [RFC3986]: https://tools.ietf.org/html/rfc3986
-    /// [RFC5246]: https://tools.ietf.org/html/rfc5246
-    /// [RFC6125]: https://tools.ietf.org/html/rfc6125
+struct RegisteredHeaderFields {
+    #[doc = include_str!("../docs/jose/jwk_set_url.md")]
     #[serde(rename = "jku", skip_serializing_if = "Option::is_none")]
-    pub jwk_set_url: Option<Url>,
+    jwk_set_url: Option<Url>,
 
-    /// The "typ" (type) Header Parameter is used by JWS applications to declare the
-    /// media type ([IANA.MediaTypes][]) of this complete JWS. This is intended for use
-    /// by the application when more than one kind of object could be present in an
-    /// application data structure that can contain a JWS; the application can use this
-    /// value to disambiguate among the different kinds of objects that might be
-    /// present. It will typically not be used by applications when the kind of object
-    /// is already known. This parameter is ignored by JWS implementations; any
-    /// processing of this parameter is performed by the JWS application. Use of this
-    /// Header Parameter is OPTIONAL.
-    ///
-    /// Per [RFC 2045][RFC2045], all media type values, subtype values, and parameter names are
-    /// case insensitive. However, parameter values are case sensitive unless otherwise
-    /// specified for the specific parameter.
-    ///
-    /// To keep messages compact in common situations, it is RECOMMENDED that producers
-    /// omit an "application/" prefix of a media type value in a "typ" Header Parameter
-    /// when no other '/' appears in the media type value. A recipient using the media
-    /// type value MUST treat it as if "application/" were prepended to any "typ" value
-    /// not containing a '/'. For instance, a "typ" value of "example" SHOULD be used
-    /// to represent the "application/example" media type, whereas the media type
-    /// "application/example;part="1/2"" cannot be shortened to "example;part="1/2"".
-    ///
-    /// The "typ" value "JOSE" can be used by applications to indicate that this object
-    /// is a JWS or JWE using the JWS Compact Serialization or the JWE Compact
-    /// Serialization. The "typ" value "JOSE+JSON" can be used by applications to
-    /// indicate that this object is a JWS or JWE using the JWS JSON Serialization or
-    /// the JWE JSON Serialization. Other type values can also be used by applications.
-    ///
-    /// [IANA.MediaTypes]: https://www.iana.org/assignments/media-types/media-types.xhtml
-    /// [RFC2045]: https://tools.ietf.org/html/rfc2045
+    #[doc = include_str!("../docs/jose/type.md")]
     #[serde(rename = "typ", skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<String>,
+    r#type: Option<String>,
 
-    /// The "kid" (key ID) Header Parameter is a hint indicating which key was used
-    /// to secure the [JWS][].  This parameter allows originators to explicitly signal a
-    /// change of key to recipients.  The structure of the "kid" value is
-    /// unspecified.  Its value MUST be a case-sensitive string.  Use of this Header
-    /// Parameter is OPTIONAL.
-    ///
-    /// When used with a [JWK][], the "kid" value is used to match a [JWK][] "kid" parameter
-    /// value.
-    ///
-    /// [JWK]: https://tools.ietf.org/html/rfc7517
-    /// [JWS]: https://datatracker.ietf.org/doc/html/rfc7515
-
+    #[doc = include_str!("../docs/jose/key_id.md")]
     #[serde(rename = "kid", skip_serializing_if = "Option::is_none")]
-    pub key_id: Option<String>,
+    key_id: Option<String>,
 
-    /// The "x5u" (X.509 URL) Header Parameter is a URI ([RFC 3986][RFC3986]) that refers to a
-    /// resource for the X.509 public key certificate or certificate chain
-    /// ([RFC 5280][RFC5280]) corresponding to the key used to digitally sign the JWS.  The
-    /// identified resource MUST provide a representation of the certificate or
-    /// certificate chain that conforms to [RFC 5280][RFC5280] in PEM-encoded form,
-    /// with each certificate delimited as specified in Section 6.1 of [RFC 4945][RFC4945].
-    /// The certificate containing the public key corresponding to the
-    /// key used to digitally sign the [JWS][] MUST be the first certificate.  This MAY
-    /// be followed by additional certificates, with each subsequent certificate
-    /// being the one used to certify the previous one.  The protocol used to
-    /// acquire the resource MUST provide integrity protection; an HTTP GET request
-    /// to retrieve the certificate MUST use TLS ([RFC 2818][RFC2818]) ([RFC 5246][RFC5246]); and the
-    /// identity of the server MUST be validated, as per Section 6 of [RFC 6125][RFC6125].
-    /// Also, see Section 8 on TLS requirements.  Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [JWS]: https://datatracker.ietf.org/doc/html/rfc7515
-    /// [RFC2818]: https://tools.ietf.org/html/rfc2818
-    /// [RFC3986]: https://tools.ietf.org/html/rfc3986
-    /// [RFC4945]: https://tools.ietf.org/html/rfc4945
-    /// [RFC5246]: https://tools.ietf.org/html/rfc5246
-    /// [RFC5280]: https://tools.ietf.org/html/rfc5280
-    /// [RFC6125]: https://tools.ietf.org/html/rfc6125
+    #[doc = include_str!("../docs/jose/certificate_url.md")]
     #[serde(rename = "x5u", skip_serializing_if = "Option::is_none")]
     pub certificate_url: Option<Url>,
 
-    /// The "x5c" (X.509 certificate chain) Header Parameter contains the X.509 public
-    /// key certificate or certificate chain ([RFC 5280][RFC5280]) corresponding to the key used
-    /// to digitally sign the JWS. The certificate or certificate chain is represented
-    /// as a JSON array of certificate value strings. Each string in the array is a
-    /// base64-encoded (Section 4 of [RFC 4648][RFC4648] -- not base64url-encoded) DER
-    /// ([ITU.X690.2008][]) PKIX certificate value. The certificate containing the public
-    /// key corresponding to the key used to digitally sign the JWS MUST be the first
-    /// certificate. This MAY be followed by additional certificates, with each
-    /// subsequent certificate being the one used to certify the previous one. The
-    /// recipient MUST validate the certificate chain according to [RFC 5280][RFC5280]
-    /// and consider the certificate or certificate chain to be invalid if any
-    /// validation failure occurs. Use of this Header Parameter is OPTIONAL.
-    ///
-    /// [RFC4648]: https://tools.ietf.org/html/rfc4648
-    /// [RFC5280]: https://tools.ietf.org/html/rfc5280
-    /// [ITU.X690.2008]: hhttps://www.itu.int/rec/T-REC-X.680-X.693-200811-S/en
+    #[doc = include_str!("../docs/jose/certificate_chain.md")]
     #[serde(rename = "x5c", skip_serializing_if = "Option::is_none")]
-    pub certificate_chain: Option<Vec<Certificate>>,
+    certificate_chain: Option<Vec<Certificate>>,
 
-    /// The "cty" (content type) Header Parameter is used by JWS applications to
-    /// declare the media type ([IANA.MediaTypes][]) of the secured content (the
-    /// payload). This is intended for use by the application when more than one kind
-    /// of object could be present in the JWS Payload; the application can use this
-    /// value to disambiguate among the different kinds of objects that might be
-    /// present. It will typically not be used by applications when the kind of object
-    /// is already known. This parameter is ignored by JWS implementations; any
-    /// processing of this parameter is performed by the JWS application. Use of this
-    /// Header Parameter is OPTIONAL.
-    ///
-    /// Per [RFC 2045][], all media type values, subtype values, and parameter names
-    /// are case insensitive. However, parameter values are case sensitive unless
-    /// otherwise specified for the specific parameter.
-    ///
-    /// To keep messages compact in common situations, it is RECOMMENDED that producers
-    /// omit an "application/" prefix of a media type value in a "cty" Header Parameter
-    /// when no other '/' appears in the media type value. A recipient using the media
-    /// type value MUST treat it as if "application/" were prepended to any "cty" value
-    /// not containing a '/'. For instance, a "cty" value of "example" SHOULD be used
-    /// to represent the "application/example" media type, whereas the media type
-    /// "application/example;part="1/2"" cannot be shortened to "example;part="1/2"".
-    ///
-    /// [IANA.MediaTypes]: https://www.iana.org/assignments/media-types/media-types.xhtml
-    /// [RFC2045]: https://tools.ietf.org/html/rfc2045
+    #[doc = include_str!("../docs/jose/content_type.md")]
     #[serde(rename = "cty", skip_serializing_if = "Option::is_none")]
-    pub content_type: Option<String>,
+    content_type: Option<String>,
 
-    /// The "crit" (critical) Header Parameter indicates that extensions to this
-    /// specification and/or [JWA][] are being used that MUST be understood and
-    /// processed. Its value is an array listing the Header Parameter names present in
-    /// the JOSE Header that use those extensions. If any of the listed extension
-    /// Header Parameters are not understood and supported by the recipient, then the
-    /// JWS is invalid. Producers MUST NOT include Header Parameter names defined by
-    /// this specification or [JWA][] for use with JWS, duplicate names, or names that
-    /// do not occur as Header Parameter names within the JOSE Header in the "crit"
-    /// list. Producers MUST NOT use the empty list "[]" as the "crit" value.
-    /// Recipients MAY consider the JWS to be invalid if the critical list contains any
-    /// Header Parameter names defined by this specification or [JWA][] for use with
-    /// JWS or if any other constraints on its use are violated. When used, this Header
-    /// Parameter MUST be integrity protected; therefore, it MUST occur only within the
-    /// JWS Protected Header. Use of this Header Parameter is OPTIONAL. This Header
-    /// Parameter MUST be understood and processed by implementations.
-    ///
-    /// [JWA]: https://datatracker.ietf.org/doc/html/rfc7518
+    #[doc = include_str!("../docs/jose/critical.md")]
     #[serde(rename = "crit", skip_serializing_if = "Option::is_none")]
-    pub critical: Option<Vec<String>>,
+    critical: Option<Vec<String>>,
 }
 
 /// The JOSE Header is a JSON object that represents the cryptographic operations
@@ -543,7 +370,7 @@ pub struct Header<H, State> {
     /// [JWA]: https://datatracker.ietf.org/doc/html/rfc7518
     /// [JWS]: https://datatracker.ietf.org/doc/html/rfc7515
     #[serde(flatten)]
-    pub registered: RegisteredHeader,
+    registered: RegisteredHeaderFields,
 
     /// The set of unregistered header parameters, which are custom provided
     /// by the type parameter H.
@@ -551,40 +378,40 @@ pub struct Header<H, State> {
     pub custom: H,
 }
 
-impl<H> Default for Header<H, Unsigned>
+impl<H> Default for Header<H, UnsignedHeader>
 where
     H: Default,
 {
     fn default() -> Self {
         Self {
-            state: Unsigned::default(),
+            state: UnsignedHeader::default(),
             registered: Default::default(),
             custom: Default::default(),
         }
     }
 }
 
-impl<H> Header<H, Unsigned> {
+impl<H> Header<H, UnsignedHeader> {
     /// Create a new JOSE header builder with the given custom header.
     pub fn new(custom: H) -> Self {
         Self {
-            state: Unsigned::default(),
+            state: UnsignedHeader::default(),
             registered: Default::default(),
             custom,
         }
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn sign<A>(self, key: &A::Key) -> Header<H, Signed<A::Key>>
+    pub(crate) fn sign<A>(self, key: &A::Key) -> Header<H, SignedHeader<A::Key>>
     where
         A: crate::algorithms::SigningAlgorithm,
         A::Key: Clone,
     {
-        let state = Signed {
+        let state = SignedHeader {
             algorithm: A::IDENTIFIER,
-            key: DerivedKey::derive(self.state.key, key),
-            thumbprint: DerivedKey::derive(self.state.thumbprint, key),
-            thumbprint_sha256: DerivedKey::derive(self.state.thumbprint_sha256, key),
+            key: DerivedKeyValue::derive(self.state.key, key),
+            thumbprint: DerivedKeyValue::derive(self.state.thumbprint, key),
+            thumbprint_sha256: DerivedKeyValue::derive(self.state.thumbprint_sha256, key),
         };
 
         Header {
@@ -610,7 +437,7 @@ impl<H> Header<H, Unsigned> {
     }
 }
 
-impl<H, Key> Header<H, Signed<Key>>
+impl<H, Key> Header<H, SignedHeader<Key>>
 where
     Key: SerializeJWK,
 {
@@ -622,8 +449,8 @@ where
     /// Render a signed JWK header into its rendered
     /// form, where the derived fields have been built
     /// as necessary.
-    pub fn render(self) -> Header<H, Rendered> {
-        let state = Rendered {
+    pub fn render(self) -> Header<H, RenderedHeader> {
+        let state = RenderedHeader {
             algorithm: self.state.algorithm,
             key: self.state.key.build(),
             thumbprint: self.state.thumbprint.build(),
@@ -638,13 +465,13 @@ where
     }
 }
 
-impl<H> Header<H, Rendered> {
+impl<H> Header<H, RenderedHeader> {
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
         &self.state.algorithm
     }
 
     #[allow(unused_variables)]
-    pub(crate) fn verify<A>(self, key: &A::Key) -> Result<Header<H, Signed<A::Key>>, A::Error>
+    pub(crate) fn verify<A>(self, key: &A::Key) -> Result<Header<H, SignedHeader<A::Key>>, A::Error>
     where
         A: crate::algorithms::VerifyAlgorithm,
     {
@@ -652,7 +479,7 @@ impl<H> Header<H, Rendered> {
     }
 }
 #[cfg(feature = "fmt")]
-impl<H> Header<H, Unsigned>
+impl<H> Header<H, UnsignedHeader>
 where
     H: Serialize,
 {
@@ -683,7 +510,7 @@ where
 }
 
 #[cfg(feature = "fmt")]
-impl<H> fmt::JWTFormat for Header<H, Unsigned>
+impl<H> fmt::JWTFormat for Header<H, UnsignedHeader>
 where
     H: Serialize,
 {
@@ -695,13 +522,13 @@ where
 }
 
 #[cfg(feature = "fmt")]
-impl<H, Key> Header<H, Signed<Key>>
+impl<H, Key> Header<H, SignedHeader<Key>>
 where
     H: Serialize,
     Key: SerializeJWK + Clone,
 {
     pub(crate) fn value(&self) -> serde_json::Value {
-        let value = self.state.parameters();
+        let parameters = self.state.parameters();
         let header = serde_json::to_value(&self.registered).unwrap();
         let mut custom = serde_json::to_value(&self.custom).unwrap();
 
@@ -709,18 +536,28 @@ where
         let Value::Object(header) = header else {
             panic!("expected header")
         };
-        map.extend(header);
-        let Value::Object(value) = value else {
+
+        for (key, value) in header.into_iter() {
+            if map.insert(key.clone(), value.clone()).is_some() {
+                panic!("duplicate header key: {}", key);
+            }
+        }
+
+        let Value::Object(parameters) = parameters else {
             panic!("expected algorithm header")
         };
-        map.extend(value);
+        for (key, value) in parameters {
+            if map.insert(key.clone(), value.clone()).is_some() {
+                panic!("duplicate header key: {}", key);
+            }
+        }
 
         custom
     }
 }
 
 #[cfg(feature = "fmt")]
-impl<H, Key> fmt::JWTFormat for Header<H, Signed<Key>>
+impl<H, Key> fmt::JWTFormat for Header<H, SignedHeader<Key>>
 where
     H: Serialize,
     Key: SerializeJWK + Clone,
@@ -729,6 +566,241 @@ where
         let value = self.value();
 
         Base64JSON(value).fmt(f)
+    }
+}
+
+/// Access to the header fields of a JOSE header.
+#[derive(Debug)]
+pub struct HeaderAccess<'h, H, State> {
+    header: &'h Header<H, State>,
+}
+
+impl<'h, H, State> HeaderAccess<'h, H, State> {
+    pub(crate) fn new(header: &'h Header<H, State>) -> Self {
+        Self { header }
+    }
+
+    /// Custom header values. The type of this field is determined by the
+    /// type parameter H in the token, and can be used for any arbitrary
+    /// JSON values which should be included in the signature.
+    ///
+    /// Using a custom header value which conflicts with a registered header
+    /// value will result in an error when signing the token.
+    pub fn custom(&self) -> &H {
+        &self.header.custom
+    }
+
+    #[doc = include_str!("../docs/jose/jwk_set_url.md")]
+    pub fn jwk_set_url(&self) -> Option<&Url> {
+        self.header.registered.jwk_set_url.as_ref()
+    }
+
+    #[doc = include_str!("../docs/jose/type.md")]
+    pub fn r#type(&self) -> Option<&str> {
+        self.header.registered.r#type.as_deref()
+    }
+
+    #[doc = include_str!("../docs/jose/key_id.md")]
+    pub fn key_id(&self) -> Option<&str> {
+        self.header.registered.key_id.as_deref()
+    }
+
+    #[doc = include_str!("../docs/jose/certificate_url.md")]
+    pub fn certificate_url(&self) -> Option<&Url> {
+        self.header.registered.certificate_url.as_ref()
+    }
+
+    #[doc = include_str!("../docs/jose/certificate_chain.md")]
+    pub fn certificate_chain(&self) -> Option<&[Certificate]> {
+        self.header.registered.certificate_chain.as_deref()
+    }
+
+    #[doc = include_str!("../docs/jose/content_type.md")]
+    pub fn content_type(&self) -> Option<&str> {
+        self.header.registered.content_type.as_deref()
+    }
+
+    #[doc = include_str!("../docs/jose/critical.md")]
+    pub fn critical(&self) -> Option<&[String]> {
+        self.header.registered.critical.as_deref()
+    }
+}
+
+impl<'h, H> HeaderAccess<'h, H, UnsignedHeader> {
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    pub fn key(&self) -> &KeyDerivation<JsonWebKey> {
+        &self.header.state.key
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    pub fn thumbprint(&self) -> &KeyDerivation<Thumbprint<Sha1>> {
+        &self.header.state.thumbprint
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    pub fn thumbprint_sha256(&self) -> &KeyDerivation<Thumbprint<Sha256>> {
+        &self.header.state.thumbprint_sha256
+    }
+}
+
+impl<'h, H, K> HeaderAccess<'h, H, SignedHeader<K>>
+where
+    K: SerializeJWK + Clone,
+{
+    #[doc = include_str!("../docs/jose/algorithm.md")]
+    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+        &self.header.state.algorithm
+    }
+
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    pub fn key(&self) -> Option<JsonWebKey> {
+        self.header.state.key.value()
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    pub fn thumbprint(&self) -> Option<Thumbprint<Sha1>> {
+        self.header.state.thumbprint.value()
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    pub fn thumbprint_sha256(&self) -> Option<Thumbprint<Sha256>> {
+        self.header.state.thumbprint_sha256.value()
+    }
+}
+
+impl<'h, H> HeaderAccess<'h, H, RenderedHeader> {
+    #[doc = include_str!("../docs/jose/algorithm.md")]
+    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+        &self.header.state.algorithm
+    }
+
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    pub fn key(&self) -> Option<&JsonWebKey> {
+        self.header.state.key.as_ref()
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    pub fn thumbprint(&self) -> Option<&Thumbprint<Sha1>> {
+        self.header.state.thumbprint.as_ref()
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    pub fn thumbprint_sha256(&self) -> Option<&Thumbprint<Sha256>> {
+        self.header.state.thumbprint_sha256.as_ref()
+    }
+}
+
+/// Mutable access to header fields of a JOSE header.
+pub struct HeaderAccessMut<'h, H, State> {
+    header: &'h mut Header<H, State>,
+}
+
+impl<'h, H, State> HeaderAccessMut<'h, H, State> {
+    pub(crate) fn new(header: &'h mut Header<H, State>) -> Self {
+        Self { header }
+    }
+
+    pub fn custom(&mut self) -> &mut H {
+        &mut self.header.custom
+    }
+
+    #[doc = include_str!("../docs/jose/jwk_set_url.md")]
+    pub fn jwk_set_url(&mut self) -> &mut Option<Url> {
+        &mut self.header.registered.jwk_set_url
+    }
+
+    #[doc = include_str!("../docs/jose/type.md")]
+    pub fn r#type(&mut self) -> &mut Option<String> {
+        &mut self.header.registered.r#type
+    }
+
+    #[doc = include_str!("../docs/jose/key_id.md")]
+    pub fn key_id(&mut self) -> &mut Option<String> {
+        &mut self.header.registered.key_id
+    }
+
+    #[doc = include_str!("../docs/jose/certificate_url.md")]
+    pub fn certificate_url(&mut self) -> &mut Option<Url> {
+        &mut self.header.registered.certificate_url
+    }
+
+    #[doc = include_str!("../docs/jose/certificate_chain.md")]
+    pub fn certificate_chain(&mut self) -> &mut Option<Vec<Certificate>> {
+        &mut self.header.registered.certificate_chain
+    }
+
+    #[doc = include_str!("../docs/jose/content_type.md")]
+    pub fn content_type(&mut self) -> &mut Option<String> {
+        &mut self.header.registered.content_type
+    }
+
+    #[doc = include_str!("../docs/jose/critical.md")]
+    pub fn critical(&mut self) -> &mut Option<Vec<String>> {
+        &mut self.header.registered.critical
+    }
+}
+
+impl<'h, H> HeaderAccessMut<'h, H, UnsignedHeader> {
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    pub fn key(&mut self) -> &mut KeyDerivation<JsonWebKey> {
+        &mut self.header.state.key
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    pub fn thumbprint(&mut self) -> &mut KeyDerivation<Thumbprint<Sha1>> {
+        &mut self.header.state.thumbprint
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    pub fn thumbprint_sha256(&mut self) -> &mut KeyDerivation<Thumbprint<Sha256>> {
+        &mut self.header.state.thumbprint_sha256
+    }
+}
+
+impl<'h, H, K> HeaderAccessMut<'h, H, SignedHeader<K>>
+where
+    K: SerializeJWK + Clone,
+{
+    #[doc = include_str!("../docs/jose/algorithm.md")]
+    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+        &self.header.state.algorithm
+    }
+
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    pub fn key(&self) -> Option<JsonWebKey> {
+        self.header.state.key.value()
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    pub fn thumbprint(&self) -> Option<Thumbprint<Sha1>> {
+        self.header.state.thumbprint.value()
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    pub fn thumbprint_sha256(&self) -> Option<Thumbprint<Sha256>> {
+        self.header.state.thumbprint_sha256.value()
+    }
+}
+
+impl<'h, H> HeaderAccessMut<'h, H, RenderedHeader> {
+    #[doc = include_str!("../docs/jose/algorithm.md")]
+    pub fn algorithm(&mut self) -> &mut AlgorithmIdentifier {
+        &mut self.header.state.algorithm
+    }
+
+    #[doc = include_str!("../docs/jose/json_web_key.md")]
+    pub fn key(&mut self) -> &mut Option<JsonWebKey> {
+        &mut self.header.state.key
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint.md")]
+    pub fn thumbprint(&mut self) -> &mut Option<Thumbprint<Sha1>> {
+        &mut self.header.state.thumbprint
+    }
+
+    #[doc = include_str!("../docs/jose/thumbprint_sha256.md")]
+    pub fn thumbprint_sha256(&mut self) -> &mut Option<Thumbprint<Sha256>> {
+        &mut self.header.state.thumbprint_sha256
     }
 }
 

@@ -66,7 +66,7 @@ fn main() {
     // Create a token with the default headers, and no custom headers.
     let mut token = Token::new(payload, header, Compact);
     // Request that the token header include a JWK field.
-    token.header_mut().jwk().derived();
+    token.header_mut().key().derived();
 
     // Sign the token with the algorithm and key we specified above.
     let signed = token.sign(&alg).unwrap();

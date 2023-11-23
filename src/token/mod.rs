@@ -432,7 +432,11 @@ where
     Fmt: TokenFormat,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
-        let header = self.state.header().value();
+        let header = self
+            .state
+            .header()
+            .value()
+            .expect("header should serialize to json:");
         let payload =
             serde_json::to_value(&self.payload).expect("payload should serialize to json:");
 

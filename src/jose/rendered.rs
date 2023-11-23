@@ -38,7 +38,7 @@ impl HeaderState for RenderedHeader {
 
         data.insert(
             "alg".to_owned(),
-            serde_json::to_value(&self.algorithm).unwrap(),
+            serde_json::to_value(self.algorithm).unwrap(),
         );
 
         if let Some(value) = self.key.as_ref() {

@@ -96,7 +96,7 @@ struct RegisteredHeaderFields {
     critical: Option<Vec<String>>,
 }
 
-const REGISTERED_HEADER_KEYS: [&'static str; 11] = [
+const REGISTERED_HEADER_KEYS: [&str; 11] = [
     "alg", "jwk", "x5t", "x5t#S256", "jku", "typ", "kid", "x5u", "x5c", "cty", "crit",
 ];
 
@@ -253,7 +253,7 @@ where
         match custom {
             Value::Object(custom) => {
                 for (key, value) in custom {
-                    if let Some(key) = REGISTERED_HEADER_KEYS.iter().find(|&&k| k == &key) {
+                    if let Some(key) = REGISTERED_HEADER_KEYS.iter().find(|&&k| k == key) {
                         return Err(HeaderError::ReservedKey(key));
                     }
                     if parameters.insert(key.clone(), value.clone()).is_some() {

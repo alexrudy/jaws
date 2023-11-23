@@ -43,7 +43,7 @@ where
 
         data.insert(
             "alg".to_owned(),
-            serde_json::to_value(&self.algorithm).unwrap(),
+            serde_json::to_value(self.algorithm).unwrap(),
         );
 
         if let Some(value) = self.key.parameter() {

@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut token = Token::new((), claims, Compact);
     // We can modify the headers freely before signing the JWT. In this case,
     // we provide the `typ` header, which is optional in the JWT spec.
-    token.header_mut().registered.r#type = Some("JWT".to_string());
+    *token.header_mut().r#type() = Some("JWT".to_string());
 
     // Sign the token with the algorithm, and print the result.
     let signed = token.sign(&alg).unwrap();
@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // but we can access fields and read from them:
     println!(
         "Type: {:?}, Algorithm: {:?}",
-        signed.header().registered.r#type,
+        signed.header().r#type(),
         signed.header().algorithm(),
     );
 

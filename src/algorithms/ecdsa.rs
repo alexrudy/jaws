@@ -51,7 +51,7 @@
 //! // but a custom type could be passed if we wanted to have custom header
 //! // fields.
 //! let mut token = Token::compact((), claims);
-//! token.header_mut().registered.r#type = Some("JWT".to_string());
+//! *token.header_mut().r#type() = Some("JWT".to_string());
 //!
 //! // Sign the token with the ECDSA key, and print the result.
 //! let signed = token.sign(&key).unwrap();

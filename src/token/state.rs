@@ -55,11 +55,11 @@ pub trait HasSignature: MaybeSigned {
 /// input to the cryptographic signature.
 #[derive(Debug, Clone)]
 pub struct Unsigned<H> {
-    pub(super) header: jose::Header<H, jose::Unsigned>,
+    pub(super) header: jose::Header<H, jose::UnsignedHeader>,
 }
 
 impl<H> MaybeSigned for Unsigned<H> {
-    type HeaderState = jose::Unsigned;
+    type HeaderState = jose::UnsignedHeader;
     type Header = H;
 
     fn header(&self) -> &jose::Header<H, Self::HeaderState> {
@@ -89,7 +89,7 @@ pub struct Signed<H, Alg>
 where
     Alg: SigningAlgorithm,
 {
-    pub(super) header: jose::Header<H, jose::Signed<Alg::Key>>,
+    pub(super) header: jose::Header<H, jose::SignedHeader<Alg::Key>>,
     pub(super) signature: Alg::Signature,
 }
 
@@ -108,7 +108,7 @@ impl<H, Alg> MaybeSigned for Signed<H, Alg>
 where
     Alg: SigningAlgorithm,
 {
-    type HeaderState = jose::Signed<Alg::Key>;
+    type HeaderState = jose::SignedHeader<Alg::Key>;
     type Header = H;
 
     fn header(&self) -> &jose::Header<H, Self::HeaderState> {
@@ -140,7 +140,7 @@ pub struct Verified<H, Alg>
 where
     Alg: VerifyAlgorithm,
 {
-    pub(super) header: jose::Header<H, jose::Signed<Alg::Key>>,
+    pub(super) header: jose::Header<H, jose::SignedHeader<Alg::Key>>,
     pub(super) signature: Alg::Signature,
 }
 
@@ -148,7 +148,7 @@ impl<H, Alg> MaybeSigned for Verified<H, Alg>
 where
     Alg: VerifyAlgorithm,
 {
-    type HeaderState = jose::Signed<Alg::Key>;
+    type HeaderState = jose::SignedHeader<Alg::Key>;
     type Header = H;
 
     fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState> {
@@ -189,12 +189,12 @@ where
     deserialize = "H: for<'deh> Deserialize<'deh>"
 ))]
 pub struct Unverified<H> {
-    pub(super) header: jose::Header<H, jose::Rendered>,
+    pub(super) header: jose::Header<H, jose::RenderedHeader>,
     pub(super) signature: Base64Data<SignatureBytes>,
 }
 
 impl<H> MaybeSigned for Unverified<H> {
-    type HeaderState = jose::Rendered;
+    type HeaderState = jose::RenderedHeader;
     type Header = H;
 
     fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState> {

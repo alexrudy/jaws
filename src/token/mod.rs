@@ -20,6 +20,7 @@ use crate::fmt;
 use crate::{
     algorithms::{AlgorithmIdentifier, SigningAlgorithm},
     base64data::{Base64Data, Base64JSON},
+    jose::{HeaderAccess, HeaderAccessMut},
     Header,
 };
 
@@ -36,7 +37,7 @@ pub use self::state::{HasSignature, MaybeSigned, Signed, Unsigned, Unverified, V
 /// It is hard to express this empty type naturally in the Rust type system in a way that interacts
 /// well with [serde_json].
 #[derive(Debug, Clone)]
-pub enum Payload<P> {
+enum Payload<P> {
     /// A payload which will be serialized as JSON and then base64url encoded.
     Json(Base64JSON<P>),
 
@@ -171,7 +172,14 @@ pub struct Token<P, State: MaybeSigned = Unsigned<()>, Fmt: TokenFormat = Compac
 }
 
 impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
-    /// Token header values
+    /// Access to Token header values.
+    ///
+    /// All access is read-only, and the header cannot be modified here,
+    /// see [`Token::header_mut`] for mutable access.
+    ///
+    /// Header fields are accessed as methods on [`HeaderAccess`], and
+    /// their types will depend on the state of the token. Additionally,
+    /// the `alg` field will not be availalbe for unsigned token types.
     ///
     /// # Example: No custom headers, only registered headers.
     ///
@@ -180,15 +188,15 @@ impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
     ///
     /// let token = Token::compact((), ());
     /// let header = token.header();
-    /// assert_eq!(&header.registered.r#type, &None);
+    /// assert_eq!(&header.r#type(), &None);
     /// ```
-    pub fn header(&self) -> &Header<State::Header, State::HeaderState> {
-        self.state.header()
+    pub fn header(&self) -> HeaderAccess<'_, State::Header, State::HeaderState> {
+        HeaderAccess::new(self.state.header())
     }
 
     /// Mutable access to Token header values
-    pub fn header_mut(&mut self) -> &mut Header<State::Header, State::HeaderState> {
-        self.state.header_mut()
+    pub fn header_mut(&mut self) -> HeaderAccessMut<State::Header, State::HeaderState> {
+        HeaderAccessMut::new(self.state.header_mut())
     }
 }
 
@@ -202,6 +210,17 @@ where
     pub fn new(header: H, payload: P, fmt: Fmt) -> Self {
         Token {
             payload: Payload::Json(payload.into()),
+            state: Unsigned {
+                header: Header::new(header),
+            },
+            fmt,
+        }
+    }
+
+    /// Create an empty token with a given header and format.
+    pub fn empty(header: H, fmt: Fmt) -> Self {
+        Token {
+            payload: Payload::Empty,
             state: Unsigned {
                 header: Header::new(header),
             },
@@ -399,7 +418,9 @@ where
             "signature": signature,
         });
 
-        f.write_str(&token.to_string())
+        let rendered = serde_json::to_string_pretty(&token).unwrap();
+
+        f.write_str(&rendered)
     }
 }
 
@@ -411,7 +432,11 @@ where
     Fmt: TokenFormat,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
-        let header = self.state.header().value();
+        let header = self
+            .state
+            .header()
+            .value()
+            .expect("header should serialize to json:");
         let payload =
             serde_json::to_value(&self.payload).expect("payload should serialize to json:");
 
@@ -421,7 +446,9 @@ where
             "signature": "<signature>",
         });
 
-        f.write_str(&token.to_string())
+        let rendered = serde_json::to_string_pretty(&token).unwrap();
+
+        f.write_str(&rendered)
     }
 }
 

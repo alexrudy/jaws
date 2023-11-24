@@ -93,7 +93,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          components: rustdoc
+          components: rust-docs
 
       - name: rust cache
         uses: Swatinem/rust-cache@v2.0.0

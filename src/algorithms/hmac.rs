@@ -5,6 +5,7 @@
 use std::{convert::Infallible, marker::PhantomData};
 
 use base64ct::Encoding;
+use bytes::BytesMut;
 use digest::Mac;
 use hmac::SimpleHmac;
 
@@ -139,6 +140,43 @@ where
             SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
         let message = format!("{}.{}", header, payload);
         digest.update(message.as_bytes());
+        Ok(digest.finalize().into_bytes())
+    }
+
+    fn key(&self) -> &Self::Key {
+        &self.key
+    }
+}
+
+impl<D> super::VerifyAlgorithm for Hmac<D>
+where
+    D: digest::Digest
+        + digest::Reset
+        + digest::core_api::BlockSizeUser
+        + digest::FixedOutput
+        + digest::core_api::CoreProxy
+        + Clone,
+    Hmac<D>: super::Algorithm<Signature = digest::Output<SimpleHmac<D>>>,
+{
+    type Error = digest::MacError;
+    type Key = HmacKey;
+
+    fn verify(
+        &self,
+        header: &[u8],
+        payload: &[u8],
+        signature: &[u8],
+    ) -> Result<Self::Signature, Self::Error> {
+        // Create a new, one-shot digest for this signature.
+        let mut digest: SimpleHmac<D> =
+            SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
+        let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
+        message.extend_from_slice(header);
+        message.extend_from_slice(b".");
+        message.extend_from_slice(payload);
+
+        digest.update(message.as_ref());
+        digest.clone().verify(signature.into())?;
         Ok(digest.finalize().into_bytes())
     }
 

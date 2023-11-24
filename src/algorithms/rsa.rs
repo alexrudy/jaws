@@ -17,7 +17,7 @@
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use bytes::BytesMut;
-use rsa::pkcs1v15::{SigningKey, VerifyingKey};
+use rsa::pkcs1v15::SigningKey;
 use rsa::rand_core::OsRng;
 use rsa::signature::RandomizedSigner;
 use rsa::PublicKeyParts;
@@ -70,10 +70,10 @@ where
     }
 }
 
-impl<D> super::VerifyAlgorithm for VerifyingKey<D>
+impl<D> super::VerifyAlgorithm for RsaPkcs1v15<D>
 where
     D: digest::Digest,
-    VerifyingKey<D>: super::Algorithm<Signature = rsa::pkcs1v15::Signature>,
+    RsaPkcs1v15<D>: super::Algorithm<Signature = rsa::pkcs1v15::Signature> + Clone,
 {
     type Error = signature::Error;
 
@@ -85,7 +85,7 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<Self::Signature, Self::Error> {
-        use rsa::signature::Verifier;
+        use rsa::signature::{Keypair, Verifier};
         let signature = rsa::pkcs1v15::Signature::try_from(signature).unwrap();
 
         let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
@@ -93,7 +93,9 @@ where
         message.extend_from_slice(b".");
         message.extend_from_slice(payload);
 
-        <Self as Verifier<rsa::pkcs1v15::Signature>>::verify(self, message.as_ref(), &signature)?;
+        let verify = self.verifying_key();
+
+        verify.verify(message.as_ref(), &signature)?;
         Ok(signature)
     }
 

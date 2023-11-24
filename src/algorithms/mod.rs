@@ -148,9 +148,9 @@ pub trait VerifyAlgorithm: Algorithm {
 /// on the heap. It is used to store the signature of a JWT before it is verified,
 /// or if a signature has a variable length.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
-pub struct Signature(Vec<u8>);
+pub struct SignatureBytes(Vec<u8>);
 
-impl Signature {
+impl SignatureBytes {
     /// Add to this signature from a byte slice.
     pub fn extend_from_slice(&mut self, other: &[u8]) {
         self.0.extend_from_slice(other);
@@ -158,24 +158,24 @@ impl Signature {
 
     /// Create a new signature with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
-        Signature(Vec::with_capacity(capacity))
+        SignatureBytes(Vec::with_capacity(capacity))
     }
 }
 
-impl AsRef<[u8]> for Signature {
+impl AsRef<[u8]> for SignatureBytes {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl From<&[u8]> for Signature {
+impl From<&[u8]> for SignatureBytes {
     fn from(bytes: &[u8]) -> Self {
-        Signature(bytes.to_vec())
+        SignatureBytes(bytes.to_vec())
     }
 }
 
-impl From<Vec<u8>> for Signature {
+impl From<Vec<u8>> for SignatureBytes {
     fn from(bytes: Vec<u8>) -> Self {
-        Signature(bytes)
+        SignatureBytes(bytes)
     }
 }

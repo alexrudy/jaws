@@ -287,6 +287,24 @@ where
     }
 }
 
+#[cfg(feature = "p256")]
+impl super::Algorithm for VerifyingKey<NistP256> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES256;
+    type Signature = ecdsa::SignatureBytes<NistP256>;
+}
+
+#[cfg(feature = "p384")]
+impl super::Algorithm for VerifyingKey<NistP384> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES384;
+    type Signature = ecdsa::SignatureBytes<NistP384>;
+}
+
+#[cfg(feature = "p521")]
+impl super::Algorithm for VerifyingKey<NistP521> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES512;
+    type Signature = ecdsa::SignatureBytes<NistP521>;
+}
+
 #[cfg(all(test, feature = "p256"))]
 mod test {
 

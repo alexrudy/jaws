@@ -72,16 +72,24 @@ stateDiagram-v2
 To create a simple JWT, you'll need to provide an encryption key. This example uses the RSA
 encrption key defined in Appendix A.2 of [RFC 7515][JWS], don't re use it!
 
-This example is reproduced from [`examples/rfc7515a2.rs`][/examples/rfc7515a2.rs] in the repository,
-and can be run with `cargo run --example rfc7515a2`.
+This example is reproduced from [`examples/rfc7515a2.rs`](./examples/rfc7515a2.rs) in the repository,
+and can be run with `cargo run --example rfc7515-a2`.
 
 ```rust
+use jaws::Compact;
+
 // JAWS provides JWT format for printing JWTs in a style similar to the example above,
 // which is directly inspired by the way the ACME standard shows JWTs.
 use jaws::JWTFormat;
 
 // JAWS provides a single token type which is generic over the state of the token.
+// The states are defined in the `state` module, and are used to track the
+// signing and verification status.
 use jaws::Token;
+
+// The unverified token state, used like `Token<.., Unverified<..>, ..>`.
+// It is generic over the type of the custom header parameters.
+use jaws::token::Unverified;
 
 // JAWS provides type-safe support for JWT claims.
 use jaws::{Claims, RegisteredClaims};
@@ -94,10 +102,8 @@ use rsa::pkcs8::DecodePrivateKey;
 // function, so we get it here from the `sha2` crate in the RustCrypto suite.
 use sha2::Sha256;
 
-// JAWS provides thin algorithm wrappers for algorithms which accept
-// parameters beyond just the encryption or singing key. For example, the `RS256`
-// algorithm accepts a hash function, but is otherwise identical to the other
-// `RS*` hash functions.
+// This is an alias for the RSA PKCS#1 v1.5 signing algorithm, which is
+// implemented in the rsa crate as `rsa::pkcs1v15::SigningKey`.
 use jaws::algorithms::rsa::RsaPkcs1v15;
 
 // Using serde_json allows us to quickly construct a serializable payload,
@@ -143,8 +149,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // we provide the `typ` header, which is optional in the JWT spec.
     *token.header_mut().r#type() = Some("JWT".to_string());
 
+    println!("Initial JWT");
+
+    // Initially the JWT has no defined signature:
+    println!("JWT:");
+    println!("{}", token.formatted());
+
     // Sign the token with the algorithm, and print the result.
     let signed = token.sign(&alg).unwrap();
+
+    println!("Signed JWT");
+
+    println!("JWT:");
+    println!("{}", signed.formatted());
+    println!("Token: {}", signed.rendered().unwrap());
 
     // We can't modify the token after signing it (that would change the signature)
     // but we can access fields and read from them:
@@ -154,9 +172,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         signed.header().algorithm(),
     );
 
-    println!("Token: {}", signed.rendered().unwrap());
+    // We can also verify tokens.
+    let token: Token<Claims<serde_json::Value>, Unverified<()>, Compact> =
+        signed.rendered().unwrap().parse().unwrap();
+
+    println!("Parsed JWT");
+
+    // Unverified tokens can be printed for debugging, but there is deliberately
+    // no access to the payload, only to the header fields.
     println!("JWT:");
-    println!("{}", signed.formatted());
+    println!("{}", token.formatted());
+
+    // We can't access the claims until we verify the token.
+    let verified = token.verify(&alg).unwrap();
+
+    println!("Verified JWT");
+    println!("JWT:");
+    println!("{}", verified.formatted());
+    println!(
+        "Payload: \n{}",
+        serde_json::to_string_pretty(&verified.payload()).unwrap()
+    );
 
     Ok(())
 }

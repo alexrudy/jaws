@@ -18,7 +18,6 @@ use url::Url;
 
 #[cfg(feature = "fmt")]
 use crate::base64data::Base64JSON;
-use crate::token::TokenVerifyingError;
 use crate::{algorithms::AlgorithmIdentifier, key::SerializeJWK};
 
 #[cfg(feature = "fmt")]
@@ -55,6 +54,9 @@ pub enum HeaderError {
     #[error("invalid header type: {0}")]
     InvalidType(String),
 
+    #[error("invalid custom headers: {0} JSON serialized form must be an object or null")]
+    InvalidCustomHeaders(&'static str),
+
     #[error("unable to serialize header value: {0}")]
     Serde(#[from] serde_json::Error),
 }
@@ -70,31 +72,31 @@ pub enum HeaderError {
 #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, Deserialize)]
 struct RegisteredHeaderFields {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/jwk_set_url.md"))]
-    #[serde(rename = "jku", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "jku", skip_serializing_if = "Option::is_none")]
     jwk_set_url: Option<Url>,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/type.md"))]
-    #[serde(rename = "typ", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "typ", skip_serializing_if = "Option::is_none")]
     r#type: Option<String>,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/key_id.md"))]
-    #[serde(rename = "kid", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "kid", skip_serializing_if = "Option::is_none")]
     key_id: Option<String>,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/certificate_url.md"))]
-    #[serde(rename = "x5u", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "x5u", skip_serializing_if = "Option::is_none")]
     pub certificate_url: Option<Url>,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/certificate_chain.md"))]
-    #[serde(rename = "x5c", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "x5c", skip_serializing_if = "Option::is_none")]
     certificate_chain: Option<Vec<Certificate>>,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/content_type.md"))]
-    #[serde(rename = "cty", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "cty", skip_serializing_if = "Option::is_none")]
     content_type: Option<String>,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/critical.md"))]
-    #[serde(rename = "crit", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "crit", skip_serializing_if = "Option::is_none")]
     critical: Option<Vec<String>>,
 }
 
@@ -161,7 +163,7 @@ impl<H> Header<H, UnsignedHeader> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn sign<A>(self, key: &A::Key) -> Header<H, SignedHeader<A::Key>>
+    pub(crate) fn into_signed_header<A>(self, key: &A::Key) -> Header<H, SignedHeader<A::Key>>
     where
         A: crate::algorithms::SigningAlgorithm,
         A::Key: Clone,
@@ -179,21 +181,6 @@ impl<H> Header<H, UnsignedHeader> {
             custom: self.custom,
         }
     }
-
-    /// Access the JWK setting for the header.
-    pub fn jwk(&mut self) -> &mut KeyDerivation<JsonWebKey> {
-        &mut self.state.key
-    }
-
-    /// Access the JWK thumbprint setting for the header.
-    pub fn thumbprint(&mut self) -> &mut KeyDerivation<Thumbprint<Sha1>> {
-        &mut self.state.thumbprint
-    }
-
-    /// Access the JWK thumbprint setting for the header.
-    pub fn thumbprint_sha256(&mut self) -> &mut KeyDerivation<Thumbprint<Sha256>> {
-        &mut self.state.thumbprint_sha256
-    }
 }
 
 impl<H, Key> Header<H, SignedHeader<Key>>
@@ -201,14 +188,18 @@ where
     Key: SerializeJWK,
 {
     /// JWK signing algorithm in use.
-    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+    pub(crate) fn algorithm(&self) -> &AlgorithmIdentifier {
         &self.state.algorithm
     }
 
     /// Render a signed JWK header into its rendered
     /// form, where the derived fields have been built
     /// as necessary.
-    pub fn render(self) -> Header<H, RenderedHeader>
+    ///
+    /// This will cause the header to "forget" what key and algorithm
+    /// are used in the signature, rendering those values literally into
+    /// the header.
+    pub(crate) fn into_rendered_header(self) -> Header<H, RenderedHeader>
     where
         H: Serialize,
         SignedHeader<Key>: HeaderState,
@@ -219,7 +210,7 @@ where
 
         let state = RenderedHeader {
             raw: headers,
-            algorithm: self.state.algorithm,
+            algorithm: *self.algorithm(),
             key: self.state.key.build(),
             thumbprint: self.state.thumbprint.build(),
             thumbprint_sha256: self.state.thumbprint_sha256.build(),
@@ -234,35 +225,41 @@ where
 }
 
 impl<H> Header<H, RenderedHeader> {
-    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+    /// JWK signing algorithm in use.
+    pub(crate) fn algorithm(&self) -> &AlgorithmIdentifier {
         &self.state.algorithm
     }
 
+    /// Convert a rendered header into a signed header, where the algorithms
+    /// must match. This is used when verifying a token, but cannot check
+    /// the validity of any other header fields.
+    ///
+    /// # Panics
+    ///
+    /// If the key algorithm does not match the header's algorithm.
     #[allow(unused_variables)]
-    pub(crate) fn verify<A>(
-        self,
-        key: &A::Key,
-    ) -> Result<Header<H, SignedHeader<A::Key>>, TokenVerifyingError<A::Error>>
+    pub(crate) fn into_signed_header<A>(self, key: &A::Key) -> Header<H, SignedHeader<A::Key>>
     where
         A: crate::algorithms::VerifyAlgorithm,
     {
-        // This may need to only verify that the algorithm header matches the key algorithm.
-        if A::IDENTIFIER != self.state.algorithm {
-            return Err(TokenVerifyingError::Algorithm(
+        if *self.algorithm() != A::IDENTIFIER {
+            panic!(
+                "algorithm mismatch: expected header to have {:?}, got {:?}",
                 A::IDENTIFIER,
-                self.state.algorithm,
-            ));
+                self.algorithm()
+            );
         }
-        Ok(Header {
+
+        Header {
             state: SignedHeader {
-                algorithm: self.state.algorithm,
+                algorithm: *self.algorithm(),
                 key: DerivedKeyValue::explicit(self.state.key),
                 thumbprint: DerivedKeyValue::explicit(self.state.thumbprint),
                 thumbprint_sha256: DerivedKeyValue::explicit(self.state.thumbprint_sha256),
             },
             registered: self.registered,
             custom: self.custom,
-        })
+        }
     }
 }
 
@@ -271,6 +268,17 @@ where
     H: Serialize,
     State: HeaderState,
 {
+    /// Construct a JOSE header value.
+    ///
+    /// JOSE headers are JSON objects, so this method will serialize the header
+    /// into a JSON object, with keys lexicographically ordered.
+    ///
+    /// # Panics
+    ///
+    /// If a registered header were to conflict with a header owned by the type's
+    /// [HeaderState] implementation, this method will panic. That should not happen.
+    ///
+    /// If a custom header is not a JSON object or Null, this method will panic.
     pub(crate) fn value(&self) -> Result<serde_json::Value, HeaderError> {
         // Re-using the parameters map here is important, because it will
         // alphabetize our keys, resulting in a consistent key order in rendered
@@ -288,7 +296,7 @@ where
                 }
             }
             Value::Null => {}
-            _ => panic!("registered headers are objects"),
+            _ => unreachable!("registered headers are objects"),
         }
 
         match custom {
@@ -303,7 +311,7 @@ where
                 }
             }
             Value::Null => {}
-            _ => panic!("custom headers are objects"),
+            _ => return Err(HeaderError::InvalidCustomHeaders(std::any::type_name::<H>())),
         };
 
         let mut map = serde_json::Map::new();
@@ -405,7 +413,7 @@ where
 {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
-        &self.header.state.algorithm
+        self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
@@ -427,7 +435,7 @@ where
 impl<'h, H> HeaderAccess<'h, H, RenderedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
-        &self.header.state.algorithm
+        self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
@@ -530,7 +538,7 @@ where
 {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
-        &self.header.state.algorithm
+        self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
@@ -570,7 +578,3 @@ impl<'h, H> HeaderAccessMut<'h, H, RenderedHeader> {
         &mut self.header.state.thumbprint_sha256
     }
 }
-
-/// Errors returned when verifying a header.
-#[derive(Debug, thiserror::Error)]
-pub enum VerifyHeaderError {}

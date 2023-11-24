@@ -7,10 +7,26 @@ use std::fmt::Write;
 use std::marker::PhantomData;
 
 use base64ct::Encoding;
-use serde::{de, ser, Serialize};
+use bytes::Bytes;
+use serde::{
+    de::{self, DeserializeOwned},
+    ser, Serialize,
+};
 
 #[cfg(feature = "fmt")]
 use super::fmt::{self, IndentWriter};
+
+#[derive(Debug, thiserror::Error)]
+pub enum DecodeError {
+    #[error(transparent)]
+    Base64(#[from] base64ct::Error),
+
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+
+    #[error("data is not valid: {0}")]
+    InvalidData(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
 
 /// Wrapper type to indicate that the inner type should be serialized
 /// as bytes with a Base64 URL-safe encoding.
@@ -23,6 +39,18 @@ where
 {
     pub(crate) fn serialized_value(&self) -> Result<String, serde_json::Error> {
         Ok(base64ct::Base64UrlUnpadded::encode_string(self.0.as_ref()))
+    }
+}
+
+impl<T> Base64Data<T>
+where
+    T: TryFrom<Vec<u8>>,
+    T::Error: std::error::Error + Send + Sync + 'static,
+{
+    pub(crate) fn parse(value: &str) -> Result<Self, DecodeError> {
+        let data = base64ct::Base64UrlUnpadded::decode_vec(value)?;
+        let data = T::try_from(data).map_err(|err| DecodeError::InvalidData(err.into()))?;
+        Ok(Base64Data(data))
     }
 }
 
@@ -112,6 +140,16 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Base64JSON<T>(pub T);
 
+impl<T> Base64JSON<T> {
+    pub fn new(value: T) -> Self {
+        Base64JSON(value)
+    }
+
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
 impl<T> Base64JSON<T>
 where
     T: Serialize,
@@ -121,9 +159,30 @@ where
         Ok(base64ct::Base64UrlUnpadded::encode_string(&inner))
     }
 
-    pub(crate) fn serialized_bytes(&self) -> Result<Box<[u8]>, serde_json::Error> {
-        let inner = serde_json::to_vec(&self.0)?;
-        Ok(inner.into_boxed_slice())
+    pub(crate) fn serialized_bytes(&self) -> Result<Bytes, serde_json::Error> {
+        self.serialized_value().map(|value| Bytes::from(value))
+    }
+}
+
+pub(crate) struct ParsedBase64JSON<T> {
+    pub(crate) data: T,
+    pub(crate) bytes: Bytes,
+}
+
+impl<T> Base64JSON<T>
+where
+    T: DeserializeOwned,
+{
+    pub(crate) fn parse(raw: &str) -> Result<ParsedBase64JSON<T>, DecodeError>
+    where
+        T: de::DeserializeOwned,
+    {
+        let data = base64ct::Base64UrlUnpadded::decode_vec(raw)?;
+        let value = serde_json::from_slice(&data)?;
+        Ok(ParsedBase64JSON {
+            data: value,
+            bytes: Bytes::from(raw.to_owned()),
+        })
     }
 }
 

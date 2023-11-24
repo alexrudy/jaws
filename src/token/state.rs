@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
+use bytes::Bytes;
+use serde::Serialize;
 
 use crate::{
-    algorithms::{Signature as SignatureBytes, SigningAlgorithm, VerifyAlgorithm},
+    algorithms::{SignatureBytes, SigningAlgorithm, VerifyAlgorithm},
     base64data::Base64Data,
     jose,
 };
@@ -183,13 +184,9 @@ where
 ///
 /// This state indicates that we have recieved the token from elsewhere, and
 /// many fields could be in inconsistnet states.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "H: Serialize",
-    deserialize = "H: for<'deh> Deserialize<'deh>"
-))]
+#[derive(Debug, Clone)]
 pub struct Unverified<H> {
-    pub(super) payload: Box<[u8]>,
+    pub(super) payload: Bytes,
     pub(super) header: jose::Header<H, jose::RenderedHeader>,
     pub(super) signature: Base64Data<SignatureBytes>,
 }

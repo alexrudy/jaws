@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::Sha256;
@@ -13,10 +14,11 @@ use super::HeaderState;
 ///
 /// This is different from [super::SignedHeader] in that it contains the actual data,
 /// and not thd derivation, so the fields may be in inconsistent states.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RenderedHeader {
     /// The raw bytes of the header, as it was signed.
-    pub(crate) raw: Box<[u8]>,
+    #[serde(skip)]
+    pub(crate) raw: Bytes,
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     #[serde(rename = "alg")]

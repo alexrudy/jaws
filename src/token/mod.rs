@@ -8,17 +8,22 @@
 //!
 //! [RFC7519]: https://tools.ietf.org/html/rfc7519
 
-use std::fmt::Write;
 use std::marker::PhantomData;
+use std::{fmt::Write, str::FromStr};
 
 use base64ct::Encoding;
-use serde::{de, ser, Deserialize, Serialize};
+use bytes::Bytes;
+use serde::{
+    de::{self, DeserializeOwned},
+    ser, Deserialize, Serialize,
+};
 
+use crate::algorithms::VerifyAlgorithm;
 #[cfg(feature = "fmt")]
 use crate::fmt;
 use crate::{
     algorithms::{AlgorithmIdentifier, SigningAlgorithm},
-    base64data::{Base64Data, Base64JSON},
+    base64data::{Base64Data, Base64JSON, DecodeError},
     jose::{HeaderAccess, HeaderAccessMut, HeaderState},
     Header,
 };
@@ -26,6 +31,7 @@ use crate::{
 mod formats;
 mod state;
 
+use self::formats::TokenParseError;
 pub use self::formats::{Compact, Flat, FlatUnprotected, TokenFormat, TokenFormattingError};
 pub use self::state::{HasSignature, MaybeSigned, Signed, Unsigned, Unverified, Verified};
 
@@ -68,11 +74,25 @@ where
         }
     }
 
-    fn serialized_bytes(&self) -> Result<Box<[u8]>, serde_json::Error> {
+    fn serialized_bytes(&self) -> Result<Bytes, serde_json::Error> {
         match self {
             Payload::Json(data) => data.serialized_bytes(),
-            Payload::Empty => Ok(Box::new([])),
+            Payload::Empty => Ok(Bytes::new()),
         }
+    }
+}
+
+impl<P> Payload<P>
+where
+    P: DeserializeOwned,
+{
+    fn parse(value: &str) -> Result<Self, DecodeError> {
+        if value.is_empty() {
+            return Ok(Payload::Empty);
+        }
+
+        let parsed = Base64JSON::<P>::parse(value)?;
+        Ok(Payload::Json(parsed.data.into()))
     }
 }
 
@@ -156,10 +176,12 @@ where
 /// let token = Token::compact((), ());
 /// ```
 ///
-/// This token will have no payload, and no custom headers, but it is still usable:
+/// This token will have no payload, and no custom headers.
 #[cfg_attr(
     feature = "fmt",
     doc = r#"
+To view a debug representation of the token, use the [`fmt::JWTFormat`] trait:
+
 ```
 # use jaws::token::Token;
 # let token = Token::compact((), ());
@@ -307,6 +329,18 @@ where
 
 impl<H, Fmt, P> Token<P, Unsigned<H>, Fmt>
 where
+    Fmt: TokenFormat,
+{
+    pub fn payload(&self) -> Option<&P> {
+        match &self.payload {
+            Payload::Json(data) => Some(data.as_ref()),
+            Payload::Empty => None,
+        }
+    }
+}
+
+impl<H, Fmt, P> Token<P, Unsigned<H>, Fmt>
+where
     H: Serialize,
     P: Serialize,
     Fmt: TokenFormat,
@@ -326,7 +360,7 @@ where
         A::Key: Clone,
         // A::Signature: Serialize,
     {
-        let header = self.state.header.sign::<A>(algorithm.key());
+        let header = self.state.header.into_signed_header::<A>(algorithm.key());
         let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
@@ -355,7 +389,7 @@ where
     #[allow(clippy::type_complexity)]
     pub fn verify<A>(
         self,
-        algorithm: A,
+        algorithm: &A,
     ) -> Result<Token<P, Verified<H, A>, Fmt>, TokenVerifyingError<A::Error>>
     where
         A: crate::algorithms::VerifyAlgorithm,
@@ -379,13 +413,26 @@ where
             )
             .map_err(TokenVerifyingError::Verify)?;
 
-        let header = self.state.header.verify::<A>(algorithm.key())?;
+        let header = self.state.header.into_signed_header::<A>(algorithm.key());
 
         Ok(Token {
             payload: self.payload,
             state: Verified { header, signature },
             fmt: self.fmt,
         })
+    }
+}
+
+impl<P, H, Fmt> FromStr for Token<P, Unverified<H>, Fmt>
+where
+    P: DeserializeOwned,
+    H: DeserializeOwned,
+    Fmt: TokenFormat,
+{
+    type Err = TokenParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Fmt::parse(Bytes::from(s.to_owned()))
     }
 }
 
@@ -410,10 +457,65 @@ where
             payload: self.payload,
             state: Unverified {
                 payload,
-                header: self.state.header.render(),
+                header: self.state.header.into_rendered_header(),
                 signature: Base64Data(self.state.signature.as_ref().to_owned().into()),
             },
             fmt: self.fmt,
+        }
+    }
+}
+
+impl<H, Fmt, P, Alg> Token<P, Signed<H, Alg>, Fmt>
+where
+    Fmt: TokenFormat,
+    Alg: SigningAlgorithm,
+{
+    pub fn payload(&self) -> Option<&P> {
+        match &self.payload {
+            Payload::Json(data) => Some(data.as_ref()),
+            Payload::Empty => None,
+        }
+    }
+}
+
+impl<P, H, Alg, Fmt> Token<P, Verified<H, Alg>, Fmt>
+where
+    Fmt: TokenFormat,
+    Alg: VerifyAlgorithm,
+    Alg::Key: Clone,
+    H: Serialize,
+    P: Serialize,
+{
+    /// Transition the token back into an unverified state.
+    ///
+    /// This method consumes the token and returns a new one, which still includes the signature
+    /// but which is no longer considered verified.
+    pub fn unverify(self) -> Token<P, Unverified<H>, Fmt> {
+        let payload = self
+            .payload
+            .serialized_bytes()
+            .expect("valid payload bytes");
+        Token {
+            payload: self.payload,
+            state: Unverified {
+                payload,
+                header: self.state.header.into_rendered_header(),
+                signature: Base64Data(self.state.signature.as_ref().to_owned().into()),
+            },
+            fmt: self.fmt,
+        }
+    }
+}
+
+impl<H, Fmt, P, Alg> Token<P, Verified<H, Alg>, Fmt>
+where
+    Fmt: TokenFormat,
+    Alg: VerifyAlgorithm,
+{
+    pub fn payload(&self) -> Option<&P> {
+        match &self.payload {
+            Payload::Json(data) => Some(data.as_ref()),
+            Payload::Empty => None,
         }
     }
 }
@@ -508,7 +610,7 @@ pub enum TokenSigningError<E> {
 }
 
 #[cfg(all(test, feature = "rsa"))]
-mod test {
+mod test_rsa {
     use super::*;
     use crate::claims::Claims;
 
@@ -622,5 +724,98 @@ mod test {
                 )
             )
         }
+
+        signed.unverify().verify(&algorithm).unwrap();
+    }
+}
+
+#[cfg(all(test, feature = "ecdsa", feature = "p256"))]
+mod test_ecdsa {
+    use super::*;
+
+    use base64ct::Encoding;
+    use elliptic_curve::{FieldBytes, SecretKey};
+    use serde_json::json;
+    use zeroize::Zeroize;
+
+    fn strip_whitespace(s: &str) -> String {
+        s.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    fn ecdsa(jwk: &serde_json::Value) -> SecretKey<p256::NistP256> {
+        let d_b64 = strip_whitespace(jwk["d"].as_str().unwrap());
+        let mut d_bytes = FieldBytes::<p256::NistP256>::default();
+        base64ct::Base64UrlUnpadded::decode(&d_b64, &mut d_bytes).unwrap();
+
+        let key = SecretKey::from_slice(&d_bytes).unwrap();
+        d_bytes.zeroize();
+        key
+    }
+
+    #[test]
+    fn rfc7515_example_a3() {
+        let pkey = &json!({
+        "kty":"EC",
+        "crv":"P-256",
+        "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+        "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+        "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
+        });
+
+        let key = ecdsa(pkey);
+
+        let token = Token::compact((), "This is a signed message");
+
+        let signed = token.sign(&key).unwrap();
+
+        let verifying_key: ecdsa::VerifyingKey<_> = key.public_key().into();
+
+        let verified = signed.unverify().verify(&verifying_key).unwrap();
+
+        assert_eq!(verified.payload(), Some(&"This is a signed message"));
+    }
+}
+
+#[cfg(all(test, feature = "hmac"))]
+mod test_hmac {
+    use crate::algorithms::hmac::{Hmac, HmacKey};
+
+    use super::*;
+
+    use base64ct::Encoding;
+    use serde_json::json;
+    use sha2::Sha256;
+
+    fn strip_whitespace(s: &str) -> String {
+        s.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    #[test]
+    fn rfc7515_example_a1() {
+        let pkey = &json!({
+            "kty":"oct",
+            "k":"AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75
+                aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow"
+        }
+        );
+
+        let key_data = strip_whitespace(pkey["k"].as_str().unwrap());
+
+        let decoded_len = 3 * key_data.len() / 4;
+
+        let mut key = HmacKey::with_capacity(decoded_len);
+        key.resize(decoded_len, 0);
+
+        base64ct::Base64UrlUnpadded::decode(&key_data, key.as_mut()).unwrap();
+
+        let algorithm: Hmac<Sha256> = Hmac::new(key);
+
+        let token = Token::compact((), "This is an HMAC'd message");
+
+        let signed = token.sign(&algorithm).unwrap();
+
+        let verified = signed.unverify().verify(&algorithm).unwrap();
+
+        assert_eq!(verified.payload(), Some(&"This is an HMAC'd message"));
     }
 }

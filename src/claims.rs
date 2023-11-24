@@ -22,13 +22,13 @@ use crate::fmt;
 /// request.
 ///
 /// Fields which are `None` are left out of the regsitered header.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = String> {
     /// Claim issuer identifies the principal that issued the
     /// JWT.  The processing of this claim is generally application specific.
     /// The "iss" value is a case-sensitive string containing a StringOrURI
     /// value.  Use of this claim is OPTIONAL.
-    #[serde(rename = "iss", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "iss", skip_serializing_if = "Option::is_none")]
     pub issuer: Option<ISS>,
 
     /// Claim subject identifies the principal that is the
@@ -38,7 +38,7 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// The processing of this claim is generally application specific.  The
     /// "sub" value is a case-sensitive string containing a StringOrURI
     /// value.  Use of this claim is OPTIONAL.
-    #[serde(rename = "sub", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "sub", skip_serializing_if = "Option::is_none")]
     pub subject: Option<SUB>,
 
     /// The "aud" (audience) claim identifies the recipients that the JWT is
@@ -51,7 +51,7 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// audience, the "aud" value MAY be a single case-sensitive string containing
     /// a StringOrURI value. The interpretation of audience values is generally
     /// application specific. Use of this claim is OPTIONAL.
-    #[serde(rename = "aud", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "aud", skip_serializing_if = "Option::is_none")]
     pub audience: Option<AUD>,
 
     /// The "exp" (expiration time) claim identifies the expiration time on or
@@ -62,6 +62,7 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// account for clock skew. Its value MUST be a number containing a
     /// NumericDate value. Use of this claim is OPTIONAL.
     #[serde(
+        default,
         rename = "exp",
         skip_serializing_if = "Option::is_none",
         with = "crate::numeric_date"
@@ -76,6 +77,7 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// for clock skew. Its value MUST be a number containing a NumericDate value.
     /// Use of this claim is OPTIONAL.
     #[serde(
+        default,
         rename = "nbf",
         skip_serializing_if = "Option::is_none",
         with = "crate::numeric_date"
@@ -87,6 +89,7 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// value MUST be a number containing a NumericDate value.  Use of this
     /// claim is OPTIONAL.
     #[serde(
+        default,
         rename = "iat",
         skip_serializing_if = "Option::is_none",
         with = "crate::numeric_date"
@@ -94,8 +97,22 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     pub issued_at: Option<chrono::DateTime<chrono::Utc>>,
 
     /// The "jti" (JWT ID) claim provides a unique identifier for the JWT. The identifier value MUST be assigned in a manner that ensures that there is a negligible probability that the same value will be accidentally assigned to a different data object; if the application uses multiple issuers, collisions MUST be prevented among values produced by different issuers as well. The "jti" claim can be used to prevent the JWT from being replayed. The "jti" value is a case- sensitive string. Use of this claim is OPTIONAL.
-    #[serde(rename = "jti", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "jti", skip_serializing_if = "Option::is_none")]
     pub token_id: Option<JTI>,
+}
+
+impl<ISS, SUB, AUD, JTI> Default for RegisteredClaims<ISS, SUB, AUD, JTI> {
+    fn default() -> Self {
+        Self {
+            issuer: None,
+            subject: None,
+            audience: None,
+            expiration: None,
+            not_before: None,
+            issued_at: None,
+            token_id: None,
+        }
+    }
 }
 
 #[cfg(feature = "fmt")]
@@ -117,10 +134,10 @@ where
 /// They consist of "registered" header values, specified in RFC 7519,
 /// and a set of custom claims, which can be any arbitrary key-value
 /// pairs seializable as JSON.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Claims<C, ISS = String, SUB = String, AUD = String, JTI = String> {
     /// Registered claims, which are enumerated specifically. See [RegisteredClaims].
-    #[serde(flatten)]
+    #[serde(default, flatten)]
     pub registered: RegisteredClaims<ISS, SUB, AUD, JTI>,
 
     /// Custom claims, which are any arbitrary JSON objects. Custom claims must implement
@@ -128,6 +145,18 @@ pub struct Claims<C, ISS = String, SUB = String, AUD = String, JTI = String> {
     /// custom claims.
     #[serde(flatten)]
     pub claims: C,
+}
+
+impl<C, ISS, SUB, AUD, JTI> Default for Claims<C, ISS, SUB, AUD, JTI>
+where
+    C: Default,
+{
+    fn default() -> Self {
+        Self {
+            registered: Default::default(),
+            claims: Default::default(),
+        }
+    }
 }
 
 impl<C, ISS, SUB, AUD, JTI> Claims<C, ISS, SUB, AUD, JTI> {

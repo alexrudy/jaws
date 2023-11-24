@@ -2,7 +2,7 @@
 //!
 //! Based on the [hmac](https://crates.io/crates/hmac) crate.
 
-use std::convert::Infallible;
+use std::{convert::Infallible, marker::PhantomData};
 
 use base64ct::Encoding;
 use digest::Mac;
@@ -81,7 +81,7 @@ where
     D: digest::Digest + digest::core_api::BlockSizeUser,
 {
     key: HmacKey,
-    digest: hmac::SimpleHmac<D>,
+    _digest: PhantomData<D>,
 }
 
 impl<D> Hmac<D>
@@ -93,8 +93,10 @@ where
     ///
     /// Signing keys are arbitrary bytes.
     pub fn new(key: HmacKey) -> Self {
-        let digest = SimpleHmac::new_from_slice(key.as_ref()).expect("Valid key");
-        Self { key, digest }
+        Self {
+            key,
+            _digest: PhantomData,
+        }
     }
 
     /// Reference to the HMAC key.
@@ -133,8 +135,8 @@ where
 
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
         // Create a new, one-shot digest for this signature.
-        let mut digest = self.digest.clone();
-        digest.reset();
+        let mut digest: SimpleHmac<D> =
+            SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
         let message = format!("{}.{}", header, payload);
         digest.update(message.as_bytes());
         Ok(digest.finalize().into_bytes())

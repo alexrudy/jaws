@@ -16,7 +16,8 @@
 //! This algorithm is used to sign and verify JSON Web Tokens using the RSASSA-PSS.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
-use rsa::pkcs1v15::SigningKey;
+use bytes::BytesMut;
+use rsa::pkcs1v15::{SigningKey, VerifyingKey};
 use rsa::rand_core::OsRng;
 use rsa::signature::RandomizedSigner;
 use rsa::PublicKeyParts;
@@ -62,6 +63,38 @@ where
     fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
         let message = format!("{}.{}", header, payload);
         self.try_sign_with_rng(&mut OsRng, message.as_bytes())
+    }
+
+    fn key(&self) -> &Self::Key {
+        self.as_ref()
+    }
+}
+
+impl<D> super::VerifyAlgorithm for VerifyingKey<D>
+where
+    D: digest::Digest,
+    VerifyingKey<D>: super::Algorithm<Signature = rsa::pkcs1v15::Signature>,
+{
+    type Error = signature::Error;
+
+    type Key = rsa::RsaPublicKey;
+
+    fn verify(
+        &self,
+        header: &[u8],
+        payload: &[u8],
+        signature: &[u8],
+    ) -> Result<Self::Signature, Self::Error> {
+        use rsa::signature::Verifier;
+        let signature = rsa::pkcs1v15::Signature::try_from(signature).unwrap();
+
+        let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
+        message.extend_from_slice(header);
+        message.extend_from_slice(b".");
+        message.extend_from_slice(payload);
+
+        <Self as Verifier<rsa::pkcs1v15::Signature>>::verify(self, message.as_ref(), &signature)?;
+        Ok(signature)
     }
 
     fn key(&self) -> &Self::Key {

@@ -120,6 +120,11 @@ where
         let inner = serde_json::to_vec(&self.0)?;
         Ok(base64ct::Base64UrlUnpadded::encode_string(&inner))
     }
+
+    pub(crate) fn serialized_bytes(&self) -> Result<Box<[u8]>, serde_json::Error> {
+        let inner = serde_json::to_vec(&self.0)?;
+        Ok(inner.into_boxed_slice())
+    }
 }
 
 impl<T> AsRef<T> for Base64JSON<T> {

@@ -15,6 +15,9 @@ use super::HeaderState;
 /// and not thd derivation, so the fields may be in inconsistent states.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderedHeader {
+    /// The raw bytes of the header, as it was signed.
+    pub(crate) raw: Box<[u8]>,
+
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     #[serde(rename = "alg")]
     pub(super) algorithm: AlgorithmIdentifier,

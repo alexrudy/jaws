@@ -106,6 +106,13 @@ where
             KeyDerivation::Explicit(value) => DerivedKeyValue::Explicit(value),
         }
     }
+
+    pub(super) fn explicit(value: Option<Builder::Value>) -> Self {
+        match value {
+            Some(value) => DerivedKeyValue::Explicit(value),
+            None => DerivedKeyValue::Omit,
+        }
+    }
 }
 
 impl<Builder, Key> ser::Serialize for DerivedKeyValue<Builder, Key>

@@ -18,6 +18,7 @@ use url::Url;
 
 #[cfg(feature = "fmt")]
 use crate::base64data::Base64JSON;
+use crate::token::TokenVerifyingError;
 use crate::{algorithms::AlgorithmIdentifier, key::SerializeJWK};
 
 #[cfg(feature = "fmt")]
@@ -108,7 +109,7 @@ const REGISTERED_HEADER_KEYS: [&str; 11] = [
 #[non_exhaustive]
 pub struct Header<H, State> {
     #[serde(flatten)]
-    state: State,
+    pub(crate) state: State,
 
     /// The set of registered header parameters from [JWS][] and [JWA][].
     ///
@@ -207,8 +208,17 @@ where
     /// Render a signed JWK header into its rendered
     /// form, where the derived fields have been built
     /// as necessary.
-    pub fn render(self) -> Header<H, RenderedHeader> {
+    pub fn render(self) -> Header<H, RenderedHeader>
+    where
+        H: Serialize,
+        SignedHeader<Key>: HeaderState,
+    {
+        let headers = Base64JSON(&self)
+            .serialized_bytes()
+            .expect("valid header value");
+
         let state = RenderedHeader {
+            raw: headers,
             algorithm: self.state.algorithm,
             key: self.state.key.build(),
             thumbprint: self.state.thumbprint.build(),
@@ -229,11 +239,30 @@ impl<H> Header<H, RenderedHeader> {
     }
 
     #[allow(unused_variables)]
-    pub(crate) fn verify<A>(self, key: &A::Key) -> Result<Header<H, SignedHeader<A::Key>>, A::Error>
+    pub(crate) fn verify<A>(
+        self,
+        key: &A::Key,
+    ) -> Result<Header<H, SignedHeader<A::Key>>, TokenVerifyingError<A::Error>>
     where
         A: crate::algorithms::VerifyAlgorithm,
     {
-        todo!("verify");
+        // This may need to only verify that the algorithm header matches the key algorithm.
+        if A::IDENTIFIER != self.state.algorithm {
+            return Err(TokenVerifyingError::Algorithm(
+                A::IDENTIFIER,
+                self.state.algorithm,
+            ));
+        }
+        Ok(Header {
+            state: SignedHeader {
+                algorithm: self.state.algorithm,
+                key: DerivedKeyValue::explicit(self.state.key),
+                thumbprint: DerivedKeyValue::explicit(self.state.thumbprint),
+                thumbprint_sha256: DerivedKeyValue::explicit(self.state.thumbprint_sha256),
+            },
+            registered: self.registered,
+            custom: self.custom,
+        })
     }
 }
 

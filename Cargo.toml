@@ -16,6 +16,7 @@ categories = [
 
 [dependencies]
 base64ct = { version = "1.6.0", features = ["std"] }
+bytes = { version = "1.5" }
 chrono = { version = "0.4.24", features = ["serde"] }
 elliptic-curve = { version = "0.13.4", features = [
     "pkcs8",

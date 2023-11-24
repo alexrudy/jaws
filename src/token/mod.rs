@@ -67,6 +67,13 @@ where
             Payload::Empty => Ok("".to_owned()),
         }
     }
+
+    fn serialized_bytes(&self) -> Result<Box<[u8]>, serde_json::Error> {
+        match self {
+            Payload::Json(data) => data.serialized_bytes(),
+            Payload::Empty => Ok(Box::new([])),
+        }
+    }
 }
 
 impl<P> From<P> for Payload<P> {
@@ -364,16 +371,16 @@ where
         }
 
         let signature = &self.state.signature;
-        let header = self
-            .state
-            .header
-            .verify::<A>(algorithm.key())
-            .map_err(TokenVerifyingError::Verify)?;
-        let headers = Base64JSON(&header).serialized_value()?;
-        let payload = self.payload.serialized_value()?;
         let signature = algorithm
-            .verify(&headers, &payload, signature.as_ref())
+            .verify(
+                &self.state.header.state.raw,
+                &self.state.payload,
+                signature.as_ref(),
+            )
             .map_err(TokenVerifyingError::Verify)?;
+
+        let header = self.state.header.verify::<A>(algorithm.key())?;
+
         Ok(Token {
             payload: self.payload,
             state: Verified { header, signature },
@@ -386,15 +393,23 @@ impl<P, H, Alg, Fmt> Token<P, Signed<H, Alg>, Fmt>
 where
     Fmt: TokenFormat,
     Alg: SigningAlgorithm,
+    Alg::Key: Clone,
+    H: Serialize,
+    P: Serialize,
 {
     /// Transition the token back into an unverified state.
     ///
     /// This method consumes the token and returns a new one, which still includes the signature
     /// but which is no longer considered verified.
     pub fn unverify(self) -> Token<P, Unverified<H>, Fmt> {
+        let payload = self
+            .payload
+            .serialized_bytes()
+            .expect("valid payload bytes");
         Token {
             payload: self.payload,
             state: Unverified {
+                payload,
                 header: self.state.header.render(),
                 signature: Base64Data(self.state.signature.as_ref().to_owned().into()),
             },
@@ -408,7 +423,7 @@ impl<P, S, Fmt> fmt::JWTFormat for Token<P, S, Fmt>
 where
     S: HasSignature,
     <S as MaybeSigned>::Header: Serialize,
-    <S as MaybeSigned>::HeaderState: Serialize + HeaderState,
+    <S as MaybeSigned>::HeaderState: HeaderState,
     P: Serialize,
     Fmt: TokenFormat,
 {

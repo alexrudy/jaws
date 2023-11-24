@@ -189,6 +189,7 @@ where
     deserialize = "H: for<'deh> Deserialize<'deh>"
 ))]
 pub struct Unverified<H> {
+    pub(super) payload: Box<[u8]>,
     pub(super) header: jose::Header<H, jose::RenderedHeader>,
     pub(super) signature: Base64Data<SignatureBytes>,
 }

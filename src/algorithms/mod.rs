@@ -69,6 +69,21 @@ pub enum AlgorithmIdentifier {
     None,
 }
 
+impl AlgorithmIdentifier {
+    /// Return whether this algorithm is available for signing.
+    pub fn available(&self) -> bool {
+        match self {
+            Self::None => true,
+
+            Self::HS256 | Self::HS384 | Self::HS512 => cfg!(feature = "hmac"),
+            Self::RS256 | Self::RS384 | Self::RS512 => cfg!(feature = "rsa"),
+            Self::ES256 | Self::ES384 | Self::ES512 => cfg!(feature = "ecdsa"),
+            Self::EdDSA => cfg!(feature = "ed25519"),
+            Self::PS256 | Self::PS384 | Self::PS512 => cfg!(feature = "rsa"),
+        }
+    }
+}
+
 /// A trait to associate an alogritm identifier with an algorithm.
 ///
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
@@ -118,8 +133,8 @@ pub trait VerifyAlgorithm: Algorithm {
     /// and payload.
     fn verify(
         &self,
-        header: &str,
-        payload: &str,
+        header: &[u8],
+        payload: &[u8],
         signature: &[u8],
     ) -> Result<Self::Signature, Self::Error>;
 

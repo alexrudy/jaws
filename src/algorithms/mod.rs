@@ -69,6 +69,21 @@ pub enum AlgorithmIdentifier {
     None,
 }
 
+impl AlgorithmIdentifier {
+    /// Return whether this algorithm is available for signing.
+    pub fn available(&self) -> bool {
+        match self {
+            Self::None => true,
+
+            Self::HS256 | Self::HS384 | Self::HS512 => cfg!(feature = "hmac"),
+            Self::RS256 | Self::RS384 | Self::RS512 => cfg!(feature = "rsa"),
+            Self::ES256 | Self::ES384 | Self::ES512 => cfg!(feature = "ecdsa"),
+            Self::EdDSA => cfg!(feature = "ed25519"),
+            Self::PS256 | Self::PS384 | Self::PS512 => cfg!(feature = "rsa"),
+        }
+    }
+}
+
 /// A trait to associate an alogritm identifier with an algorithm.
 ///
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
@@ -118,8 +133,8 @@ pub trait VerifyAlgorithm: Algorithm {
     /// and payload.
     fn verify(
         &self,
-        header: &str,
-        payload: &str,
+        header: &[u8],
+        payload: &[u8],
         signature: &[u8],
     ) -> Result<Self::Signature, Self::Error>;
 
@@ -133,9 +148,9 @@ pub trait VerifyAlgorithm: Algorithm {
 /// on the heap. It is used to store the signature of a JWT before it is verified,
 /// or if a signature has a variable length.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
-pub struct Signature(Vec<u8>);
+pub struct SignatureBytes(Vec<u8>);
 
-impl Signature {
+impl SignatureBytes {
     /// Add to this signature from a byte slice.
     pub fn extend_from_slice(&mut self, other: &[u8]) {
         self.0.extend_from_slice(other);
@@ -143,24 +158,24 @@ impl Signature {
 
     /// Create a new signature with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
-        Signature(Vec::with_capacity(capacity))
+        SignatureBytes(Vec::with_capacity(capacity))
     }
 }
 
-impl AsRef<[u8]> for Signature {
+impl AsRef<[u8]> for SignatureBytes {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl From<&[u8]> for Signature {
+impl From<&[u8]> for SignatureBytes {
     fn from(bytes: &[u8]) -> Self {
-        Signature(bytes.to_vec())
+        SignatureBytes(bytes.to_vec())
     }
 }
 
-impl From<Vec<u8>> for Signature {
+impl From<Vec<u8>> for SignatureBytes {
     fn from(bytes: Vec<u8>) -> Self {
-        Signature(bytes)
+        SignatureBytes(bytes)
     }
 }

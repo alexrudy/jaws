@@ -1,11 +1,19 @@
 use jaws::Compact;
+use std::ops::Deref;
+
 // JAWS provides JWT format for printing JWTs in a style similar to the example above,
 // which is directly inspired by the way the ACME standard shows JWTs.
 use jaws::JWTFormat;
 
-// JAWS provides strongly typed support for tokens, so we can only build an UnsignedToken,
-// which we can sign to create a SignedToken or a plain Token.
+// JAWS provides a single token type which is generic over the state of the token.
+// The states are defined in the `state` module, and are used to track the
+// signing and verification status.
 use jaws::Token;
+
+use jaws::algorithms::rsa::RsaPkcs1v15Verify;
+// The unverified token state, used like `Token<.., Unverified<..>, ..>`.
+// It is generic over the type of the custom header parameters.
+use jaws::token::Unverified;
 
 // JAWS provides type-safe support for JWT claims.
 use jaws::{Claims, RegisteredClaims};
@@ -18,10 +26,8 @@ use rsa::pkcs8::DecodePrivateKey;
 // function, so we get it here from the `sha2` crate in the RustCrypto suite.
 use sha2::Sha256;
 
-// JAWS provides thin algorithm wrappers for algorithms which accept
-// parameters beyond just the encryption or singing key. For example, the `RS256`
-// algorithm accepts a hash function, but is otherwise identical to the other
-// `RS*` hash functions.
+// This is an alias for the RSA PKCS#1 v1.5 signing algorithm, which is
+// implemented in the rsa crate as `rsa::pkcs1v15::SigningKey`.
 use jaws::algorithms::rsa::RsaPkcs1v15;
 
 // Using serde_json allows us to quickly construct a serializable payload,
@@ -62,13 +68,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The unit type can be used here because it implements [serde::Serialize],
     // but a custom type could be passed if we wanted to have custom header
     // fields.
-    let mut token = Token::new((), claims, Compact);
+    let mut token = Token::compact((), claims);
     // We can modify the headers freely before signing the JWT. In this case,
     // we provide the `typ` header, which is optional in the JWT spec.
     *token.header_mut().r#type() = Some("JWT".to_string());
 
+    // We can also ask that some fields be derived from the signing key, for example,
+    // this will derive the JWK field in the header from the signing key.
+    token.header_mut().key().derived();
+
+    println!("Initial JWT");
+
+    // Initially the JWT has no defined signature:
+    println!("JWT:");
+    println!("{}", token.formatted());
+
     // Sign the token with the algorithm, and print the result.
     let signed = token.sign(&alg).unwrap();
+
+    println!("Signed JWT");
+
+    println!("JWT:");
+    println!("{}", signed.formatted());
+    println!("Token: {}", signed.rendered().unwrap());
 
     // We can't modify the token after signing it (that would change the signature)
     // but we can access fields and read from them:
@@ -78,9 +100,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         signed.header().algorithm(),
     );
 
-    println!("Token: {}", signed.rendered().unwrap());
+    // We can also verify tokens.
+    let token: Token<Claims<serde_json::Value>, Unverified<()>, Compact> =
+        signed.rendered().unwrap().parse().unwrap();
+
+    println!("Parsed JWT");
+
+    // Unverified tokens can be printed for debugging, but there is deliberately
+    // no access to the payload, only to the header fields.
     println!("JWT:");
-    println!("{}", signed.formatted());
+    println!("{}", token.formatted());
+
+    // We can use the JWK to verify that the token is signed with the correct key.
+    let hdr = token.header();
+    let jwk = hdr.key().unwrap();
+    let key = rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap());
+
+    assert_eq!(&key, alg.as_ref().deref());
+
+    let alg: RsaPkcs1v15Verify<Sha256> = RsaPkcs1v15Verify::new_with_prefix(key);
+
+    // We can't access the claims until we verify the token.
+    let verified = token.verify(&alg).unwrap();
+
+    println!("Verified JWT");
+    println!("JWT:");
+    println!("{}", verified.formatted());
+    println!(
+        "Payload: \n{}",
+        serde_json::to_string_pretty(&verified.payload()).unwrap()
+    );
 
     Ok(())
+}
+
+mod rsa_jwk_reader {
+    use base64ct::Encoding;
+
+    fn strip_whitespace(s: &str) -> String {
+        s.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
+        let val = strip_whitespace(v.as_str()?);
+        Some(rsa::BigUint::from_bytes_be(
+            base64ct::Base64UrlUnpadded::decode_vec(&val)
+                .ok()?
+                .as_slice(),
+        ))
+    }
+
+    pub(crate) fn rsa_pub(key: &serde_json::Value) -> rsa::RsaPublicKey {
+        let n = to_biguint(&key["n"]).expect("decode n");
+        let e = to_biguint(&key["e"]).expect("decode e");
+
+        rsa::RsaPublicKey::new(n, e).expect("valid key parameters")
+    }
 }

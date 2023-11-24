@@ -74,7 +74,9 @@ use ::ecdsa::{
     PrimeCurve, SignatureSize,
 };
 use base64ct::Encoding;
+use bytes::BytesMut;
 use digest::generic_array::ArrayLength;
+use ecdsa::{hazmat::VerifyPrimitive, Signature, VerifyingKey};
 use elliptic_curve::{
     ops::Invert,
     sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint},
@@ -92,6 +94,7 @@ pub use p384::NistP384;
 
 #[cfg(feature = "p521")]
 pub use p521::NistP521;
+use signature::Verifier;
 
 impl<C> crate::key::JWKeyType for PublicKey<C>
 where
@@ -109,7 +112,7 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        let mut params = Vec::with_capacity(2);
+        let mut params = Vec::with_capacity(3);
 
         params.push((
             "crv".to_owned(),
@@ -144,6 +147,31 @@ where
         self.public_key().parameters()
     }
 }
+
+impl<C> crate::key::SerializeJWK for ecdsa::VerifyingKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        PublicKey::<C>::from(self).parameters()
+    }
+}
+
+impl<C> crate::key::JWKeyType for ecdsa::VerifyingKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
 impl<C> crate::key::SerializeJWK for ecdsa::SigningKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
@@ -153,7 +181,7 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        todo!()
+        self.verifying_key().parameters()
     }
 }
 
@@ -221,6 +249,60 @@ where
     fn key(&self) -> &Self::Key {
         self
     }
+}
+
+impl<C> super::VerifyAlgorithm for VerifyingKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters + ecdsa::hazmat::DigestPrimitive,
+    <C as CurveArithmetic>::AffinePoint: VerifyPrimitive<C>,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    MaxSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+    VerifyingKey<C>: super::Algorithm<Signature = ecdsa::SignatureBytes<C>>,
+    <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
+{
+    type Error = ecdsa::Error;
+    type Key = VerifyingKey<C>;
+
+    fn verify(
+        &self,
+        header: &[u8],
+        payload: &[u8],
+        signature: &[u8],
+    ) -> Result<Self::Signature, Self::Error> {
+        let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
+        message.extend_from_slice(header);
+        message.extend_from_slice(b".");
+        message.extend_from_slice(payload);
+
+        let signature = ecdsa::Signature::try_from(signature)?;
+        <Self as Verifier<Signature<C>>>::verify(self, message.as_ref(), &signature)?;
+        Ok(signature.into())
+    }
+
+    fn key(&self) -> &Self::Key {
+        self
+    }
+}
+
+#[cfg(feature = "p256")]
+impl super::Algorithm for VerifyingKey<NistP256> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES256;
+    type Signature = ecdsa::SignatureBytes<NistP256>;
+}
+
+#[cfg(feature = "p384")]
+impl super::Algorithm for VerifyingKey<NistP384> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES384;
+    type Signature = ecdsa::SignatureBytes<NistP384>;
+}
+
+#[cfg(feature = "p521")]
+impl super::Algorithm for VerifyingKey<NistP521> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES512;
+    type Signature = ecdsa::SignatureBytes<NistP521>;
 }
 
 #[cfg(all(test, feature = "p256"))]

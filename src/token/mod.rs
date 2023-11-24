@@ -26,8 +26,7 @@ use crate::key::SerializeJWK;
 use crate::{
     algorithms::{AlgorithmIdentifier, TokenSigner},
     base64data::{Base64JSON, Base64Signature, DecodeError},
-    jose::{HeaderAccess, HeaderAccessMut, HeaderState},
-    Header,
+    jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
 
 mod formats;

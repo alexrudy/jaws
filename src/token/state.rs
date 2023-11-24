@@ -25,9 +25,11 @@ pub trait MaybeSigned {
     /// and deserializing.
     type Header;
 
+    #[doc(hidden)]
     /// Get a reference to the header. The same as [`crate::Token::header`].
     fn header(&self) -> &jose::Header<Self::Header, Self::HeaderState>;
 
+    #[doc(hidden)]
     /// Get a mutable reference to the header. The same as [`crate::Token::header_mut`].
     fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState>;
 

@@ -330,6 +330,7 @@ impl<Digest> std::ops::Deref for Thumbprint<Digest> {
 #[cfg(all(test, feature = "rsa"))]
 pub(crate) mod jwk_reader {
     use base64ct::Encoding;
+    use rsa::traits::PrivateKeyParts;
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()

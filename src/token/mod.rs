@@ -682,8 +682,7 @@ mod test_rsa {
         claims.registered.issuer = Some("joe".into());
 
         let token = Token::new((), claims, Compact::new());
-        let algorithm: rsa::pkcs1v15::SigningKey<Sha256> =
-            rsa::pkcs1v15::SigningKey::new_with_prefix(pkey);
+        let algorithm: rsa::pkcs1v15::SigningKey<Sha256> = rsa::pkcs1v15::SigningKey::new(pkey);
         let signed = token.sign(&algorithm).unwrap();
         {
             let hdr = base64ct::Base64UrlUnpadded::encode_string(

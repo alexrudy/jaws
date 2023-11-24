@@ -35,7 +35,6 @@ impl<Value> KeyDerivation<Value> {
     }
 }
 
-#[cfg(feature = "fmt")]
 impl<Value> KeyDerivation<Value>
 where
     Value: Serialize,
@@ -120,7 +119,6 @@ where
     }
 }
 
-#[cfg(feature = "fmt")]
 impl<Builder, Key> DerivedKeyValue<Builder, Key>
 where
     Builder: KeyDerivedBuilder<Key>,

@@ -16,6 +16,7 @@ use sha1::Sha1;
 use sha2::Sha256;
 use url::Url;
 
+#[cfg(feature = "fmt")]
 use crate::base64data::Base64JSON;
 use crate::{algorithms::AlgorithmIdentifier, key::SerializeJWK};
 
@@ -103,7 +104,7 @@ const REGISTERED_HEADER_KEYS: [&str; 11] = [
 /// The JOSE Header is a JSON object that represents the cryptographic operations
 /// applied to the JWS Protected Header and the JWS Payload and optionally additional
 /// properties of the JWS.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Header<H, State> {
     #[serde(flatten)]
@@ -122,6 +123,17 @@ pub struct Header<H, State> {
     /// by the type parameter H.
     #[serde(flatten)]
     pub custom: H,
+}
+
+impl<H, State> Serialize for Header<H, State>
+where
+    State: HeaderState,
+    H: Serialize,
+{
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = self.value().map_err(serde::ser::Error::custom)?;
+        value.serialize(serializer)
+    }
 }
 
 impl<H> Default for Header<H, UnsignedHeader>

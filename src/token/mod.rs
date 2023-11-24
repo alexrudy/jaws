@@ -8,7 +8,6 @@
 //!
 //! [RFC7519]: https://tools.ietf.org/html/rfc7519
 
-#[cfg(feature = "fmt")]
 use std::fmt::Write;
 use std::marker::PhantomData;
 
@@ -20,7 +19,7 @@ use crate::fmt;
 use crate::{
     algorithms::{AlgorithmIdentifier, SigningAlgorithm},
     base64data::{Base64Data, Base64JSON},
-    jose::{HeaderAccess, HeaderAccessMut},
+    jose::{HeaderAccess, HeaderAccessMut, HeaderState},
     Header,
 };
 
@@ -151,14 +150,20 @@ where
 /// ```
 ///
 /// This token will have no payload, and no custom headers, but it is still usable:
-/// ```
-/// # use jaws::token::Token;
-/// # let token = Token::compact((), ());
+#[cfg_attr(
+    feature = "fmt",
+    doc = r#"
+```
+# use jaws::token::Token;
+# let token = Token::compact((), ());
+
+use jaws::fmt::JWTFormat;
+
+println!("{}", token.formatted());
+```
+"#
+)]
 ///
-/// use jaws::fmt::JWTFormat;
-///
-/// println!("{}", token.formatted());
-/// ```
 ///
 /// ## Transitioning a token between states
 ///
@@ -267,11 +272,11 @@ where
     where
         P: Serialize,
         <S as MaybeSigned>::Header: Serialize,
-        <S as MaybeSigned>::HeaderState: Serialize,
+        <S as MaybeSigned>::HeaderState: Serialize + HeaderState,
     {
         let mut msg = String::new();
         let header =
-            base64ct::Base64UrlUnpadded::encode_string(&serde_json::to_vec(&self.state.header())?);
+            base64ct::Base64UrlUnpadded::encode_string(&serde_json::to_vec(self.state.header())?);
         let payload = self.payload.serialized_value()?;
         write!(msg, "{}.{}", header, payload).unwrap();
         Ok(msg)
@@ -285,7 +290,7 @@ where
         P: Serialize,
         S: HasSignature,
         <S as MaybeSigned>::Header: Serialize,
-        <S as MaybeSigned>::HeaderState: Serialize,
+        <S as MaybeSigned>::HeaderState: HeaderState,
     {
         let mut msg = String::new();
         self.fmt.render(&mut msg, self)?;
@@ -403,7 +408,7 @@ impl<P, S, Fmt> fmt::JWTFormat for Token<P, S, Fmt>
 where
     S: HasSignature,
     <S as MaybeSigned>::Header: Serialize,
-    <S as MaybeSigned>::HeaderState: Serialize,
+    <S as MaybeSigned>::HeaderState: Serialize + HeaderState,
     P: Serialize,
     Fmt: TokenFormat,
 {
@@ -487,7 +492,7 @@ pub enum TokenSigningError<E> {
     Serialization(#[from] serde_json::Error),
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rsa"))]
 mod test {
     use super::*;
     use crate::claims::Claims;

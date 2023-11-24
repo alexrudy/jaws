@@ -25,10 +25,10 @@ elliptic-curve = { version = "0.13.4", features = [
     "alloc",
     "std",
     "ecdh",
-] }
-digest = "0.10.6"
+], optional = true }
+digest = { version = "0.10.6" }
 pkcs8 = "0.10.2"
-rsa = { version = "0.8.2", features = ["sha2"] }
+rsa = { version = "0.8.2", features = ["sha2"], optional = true }
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.96"
 sha1 = "0.10.5"
@@ -37,12 +37,41 @@ signature = "2.1.0"
 thiserror = "1.0.40"
 url = { version = "2.3.1", features = ["serde"] }
 zeroize = { version = "1.6.0", features = ["std", "serde", "derive"] }
-p256 = { version = "0.13.1", features = ["ecdsa", "jwk", "std"] }
-ecdsa = { version = "0.16.6", features = ["signing", "std"] }
-p384 = "0.13.0"
-p521 = "0.13.0"
-hmac = "0.12.1"
+p256 = { version = "0.13.1", features = [
+    "ecdsa",
+    "jwk",
+    "std",
+], optional = true }
+ecdsa = { version = "0.16.6", features = [
+    "signing",
+    "std",
+    "der",
+], optional = true }
+p384 = { version = "0.13.0", optional = true }
+p521 = { version = "0.13.0", optional = true }
+hmac = { version = "0.12.1", features = ["reset"], optional = true }
 
 [features]
-default = ["fmt"]
+default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac"]
 fmt = []
+rsa = ["dep:rsa"]
+hmac = ["dep:hmac"]
+ecdsa = ["dep:ecdsa", "dep:elliptic-curve"]
+p256 = ["dep:p256", "ecdsa"]
+p384 = ["dep:p384", "ecdsa"]
+p521 = ["dep:p521", "ecdsa"]
+
+[[example]]
+name = "acme-new-account"
+path = "examples/acme-new-account.rs"
+required-features = ["fmt", "rsa"]
+
+[[example]]
+name = "rfc7515-a2"
+path = "examples/rfc7515a2.rs"
+required-features = ["fmt", "rsa"]
+
+[[example]]
+name = "save-key"
+path = "examples/save-key.rs"
+required-features = ["fmt", "rsa"]

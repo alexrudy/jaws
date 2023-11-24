@@ -43,6 +43,30 @@ used for authentication, including some "registered" claims (claims are not used
 The signature is produced by computing the ECDSA signature over the concatenation of the
 protected header and the payload, both base64url encoded, and separated with a period (`.`).
 
+## Strongly Typed JWTs
+
+JAWS provides a strongly typed interface for creating and validating JWTs. Tokens in JAWS
+must be in one of 4 states:
+
+1. [`Unsigned`][crate::token::Unsigned]: A token which has not been signed, and has no signature.
+2. [`Signed`][crate::token::Signed]: A token which has been signed. Signed tokens can't be modified,
+    as that could invalidate the signature.
+3. [`Verified`][crate::token::Verified]: A token which has been verified. Verified tokens can't be
+    modified, as that could invalidate the signature. Verified tokens can't know the
+    relationship between fields (i.e. the `jwk` header may represent some key not related
+    to the token at all).
+4. [`Unverified`][crate::token::Unverified]: A token which has been deserialized, and not verified.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unverified : from JSON
+    Unverified --> Verified : Verify
+    Unsigned --> Signed : Sign
+    Signed --> Unverified: Unverify
+    Signed --> [*] : to JSON
+
+```
+
 ## Example Usage
 
 To create a simple JWT, you'll need to provide an encryption key. This example uses the RSA
@@ -56,8 +80,7 @@ and can be run with `cargo run --example rfc7515a2`.
 // which is directly inspired by the way the ACME standard shows JWTs.
 use jaws::JWTFormat;
 
-// JAWS provides strongly typed support for tokens, so we can only build an UnsignedToken,
-// which we can sign to create a SignedToken or a plain Token.
+// JAWS provides a single token type which is generic over the state of the token.
 use jaws::Token;
 
 // JAWS provides type-safe support for JWT claims.

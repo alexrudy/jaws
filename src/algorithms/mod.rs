@@ -10,8 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::key;
 
+#[cfg(feature = "ecdsa")]
 pub mod ecdsa;
+
+#[cfg(feature = "hmac")]
 pub mod hmac;
+
+#[cfg(feature = "rsa")]
 pub mod rsa;
 
 /// The identifiers used in JWA to indicate how a JWS or JWE is signed or encrypted.

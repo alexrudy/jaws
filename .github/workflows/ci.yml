@@ -14,36 +14,50 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:
-          - x86_64-unknown-linux-gnu
+        toolchain:
+          - stable
+          - beta
+          - nightly
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Run cargo build
-        uses: actions-rs/cargo@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
-          command: build
-          args: --release
+          toolchain: ${{ matrix.toolchain }}
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2.0.0
+
+      - name: Run cargo build
+        run: cargo build --all-features --release
 
   test:
     name: Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""
+          - "--no-default-features --features rsa,ecdsa,p256,p384,p521"
+          - "--no-default-features --features fmt"
+          - "--no-default-features --features fmt,ecdsa,p256,p384,p521"
+          - "--no-default-features --features fmt,rsa"
+        toolchain:
+          - stable
     steps:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          toolchain: ${{ matrix.toolchain }}
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2.0.0
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: cargo test ${{ matrix.features }}
 
   lints:
     name: Lints
@@ -52,19 +66,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: stable
-          override: true
-          components: clippy
+          components: rustfmt,clippy
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2.0.0
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
         uses: actions-rs/clippy-check@v1
@@ -79,17 +90,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: stable
-          override: true
+          components: rust-docs
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2.0.0
 
       - name: cargo doc
         env:
           RUSTDOCFLAGS: "-Dwarnings"
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --no-deps
+        run: cargo doc --all-features --no-deps

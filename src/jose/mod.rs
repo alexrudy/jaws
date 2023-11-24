@@ -41,21 +41,29 @@ pub use self::unsigned::UnsignedHeader;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Certificate;
 
+/// The state of a JOSE header with respect to its signature.
 pub trait HeaderState {
+    /// The state-dependent parameters of the header.
     fn parameters(&self) -> BTreeMap<String, serde_json::Value>;
 }
 
+/// Error when constructing a JOSE header.
 #[derive(Debug, thiserror::Error)]
 pub enum HeaderError {
+    /// A reserved header key was used as a custom header.
     #[error("Key {0} is reserved for registered headers")]
     ReservedKey(&'static str),
 
+    /// An invalid header type was used.
     #[error("invalid header type: {0}")]
     InvalidType(String),
 
+    /// An invalid custom header was used. Custom headers must serialize to object or null
+    /// in JSON form, in order to be merged with the registered headers.
     #[error("invalid custom headers: {0} JSON serialized form must be an object or null")]
     InvalidCustomHeaders(&'static str),
 
+    /// An error occurred while serializing the header.
     #[error("unable to serialize header value: {0}")]
     Serde(#[from] serde_json::Error),
 }
@@ -474,6 +482,12 @@ impl<'h, H, State> HeaderAccessMut<'h, H, State> {
         Self { header }
     }
 
+    /// Custom header values. The type of this field is determined by the
+    /// type parameter H in the token, and can be used for any arbitrary
+    /// JSON values which should be included in the signature.
+    ///
+    /// Using a custom header value which conflicts with a registered header
+    /// value will result in an error when signing the token.
     pub fn custom(&mut self) -> &mut H {
         &mut self.header.custom
     }

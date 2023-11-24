@@ -331,6 +331,7 @@ impl<H, Fmt, P> Token<P, Unsigned<H>, Fmt>
 where
     Fmt: TokenFormat,
 {
+    /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
         match &self.payload {
             Payload::Json(data) => Some(data.as_ref()),
@@ -470,6 +471,7 @@ where
     Fmt: TokenFormat,
     Alg: SigningAlgorithm,
 {
+    /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
         match &self.payload {
             Payload::Json(data) => Some(data.as_ref()),
@@ -512,6 +514,7 @@ where
     Fmt: TokenFormat,
     Alg: VerifyAlgorithm,
 {
+    /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
         match &self.payload {
             Payload::Json(data) => Some(data.as_ref()),

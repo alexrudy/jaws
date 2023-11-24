@@ -94,6 +94,7 @@ pub trait Algorithm {
     /// This is the `alg` field in the JOSE header.
     const IDENTIFIER: AlgorithmIdentifier;
 
+    /// The type of the signature, which should be representable as bytes.
     type Signature: AsRef<[u8]>;
 }
 

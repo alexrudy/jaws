@@ -5,6 +5,7 @@ use serde::{ser, Deserialize, Serialize};
 use super::{HasSignature, MaybeSigned};
 use super::{Payload, Token};
 use crate::base64data::{Base64Data, Base64JSON};
+use crate::jose::HeaderState;
 
 /// A token format that serializes the token as a compact string.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -77,7 +78,7 @@ pub trait TokenFormat {
         Self: Sized,
         S: HasSignature,
         <S as MaybeSigned>::Header: Serialize,
-        <S as MaybeSigned>::HeaderState: Serialize;
+        <S as MaybeSigned>::HeaderState: HeaderState;
 }
 
 impl TokenFormat for Compact {
@@ -90,7 +91,7 @@ impl TokenFormat for Compact {
         Self: Sized,
         S: HasSignature,
         <S as MaybeSigned>::Header: Serialize,
-        <S as MaybeSigned>::HeaderState: Serialize,
+        <S as MaybeSigned>::HeaderState: HeaderState,
     {
         let header = Base64JSON(&token.state.header()).serialized_value()?;
         let payload = token.payload.serialized_value()?;
@@ -121,9 +122,9 @@ where
         Self: Sized,
         S: HasSignature,
         <S as MaybeSigned>::Header: Serialize,
-        <S as MaybeSigned>::HeaderState: Serialize,
+        <S as MaybeSigned>::HeaderState: HeaderState,
     {
-        let header = Base64JSON(&token.state.header()).serialized_value()?;
+        let header = Base64JSON(token.state.header()).serialized_value()?;
         let signature = Base64Data(token.state.signature()).serialized_value()?;
 
         let flat = FlatToken {
@@ -144,7 +145,7 @@ impl<P, S, U> Serialize for Token<P, S, FlatUnprotected<U>>
 where
     S: HasSignature,
     <S as MaybeSigned>::Header: Serialize,
-    <S as MaybeSigned>::HeaderState: Serialize,
+    <S as MaybeSigned>::HeaderState: HeaderState,
     U: Serialize,
     P: Serialize,
 {
@@ -187,9 +188,9 @@ impl TokenFormat for Flat {
         Self: Sized,
         S: HasSignature,
         <S as MaybeSigned>::Header: Serialize,
-        <S as MaybeSigned>::HeaderState: Serialize,
+        <S as MaybeSigned>::HeaderState: HeaderState,
     {
-        let header = Base64JSON(&token.state.header()).serialized_value()?;
+        let header = Base64JSON(token.state.header()).serialized_value()?;
         let signature = Base64Data(token.state.signature()).serialized_value()?;
 
         let flat = FlatSimpleToken {
@@ -209,7 +210,7 @@ impl<P, S> Serialize for Token<P, S, Flat>
 where
     S: HasSignature,
     <S as MaybeSigned>::Header: Serialize,
-    <S as MaybeSigned>::HeaderState: Serialize,
+    <S as MaybeSigned>::HeaderState: HeaderState,
     P: Serialize,
 {
     fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>

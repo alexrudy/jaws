@@ -11,67 +11,70 @@
 //!
 //! - ES256: ECDSA using P-256 and SHA-256
 //! - ES384: ECDSA using P-384 and SHA-384
-//!
-//! # Examples:
-//!
-//! Signing with an ECDSA key:
-//!
-//! ```rust
-//! use serde_json::json;
-//!
-//! use elliptic_curve::SecretKey;
-//! use elliptic_curve::FieldBytes;
-//! use base64ct::{Encoding, Base64UrlUnpadded};
-//!
-//! use jaws::{Claims, RegisteredClaims, Token};
-//! use jaws::JWTFormat;
-//!
-//! // Create a new ECDSA signing key for the P-256 curve
-//! // This is the key used in Appendix A.3 of RFC 7518
-//!
-//! let mut key_bytes = FieldBytes::<p256::NistP256>::default();
-//! base64ct::Base64UrlUnpadded::decode("jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI", &mut key_bytes).unwrap();
-//! let key: SecretKey<p256::NistP256> = SecretKey::from_slice(&key_bytes).unwrap();
-//!
-//! // Claims can combine registered and custom fields. The claims object
-//! // can be any type which implements [serde::Serialize]
-//! let claims: Claims<serde_json::Value, (), String, (), ()> = Claims {
-//!     registered: RegisteredClaims {
-//!         subject: "1234567890".to_string().into(),
-//!         ..Default::default()
-//!     },
-//!     claims: json!({
-//!         "name": "John Doe",
-//!         "admin": true,
-//!     }),
-//! };
-//!
-//! // Create a token with the default headers, and no custom headers.
-//! // The unit type can be used here because it implements [serde::Serialize],
-//! // but a custom type could be passed if we wanted to have custom header
-//! // fields.
-//! let mut token = Token::compact((), claims);
-//! *token.header_mut().r#type() = Some("JWT".to_string());
-//!
-//! // Sign the token with the ECDSA key, and print the result.
-//! let signed = token.sign(&key).unwrap();
-//! // Print out the compact form you would use as a token
-//! println!("{}", signed.rendered().unwrap());
-//!
-//! // Print out the formatted form useful for debugging
-//! println!("{}", signed.formatted());
-//!
-//! ```
+#![cfg_attr(
+    all(feature = "p256", feature = "fmt"),
+    doc = r#"
+# Examples:
+
+Signing with an ECDSA key:
+
+```rust
+use serde_json::json;
+
+use elliptic_curve::SecretKey;
+use elliptic_curve::FieldBytes;
+use base64ct::{Encoding, Base64UrlUnpadded};
+
+use jaws::{Claims, RegisteredClaims, Token};
+use jaws::JWTFormat;
+
+// Create a new ECDSA signing key for the P-256 curve
+// This is the key used in Appendix A.3 of RFC 7518
+
+let mut key_bytes = FieldBytes::<p256::NistP256>::default();
+base64ct::Base64UrlUnpadded::decode("jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI", &mut key_bytes).unwrap();
+let key: SecretKey<p256::NistP256> = SecretKey::from_slice(&key_bytes).unwrap();
+
+// Claims can combine registered and custom fields. The claims object
+// can be any type which implements [serde::Serialize]
+let claims: Claims<serde_json::Value, (), String, (), ()> = Claims {
+    registered: RegisteredClaims {
+        subject: "1234567890".to_string().into(),
+        ..Default::default()
+    },
+    claims: json!({
+        "name": "John Doe",
+        "admin": true,
+    }),
+};
+
+// Create a token with the default headers, and no custom headers.
+// The unit type can be used here because it implements [serde::Serialize],
+// but a custom type could be passed if we wanted to have custom header
+// fields.
+let mut token = Token::compact((), claims);
+*token.header_mut().r#type() = Some("JWT".to_string());
+
+// Sign the token with the ECDSA key, and print the result.
+let signed = token.sign(&key).unwrap();
+// Print out the compact form you would use as a token
+println!("{}", signed.rendered().unwrap());
+
+// Print out the formatted form useful for debugging
+println!("{}", signed.formatted());
+```
+"#
+)]
 
 use std::ops::Add;
 
-use base64ct::Encoding;
-use digest::generic_array::ArrayLength;
-use ecdsa::{
+use ::ecdsa::{
     der::{MaxOverhead, MaxSize},
     hazmat::SignPrimitive,
     PrimeCurve, SignatureSize,
 };
+use base64ct::Encoding;
+use digest::generic_array::ArrayLength;
 use elliptic_curve::{
     ops::Invert,
     sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint},
@@ -80,8 +83,15 @@ use elliptic_curve::{
 };
 
 pub use elliptic_curve::SecretKey;
+
+#[cfg(feature = "p256")]
 pub use p256::NistP256;
+
+#[cfg(feature = "p384")]
 pub use p384::NistP384;
+
+#[cfg(feature = "p521")]
+pub use p521::NistP521;
 
 impl<C> crate::key::JWKeyType for PublicKey<C>
 where
@@ -165,14 +175,22 @@ where
     const KEY_TYPE: &'static str = "EC";
 }
 
+#[cfg(feature = "p256")]
 impl super::Algorithm for SecretKey<NistP256> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES256;
     type Signature = ecdsa::SignatureBytes<NistP256>;
 }
 
+#[cfg(feature = "p384")]
 impl super::Algorithm for SecretKey<NistP384> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES384;
     type Signature = ecdsa::SignatureBytes<NistP384>;
+}
+
+#[cfg(feature = "p521")]
+impl super::Algorithm for SecretKey<NistP521> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES512;
+    type Signature = ecdsa::SignatureBytes<NistP521>;
 }
 
 impl<C> super::SigningAlgorithm for SecretKey<C>
@@ -205,7 +223,7 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "p256"))]
 mod test {
 
     use super::*;

@@ -1,4 +1,4 @@
-#![doc = include_str!("../README.md")]
+#![cfg_attr(all(feature = "rsa", feature = "fmt"), doc = include_str!("../README.md"))]
 #![deny(unsafe_code)]
 // #![deny(missing_docs)]
 

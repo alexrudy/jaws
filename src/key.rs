@@ -323,7 +323,7 @@ impl<Digest> std::ops::Deref for Thumbprint<Digest> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rsa"))]
 pub(crate) mod jwk_reader {
     use base64ct::Encoding;
 
@@ -370,32 +370,37 @@ pub(crate) mod jwk_reader {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use std::ops::Deref;
 
-    use serde_json::json;
+    #[cfg(all(test, feature = "rsa"))]
+    mod rsa {
+        use super::super::*;
+        use std::ops::Deref;
 
-    #[test]
-    fn rfc7639_example() {
-        let key = jwk_reader::rsa_pub(&json!({
-              "kty": "RSA",
-              "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
+        use serde_json::json;
+
+        #[cfg(feature = "rsa")]
+        #[test]
+        fn rfc7639_example() {
+            let key = jwk_reader::rsa_pub(&json!({
+                  "kty": "RSA",
+                  "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
                   VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6
                   4tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FD
                   W2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n9
                   1CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINH
                   aQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
-              "e": "AQAB",
-              "alg": "RS256",
-              "kid": "2011-04-29"
-             }
-        ));
+                  "e": "AQAB",
+                  "alg": "RS256",
+                  "kid": "2011-04-29"
+                 }
+            ));
 
-        let thumb = Thumbprinter::<sha2::Sha256, _>::new(key);
+            let thumb = Thumbprinter::<sha2::Sha256, _>::new(key);
 
-        assert_eq!(
-            thumb.thumbprint().deref(),
-            "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
-        );
+            assert_eq!(
+                thumb.thumbprint().deref(),
+                "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+            );
+        }
     }
 }

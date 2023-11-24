@@ -16,14 +16,18 @@ use serde::{
 #[cfg(feature = "fmt")]
 use super::fmt::{self, IndentWriter};
 
+/// Error type for decoding base64 data in wrappers.
 #[derive(Debug, thiserror::Error)]
 pub enum DecodeError {
+    /// The data being decoded is not base64
     #[error(transparent)]
     Base64(#[from] base64ct::Error),
 
+    /// The data being decoded is not valid JSON
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    /// The data being decoded is not valid for another reason.
     #[error("data is not valid: {0}")]
     InvalidData(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -141,10 +145,12 @@ where
 pub struct Base64JSON<T>(pub T);
 
 impl<T> Base64JSON<T> {
+    /// Create a new Base64JSON wrapper.
     pub fn new(value: T) -> Self {
         Base64JSON(value)
     }
 
+    /// Consume the wrapper and return the inner value.
     pub fn into_inner(self) -> T {
         self.0
     }

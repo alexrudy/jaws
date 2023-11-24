@@ -51,9 +51,12 @@ pub trait DeserializeJWK: JWKeyType {
         Self: Sized;
 }
 
+/// Trait for building values derived from a key.
 pub trait KeyDerivedBuilder<Key>: From<Key> {
+    /// Output value type.
     type Value;
 
+    /// Build a value from a key.
     fn build(self) -> Self::Value;
 }
 /// A JSON Web Key with the original key contained inside.
@@ -266,6 +269,7 @@ impl<Digest> PartialEq for Thumbprint<Digest> {
 impl<Digest> Eq for Thumbprint<Digest> {}
 
 impl<Digest> Thumbprint<Digest> {
+    /// Create a new thumbprint from a base64url-encoded digest.
     pub fn new(thumbprint: String) -> Self {
         Self {
             thumbprint,

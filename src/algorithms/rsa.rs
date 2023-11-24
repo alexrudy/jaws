@@ -50,6 +50,8 @@ impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
 
 /// Alogrithm wrapper for the Digital Signature with RSASSA-PKCS1-v1_5 algorithm.
 pub type RsaPkcs1v15<D> = rsa::pkcs1v15::SigningKey<D>;
+
+/// Alogrithm wrapper for the Digital Signature with RSASSA-PKCS1-v1_5 algorithm.
 pub type RsaPkcs1v15Verify<D> = rsa::pkcs1v15::VerifyingKey<D>;
 
 impl<D> super::SigningAlgorithm for RsaPkcs1v15<D>

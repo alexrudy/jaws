@@ -17,7 +17,6 @@
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use bytes::BytesMut;
-use rsa::pkcs1v15::SigningKey;
 use rsa::rand_core::OsRng;
 use rsa::signature::RandomizedSigner;
 use rsa::PublicKeyParts;
@@ -50,7 +49,8 @@ impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
 }
 
 /// Alogrithm wrapper for the Digital Signature with RSASSA-PKCS1-v1_5 algorithm.
-pub type RsaPkcs1v15<D> = SigningKey<D>;
+pub type RsaPkcs1v15<D> = rsa::pkcs1v15::SigningKey<D>;
+pub type RsaPkcs1v15Verify<D> = rsa::pkcs1v15::VerifyingKey<D>;
 
 impl<D> super::SigningAlgorithm for RsaPkcs1v15<D>
 where
@@ -70,10 +70,10 @@ where
     }
 }
 
-impl<D> super::VerifyAlgorithm for RsaPkcs1v15<D>
+impl<D> super::VerifyAlgorithm for RsaPkcs1v15Verify<D>
 where
     D: digest::Digest,
-    RsaPkcs1v15<D>: super::Algorithm<Signature = rsa::pkcs1v15::Signature> + Clone,
+    RsaPkcs1v15Verify<D>: super::Algorithm<Signature = rsa::pkcs1v15::Signature> + Clone,
 {
     type Error = signature::Error;
 
@@ -85,7 +85,7 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<Self::Signature, Self::Error> {
-        use rsa::signature::{Keypair, Verifier};
+        use rsa::signature::Verifier;
         let signature = rsa::pkcs1v15::Signature::try_from(signature).unwrap();
 
         let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
@@ -93,9 +93,7 @@ where
         message.extend_from_slice(b".");
         message.extend_from_slice(payload);
 
-        let verify = self.verifying_key();
-
-        verify.verify(message.as_ref(), &signature)?;
+        <Self as Verifier<rsa::pkcs1v15::Signature>>::verify(self, message.as_ref(), &signature)?;
         Ok(signature)
     }
 
@@ -115,6 +113,21 @@ impl super::Algorithm for RsaPkcs1v15<sha2::Sha384> {
 }
 
 impl super::Algorithm for RsaPkcs1v15<sha2::Sha512> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS512;
+    type Signature = rsa::pkcs1v15::Signature;
+}
+
+impl super::Algorithm for RsaPkcs1v15Verify<sha2::Sha256> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS256;
+    type Signature = rsa::pkcs1v15::Signature;
+}
+
+impl super::Algorithm for RsaPkcs1v15Verify<sha2::Sha384> {
+    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS384;
+    type Signature = rsa::pkcs1v15::Signature;
+}
+
+impl super::Algorithm for RsaPkcs1v15Verify<sha2::Sha512> {
     const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::RS512;
     type Signature = rsa::pkcs1v15::Signature;
 }

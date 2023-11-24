@@ -619,6 +619,8 @@ mod test_rsa {
     use serde_json::json;
     use sha2::Sha256;
 
+    use signature::Keypair;
+
     use crate::key::jwk_reader::rsa;
 
     fn strip_whitespace(s: &str) -> String {
@@ -724,6 +726,8 @@ mod test_rsa {
                 )
             )
         }
+
+        let algorithm = algorithm.verifying_key();
 
         signed.unverify().verify(&algorithm).unwrap();
     }

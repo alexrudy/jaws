@@ -94,7 +94,7 @@ pub enum TokenParseError {
     Base64(#[from] DecodeError),
 
     #[error(transparent)]
-    JSON(#[from] serde_json::Error),
+    Json(#[from] serde_json::Error),
 
     #[error("unexpected JSON value for {0}: {1}")]
     UnexpectedJSONValue(&'static str, serde_json::Value),
@@ -170,7 +170,7 @@ impl TokenFormat for Compact {
             let signature = parts.next().ok_or(TokenParseError::MissingSignature)?;
             let signature: Base64Data<SignatureBytes> =
                 Base64Data::parse(std::str::from_utf8(signature)?)?;
-            signature.into()
+            signature
         };
 
         Ok(Token {
@@ -372,7 +372,7 @@ where
             Base64Data::parse(signature.as_str().ok_or_else(|| {
                 TokenParseError::UnexpectedJSONValue("signature", signature.clone())
             })?)?;
-        signature.into()
+        signature
     };
 
     Ok(Token {

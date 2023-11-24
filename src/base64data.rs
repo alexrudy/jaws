@@ -160,7 +160,7 @@ where
     }
 
     pub(crate) fn serialized_bytes(&self) -> Result<Bytes, serde_json::Error> {
-        self.serialized_value().map(|value| Bytes::from(value))
+        self.serialized_value().map(Bytes::from)
     }
 }
 

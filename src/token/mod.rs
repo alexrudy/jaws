@@ -17,13 +17,15 @@ use serde::{
     de::{self, DeserializeOwned},
     ser, Deserialize, Serialize,
 };
+use signature::SignatureEncoding;
 
-use crate::algorithms::VerifyAlgorithm;
+use crate::algorithms::TokenVerifier;
 #[cfg(feature = "fmt")]
 use crate::fmt;
+use crate::key::SerializeJWK;
 use crate::{
-    algorithms::{AlgorithmIdentifier, SigningAlgorithm},
-    base64data::{Base64Data, Base64JSON, DecodeError},
+    algorithms::{AlgorithmIdentifier, TokenSigner},
+    base64data::{Base64JSON, Base64Signature, DecodeError},
     jose::{HeaderAccess, HeaderAccessMut, HeaderState},
     Header,
 };
@@ -352,20 +354,16 @@ where
     /// Once the signature is attached, the internal fields are no longer mutable (as that
     /// would invalidate the signature), but they are still recoverable.
     #[allow(clippy::type_complexity)]
-    pub fn sign<A>(
-        self,
-        algorithm: &A,
-    ) -> Result<Token<P, Signed<H, A>, Fmt>, TokenSigningError<A::Error>>
+    pub fn sign<A>(self, algorithm: &A) -> Result<Token<P, Signed<H, A>, Fmt>, TokenSigningError>
     where
-        A: crate::algorithms::SigningAlgorithm,
-        A::Key: Clone,
+        A: crate::algorithms::TokenSigner + SerializeJWK + Clone,
         // A::Signature: Serialize,
     {
-        let header = self.state.header.into_signed_header::<A>(algorithm.key());
+        let header = self.state.header.into_signed_header(algorithm);
         let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
-            .sign(&headers, &payload)
+            .try_sign_token(&headers, &payload)
             .map_err(TokenSigningError::Signing)?;
         Ok(Token {
             payload: self.payload,
@@ -391,10 +389,9 @@ where
     pub fn verify<A>(
         self,
         algorithm: &A,
-    ) -> Result<Token<P, Verified<H, A>, Fmt>, TokenVerifyingError<A::Error>>
+    ) -> Result<Token<P, Verified<H, A>, Fmt>, TokenVerifyingError>
     where
-        A: crate::algorithms::VerifyAlgorithm,
-        A::Key: Clone,
+        A: crate::algorithms::TokenVerifier + SerializeJWK,
         P: Serialize,
         H: Serialize,
     {
@@ -407,14 +404,14 @@ where
 
         let signature = &self.state.signature;
         let signature = algorithm
-            .verify(
+            .verify_token(
                 &self.state.header.state.raw,
                 &self.state.payload,
                 signature.as_ref(),
             )
             .map_err(TokenVerifyingError::Verify)?;
 
-        let header = self.state.header.into_signed_header::<A>(algorithm.key());
+        let header = self.state.header.into_signed_header::<A>(algorithm);
 
         Ok(Token {
             payload: self.payload,
@@ -440,8 +437,7 @@ where
 impl<P, H, Alg, Fmt> Token<P, Signed<H, Alg>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: SigningAlgorithm,
-    Alg::Key: Clone,
+    Alg: TokenSigner + SerializeJWK + Clone,
     H: Serialize,
     P: Serialize,
 {
@@ -459,7 +455,7 @@ where
             state: Unverified {
                 payload,
                 header: self.state.header.into_rendered_header(),
-                signature: Base64Data(self.state.signature.as_ref().to_owned().into()),
+                signature: Base64Signature(self.state.signature.to_bytes().as_ref().into()),
             },
             fmt: self.fmt,
         }
@@ -469,7 +465,7 @@ where
 impl<H, Fmt, P, Alg> Token<P, Signed<H, Alg>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: SigningAlgorithm,
+    Alg: TokenSigner + SerializeJWK,
 {
     /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
@@ -483,8 +479,7 @@ where
 impl<P, H, Alg, Fmt> Token<P, Verified<H, Alg>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: VerifyAlgorithm,
-    Alg::Key: Clone,
+    Alg: TokenVerifier + SerializeJWK + Clone,
     H: Serialize,
     P: Serialize,
 {
@@ -502,7 +497,7 @@ where
             state: Unverified {
                 payload,
                 header: self.state.header.into_rendered_header(),
-                signature: Base64Data(self.state.signature.as_ref().to_owned().into()),
+                signature: Base64Signature(self.state.signature.to_bytes().as_ref().into()),
             },
             fmt: self.fmt,
         }
@@ -512,7 +507,7 @@ where
 impl<H, Fmt, P, Alg> Token<P, Verified<H, Alg>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: VerifyAlgorithm,
+    Alg: TokenVerifier + SerializeJWK,
 {
     /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
@@ -535,7 +530,8 @@ where
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
         let header = serde_json::to_value(self.state.header()).unwrap();
         let payload = serde_json::to_value(&self.payload).unwrap();
-        let signature = serde_json::to_value(Base64Data(self.state.signature())).unwrap();
+        let signature =
+            serde_json::to_value(Base64Signature(self.state.signature().clone())).unwrap();
 
         let token = serde_json::json!({
             "header": header,
@@ -579,11 +575,11 @@ where
 
 /// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
-pub enum TokenVerifyingError<E> {
+pub enum TokenVerifyingError {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.
     #[error("verifying: {0}")]
-    Verify(E),
+    Verify(signature::Error),
 
     /// An error occured while re-serailizing the header or payload for
     /// signature verification. This indicates that something is probably
@@ -599,11 +595,11 @@ pub enum TokenVerifyingError<E> {
 
 /// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
-pub enum TokenSigningError<E> {
+pub enum TokenSigningError {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.
     #[error("signing: {0}")]
-    Signing(E),
+    Signing(signature::Error),
 
     /// An error occured while serailizing the header or payload for
     /// signature computation. This indicates that something is probably
@@ -687,8 +683,8 @@ mod test_rsa {
         claims.registered.issuer = Some("joe".into());
 
         let token = Token::new((), claims, Compact::new());
-        let algorithm: crate::algorithms::rsa::RsaPkcs1v15<Sha256> =
-            crate::algorithms::rsa::RsaPkcs1v15::new_with_prefix(pkey);
+        let algorithm: rsa::pkcs1v15::SigningKey<Sha256> =
+            rsa::pkcs1v15::SigningKey::new_with_prefix(pkey);
         let signed = token.sign(&algorithm).unwrap();
         {
             let hdr = base64ct::Base64UrlUnpadded::encode_string(
@@ -741,7 +737,8 @@ mod test_ecdsa {
     use super::*;
 
     use base64ct::Encoding;
-    use elliptic_curve::{FieldBytes, SecretKey};
+    use ecdsa::SigningKey;
+    use elliptic_curve::FieldBytes;
     use serde_json::json;
     use zeroize::Zeroize;
 
@@ -749,12 +746,12 @@ mod test_ecdsa {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
-    fn ecdsa(jwk: &serde_json::Value) -> SecretKey<p256::NistP256> {
+    fn ecdsa(jwk: &serde_json::Value) -> SigningKey<p256::NistP256> {
         let d_b64 = strip_whitespace(jwk["d"].as_str().unwrap());
         let mut d_bytes = FieldBytes::<p256::NistP256>::default();
         base64ct::Base64UrlUnpadded::decode(&d_b64, &mut d_bytes).unwrap();
 
-        let key = SecretKey::from_slice(&d_bytes).unwrap();
+        let key = SigningKey::from_slice(&d_bytes).unwrap();
         d_bytes.zeroize();
         key
     }
@@ -775,9 +772,9 @@ mod test_ecdsa {
 
         let signed = token.sign(&key).unwrap();
 
-        let verifying_key: ecdsa::VerifyingKey<_> = key.public_key().into();
+        let verifying_key = key.verifying_key();
 
-        let verified = signed.unverify().verify(&verifying_key).unwrap();
+        let verified = signed.unverify().verify(verifying_key).unwrap();
 
         assert_eq!(verified.payload(), Some(&"This is a signed message"));
     }

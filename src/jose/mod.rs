@@ -170,10 +170,9 @@ impl<H> Header<H, UnsignedHeader> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn into_signed_header<A>(self, key: &A::Key) -> Header<H, SignedHeader<A::Key>>
+    pub(crate) fn into_signed_header<A>(self, key: &A) -> Header<H, SignedHeader<A>>
     where
-        A: crate::algorithms::SigningAlgorithm,
-        A::Key: Clone,
+        A: crate::algorithms::TokenSigner + crate::key::SerializeJWK + Clone,
     {
         let state = SignedHeader {
             algorithm: A::IDENTIFIER,
@@ -245,9 +244,9 @@ impl<H> Header<H, RenderedHeader> {
     ///
     /// If the key algorithm does not match the header's algorithm.
     #[allow(unused_variables)]
-    pub(crate) fn into_signed_header<A>(self, key: &A::Key) -> Header<H, SignedHeader<A::Key>>
+    pub(crate) fn into_signed_header<A>(self, key: &A) -> Header<H, SignedHeader<A>>
     where
-        A: crate::algorithms::VerifyAlgorithm,
+        A: crate::algorithms::TokenVerifier + crate::key::SerializeJWK,
     {
         if *self.algorithm() != A::IDENTIFIER {
             panic!(

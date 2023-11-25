@@ -1,10 +1,12 @@
 use bytes::Bytes;
 use serde::Serialize;
+use signature::SignatureEncoding;
 
 use crate::{
-    algorithms::{SignatureBytes, SigningAlgorithm, VerifyAlgorithm},
-    base64data::Base64Data,
+    algorithms::{JoseAlgorithm, SignatureBytes, TokenSigner},
+    base64data::Base64Signature,
     jose,
+    key::SerializeJWK,
 };
 
 /// A trait used to represent the state of a token with respect to
@@ -44,7 +46,7 @@ pub trait MaybeSigned {
 pub trait HasSignature: MaybeSigned {
     /// The type of the signature, which should be representable
     /// as a byte slice.
-    type Signature: AsRef<[u8]>;
+    type Signature: SignatureEncoding;
 
     /// Get a reference to the signature.
     fn signature(&self) -> &Self::Signature;
@@ -85,18 +87,18 @@ impl<H> MaybeSigned for Unsigned<H> {
 /// This state is used when this program applied the signature, so we know that the
 /// signature is both consistent and valid.
 #[derive(Debug, Clone, Serialize)]
-#[serde(bound(serialize = "H: Serialize, Alg::Signature: Serialize, Alg::Key: Clone",))]
+#[serde(bound(serialize = "H: Serialize, Alg: Clone, Alg::Signature: Serialize",))]
 pub struct Signed<H, Alg>
 where
-    Alg: SigningAlgorithm,
+    Alg: JoseAlgorithm + SerializeJWK,
 {
-    pub(super) header: jose::Header<H, jose::SignedHeader<Alg::Key>>,
+    pub(super) header: jose::Header<H, jose::SignedHeader<Alg>>,
     pub(super) signature: Alg::Signature,
 }
 
 impl<H, Alg> HasSignature for Signed<H, Alg>
 where
-    Alg: SigningAlgorithm,
+    Alg: TokenSigner + SerializeJWK,
 {
     type Signature = Alg::Signature;
 
@@ -107,9 +109,9 @@ where
 
 impl<H, Alg> MaybeSigned for Signed<H, Alg>
 where
-    Alg: SigningAlgorithm,
+    Alg: TokenSigner + SerializeJWK,
 {
-    type HeaderState = jose::SignedHeader<Alg::Key>;
+    type HeaderState = jose::SignedHeader<Alg>;
     type Header = H;
 
     fn header(&self) -> &jose::Header<H, Self::HeaderState> {
@@ -136,20 +138,20 @@ where
 /// we did not create the token, and modifying it may result in headers which are not
 /// consistent with the signature.
 #[derive(Debug, Clone, Serialize)]
-#[serde(bound(serialize = "H: Serialize, Alg::Signature: Serialize, Alg::Key: Clone",))]
+#[serde(bound(serialize = "H: Serialize, Alg: Clone, Alg::Signature: Serialize",))]
 pub struct Verified<H, Alg>
 where
-    Alg: VerifyAlgorithm,
+    Alg: JoseAlgorithm + SerializeJWK,
 {
-    pub(super) header: jose::Header<H, jose::SignedHeader<Alg::Key>>,
+    pub(super) header: jose::Header<H, jose::SignedHeader<Alg>>,
     pub(super) signature: Alg::Signature,
 }
 
 impl<H, Alg> MaybeSigned for Verified<H, Alg>
 where
-    Alg: VerifyAlgorithm,
+    Alg: JoseAlgorithm + SerializeJWK,
 {
-    type HeaderState = jose::SignedHeader<Alg::Key>;
+    type HeaderState = jose::SignedHeader<Alg>;
     type Header = H;
 
     fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState> {
@@ -171,7 +173,7 @@ where
 
 impl<H, Alg> HasSignature for Verified<H, Alg>
 where
-    Alg: VerifyAlgorithm,
+    Alg: JoseAlgorithm + SerializeJWK,
 {
     type Signature = Alg::Signature;
 
@@ -188,7 +190,7 @@ where
 pub struct Unverified<H> {
     pub(super) payload: Bytes,
     pub(super) header: jose::Header<H, jose::RenderedHeader>,
-    pub(super) signature: Base64Data<SignatureBytes>,
+    pub(super) signature: Base64Signature<SignatureBytes>,
 }
 
 impl<H> MaybeSigned for Unverified<H> {

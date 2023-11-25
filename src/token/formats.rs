@@ -3,11 +3,12 @@ use std::fmt::Write;
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
 use serde::{ser, Deserialize, Serialize};
+use signature::SignatureEncoding;
 
 use super::{HasSignature, MaybeSigned, Unverified};
 use super::{Payload, Token};
 use crate::algorithms::SignatureBytes;
-use crate::base64data::{Base64Data, Base64JSON, DecodeError};
+use crate::base64data::{Base64JSON, Base64Signature, DecodeError};
 use crate::jose::{HeaderState, RenderedHeader};
 use crate::Header;
 
@@ -136,7 +137,10 @@ impl TokenFormat for Compact {
     {
         let header = Base64JSON(&token.state.header()).serialized_value()?;
         let payload = token.payload.serialized_value()?;
-        let signature = Base64Data(token.state.signature()).serialized_value()?;
+        let signature = Base64Signature(SignatureBytes::from(
+            token.state.signature().to_bytes().as_ref(),
+        ))
+        .serialized_value()?;
         write!(writer, "{}.{}.{}", header, payload, signature)?;
         Ok(())
     }
@@ -168,8 +172,8 @@ impl TokenFormat for Compact {
 
         let signature = {
             let signature = parts.next().ok_or(TokenParseError::MissingSignature)?;
-            let signature: Base64Data<SignatureBytes> =
-                Base64Data::parse(std::str::from_utf8(signature)?)?;
+            let signature: Base64Signature<SignatureBytes> =
+                Base64Signature::parse(std::str::from_utf8(signature)?)?;
             signature
         };
 
@@ -209,7 +213,10 @@ where
         <S as MaybeSigned>::HeaderState: HeaderState,
     {
         let header = Base64JSON(token.state.header()).serialized_value()?;
-        let signature = Base64Data(token.state.signature()).serialized_value()?;
+        let signature = Base64Signature(SignatureBytes::from(
+            token.state.signature().to_bytes().as_ref(),
+        ))
+        .serialized_value()?;
 
         let flat = FlatToken {
             payload: &token.payload,
@@ -268,9 +275,11 @@ where
         let header = Base64JSON(self.state.header())
             .serialized_value()
             .map_err(ser::Error::custom)?;
-        let signature = Base64Data(self.state.signature())
-            .serialized_value()
-            .map_err(ser::Error::custom)?;
+        let signature = Base64Signature(SignatureBytes::from(
+            self.state.signature().to_bytes().as_ref(),
+        ))
+        .serialized_value()
+        .map_err(ser::Error::custom)?;
 
         let flat = FlatToken {
             payload: &self.payload,
@@ -303,7 +312,10 @@ impl TokenFormat for Flat {
         <S as MaybeSigned>::HeaderState: HeaderState,
     {
         let header = Base64JSON(token.state.header()).serialized_value()?;
-        let signature = Base64Data(token.state.signature()).serialized_value()?;
+        let signature = Base64Signature(SignatureBytes::from(
+            token.state.signature().to_bytes().as_ref(),
+        ))
+        .serialized_value()?;
 
         let flat = FlatSimpleToken {
             payload: &token.payload,
@@ -368,8 +380,8 @@ where
         let signature = object
             .remove("signature")
             .ok_or(TokenParseError::MissingSignature)?;
-        let signature: Base64Data<SignatureBytes> =
-            Base64Data::parse(signature.as_str().ok_or_else(|| {
+        let signature: Base64Signature<SignatureBytes> =
+            Base64Signature::parse(signature.as_str().ok_or_else(|| {
                 TokenParseError::UnexpectedJSONValue("signature", signature.clone())
             })?)?;
         signature
@@ -400,9 +412,11 @@ where
         let header = Base64JSON(self.state.header())
             .serialized_value()
             .map_err(ser::Error::custom)?;
-        let signature = Base64Data(self.state.signature())
-            .serialized_value()
-            .map_err(ser::Error::custom)?;
+        let signature = Base64Signature(SignatureBytes::from(
+            self.state.signature().to_bytes().as_ref(),
+        ))
+        .serialized_value()
+        .map_err(ser::Error::custom)?;
 
         let flat = FlatSimpleToken {
             payload: &self.payload,

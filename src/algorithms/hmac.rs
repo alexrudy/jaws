@@ -1,15 +1,34 @@
 //! HMAC Signing algorithms for use with JWS
 //!
 //! Based on the [hmac](https://crates.io/crates/hmac) crate.
+//!
+//! ## Usage
+//!
+//! Unlike the other algorithms, HMAC algorithms use special types provided
+//! by the JOSE crate. HMAC is not really a "signature" algorithm in a strict sense,
+//! as it does not use a private key. Instead, it uses a symmetric key, which is
+//! shared between the signer and verifier.
+//!
+//! The [`HmacKey`] type is used to represent the key. This type is a wrapper around
+//! a byte vector, and can be created from any type which can be converted into a
+//! byte vector. The [`Hmac`] type is used to represent the algorithm, and is a wrapper
+//! which combines the key with the digest algorithm.
+//!
+//! The [`Hmac`] type implements [`TokenSigner`][crate::algorithms::TokenSigner] and [`TokenVerifier`][crate::algorithms::TokenVerifier], and can be used
+//! to sign and verify tokens. Signatures are represented by the [`DigestSignature`] type,
+//! which is a wrapper around the [`digest::Output`] type from the [`digest`](https://crates.io/crates/digest)
+//! crate, but which provides the appropriate signature encoding behavior.
 
-use std::{convert::Infallible, marker::PhantomData};
+use std::{marker::PhantomData, ops::Deref};
 
 use base64ct::Encoding;
-use bytes::BytesMut;
-use digest::Mac;
+use digest::{Digest, Mac};
 use hmac::SimpleHmac;
+use signature::SignatureEncoding;
 
 use crate::key::{JWKeyType, SerializeJWK};
+
+use super::JoseAlgorithm;
 
 /// A key used to seed an HMAC signature.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Default)]
@@ -58,38 +77,18 @@ impl AsRef<[u8]> for HmacKey {
     }
 }
 
-impl JWKeyType for HmacKey {
-    const KEY_TYPE: &'static str = "oct";
-}
-
-impl SerializeJWK for HmacKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        vec![(
-            "k".to_string(),
-            serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key)),
-        )]
-    }
-}
-
 /// The HMAC algorithm as used when signing a JWS.
 ///
 /// This type exists to associate the original key value with the digest.
 /// This is required for verification, and for the `jwk` field in the JWS header,
 /// if that field is enabled.
 #[derive(Debug, Clone)]
-pub struct Hmac<D>
-where
-    D: digest::Digest + digest::core_api::BlockSizeUser,
-{
+pub struct Hmac<D> {
     key: HmacKey,
     _digest: PhantomData<D>,
 }
 
-impl<D> Hmac<D>
-where
-    D: digest::Digest + digest::core_api::BlockSizeUser,
-    hmac::SimpleHmac<D>: Mac,
-{
+impl<D> Hmac<D> {
     /// Create a new HMAC digest wrapper with a given signing key.
     ///
     /// Signing keys are arbitrary bytes.
@@ -106,90 +105,118 @@ where
     }
 }
 
-impl super::Algorithm for Hmac<sha2::Sha256> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::HS256;
-    type Signature = digest::Output<SimpleHmac<sha2::Sha256>>;
+impl<D> JWKeyType for Hmac<D> {
+    const KEY_TYPE: &'static str = "oct";
 }
 
-impl super::Algorithm for Hmac<sha2::Sha384> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::HS384;
-    type Signature = digest::Output<SimpleHmac<sha2::Sha384>>;
+impl<D> SerializeJWK for Hmac<D> {
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        vec![(
+            "k".to_string(),
+            serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key.key)),
+        )]
+    }
 }
 
-impl super::Algorithm for Hmac<sha2::Sha512> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::HS512;
-    type Signature = digest::Output<SimpleHmac<sha2::Sha512>>;
-}
-
-impl<D> super::SigningAlgorithm for Hmac<D>
+/// A signature produced by an HMAC algorithm.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DigestSignature<D>(digest::Output<SimpleHmac<D>>)
 where
-    D: digest::Digest
-        + digest::Reset
-        + digest::core_api::BlockSizeUser
-        + digest::FixedOutput
-        + digest::core_api::CoreProxy
-        + Clone,
-    Hmac<D>: super::Algorithm<Signature = digest::Output<SimpleHmac<D>>>,
-{
-    type Error = Infallible;
-    type Key = HmacKey;
+    D: Digest + digest::core_api::BlockSizeUser;
 
-    fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
-        // Create a new, one-shot digest for this signature.
-        let mut digest: SimpleHmac<D> =
+impl<D> TryFrom<&[u8]> for DigestSignature<D>
+where
+    D: Digest + digest::core_api::BlockSizeUser,
+{
+    type Error = signature::Error;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(
+            digest::Output::<SimpleHmac<D>>::from_slice(value).clone(),
+        ))
+    }
+}
+
+impl<D> TryFrom<DigestSignature<D>> for Box<[u8]>
+where
+    D: Digest + digest::core_api::BlockSizeUser,
+{
+    type Error = signature::Error;
+
+    fn try_from(value: DigestSignature<D>) -> Result<Self, Self::Error> {
+        Ok(value.0.deref().into())
+    }
+}
+
+impl<D> SignatureEncoding for DigestSignature<D>
+where
+    D: Digest + digest::core_api::BlockSizeUser + Clone,
+{
+    type Repr = Box<[u8]>;
+}
+
+macro_rules! hmac_algorithm {
+    ($alg:ident, $digest:ty) => {
+        impl crate::algorithms::JoseAlgorithm for Hmac<$digest> {
+            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
+                crate::algorithms::AlgorithmIdentifier::$alg;
+            type Signature = DigestSignature<$digest>;
+        }
+    };
+}
+
+hmac_algorithm!(HS256, sha2::Sha256);
+hmac_algorithm!(HS384, sha2::Sha384);
+hmac_algorithm!(HS512, sha2::Sha512);
+
+impl<D> super::TokenSigner for Hmac<D>
+where
+    Hmac<D>: JoseAlgorithm<Signature = DigestSignature<D>>,
+    D: Digest + digest::core_api::BlockSizeUser,
+{
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+    ) -> Result<Self::Signature, signature::Error> {
+        let mut mac: SimpleHmac<D> =
             SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
-        let message = format!("{}.{}", header, payload);
-        digest.update(message.as_bytes());
-        Ok(digest.finalize().into_bytes())
-    }
-
-    fn key(&self) -> &Self::Key {
-        &self.key
+        mac.update(header.as_bytes());
+        mac.update(b".");
+        mac.update(payload.as_bytes());
+        Ok(DigestSignature(mac.finalize().into_bytes()))
     }
 }
 
-impl<D> super::VerifyAlgorithm for Hmac<D>
+impl<D> super::TokenVerifier for Hmac<D>
 where
-    D: digest::Digest
-        + digest::Reset
-        + digest::core_api::BlockSizeUser
-        + digest::FixedOutput
-        + digest::core_api::CoreProxy
-        + Clone,
-    Hmac<D>: super::Algorithm<Signature = digest::Output<SimpleHmac<D>>>,
+    Hmac<D>: JoseAlgorithm<Signature = DigestSignature<D>>,
+    D: Digest + digest::core_api::BlockSizeUser + Clone,
 {
-    type Error = digest::MacError;
-    type Key = HmacKey;
-
-    fn verify(
+    fn verify_token(
         &self,
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<Self::Signature, Self::Error> {
-        // Create a new, one-shot digest for this signature.
-        let mut digest: SimpleHmac<D> =
+    ) -> Result<Self::Signature, signature::Error> {
+        let mut mac: SimpleHmac<D> =
             SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
-        let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
-        message.extend_from_slice(header);
-        message.extend_from_slice(b".");
-        message.extend_from_slice(payload);
+        mac.update(header);
+        mac.update(b".");
+        mac.update(payload);
+        mac.clone()
+            .verify_slice(signature)
+            .map_err(signature::Error::from_source)?;
 
-        digest.update(message.as_ref());
-        digest.clone().verify(signature.into())?;
-        Ok(digest.finalize().into_bytes())
-    }
-
-    fn key(&self) -> &Self::Key {
-        &self.key
+        Ok(DigestSignature(mac.finalize().into_bytes()))
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::algorithms::SigningAlgorithm;
 
     use super::*;
+    use crate::algorithms::TokenSigner;
 
     use base64ct::Encoding;
     use serde_json::json;
@@ -226,9 +253,9 @@ mod test {
 
         let algorithm: Hmac<Sha256> = Hmac::new(key);
 
-        let signature = algorithm.sign(&header, &payload).unwrap();
+        let signature = algorithm.sign_token(&header, &payload);
 
-        let sig = base64ct::Base64UrlUnpadded::encode_string(signature.as_ref());
+        let sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 
         assert_eq!(
             sig,

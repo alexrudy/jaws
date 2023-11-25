@@ -4,11 +4,66 @@
 //!
 //! See the submodules for specific algorithm implementations for signing.
 //!
+//! # Algorithm Traits
+//!
+//! JOSE uses a few traits to define appropriate signing algorithms. [`JoseAlgorithm`] is the main trait,
+//! which defines the algorithm identifier and the type of the signature. [`JoseDigestAlgorithm`] is a
+//! subtrait which defines the digest algorithm used by the signature, for algorithms which use digest
+//! signing (e.g. RSA-PSS, RSA-PKCS1-v1_5, ECDSA), and where a specific digest is specified by the algorithm
+//! identifier.
+//!
+//! [`TokenSigner`] and [`TokenVerifier`] are traits which define the ability to sign and verify a JWT.
+//! They are implemented for any [`JoseDigestAlgorithm`] which is also a [`DigestSigner`][signature::DigestSigner] or [`DigestVerifier`][signature::DigestVerifier].
+//!
+//! # Supported Algorithms
+//!
+//! ## HMAC
+//!
+//! - HS256: HMAC using SHA-256
+//! - HS384: HMAC using SHA-384
+//! - HS512: HMAC using SHA-512
+//!
+//! ## RSA
+//!
+//! - RS256: RSASSA-PKCS1-v1_5 using SHA-256
+//! - RS384: RSASSA-PKCS1-v1_5 using SHA-384
+//! - RS512: RSASSA-PKCS1-v1_5 using SHA-512
+//! - PS256: RSASSA-PSS using SHA-256 and MGF1 with SHA-256
+//! - PS384: RSASSA-PSS using SHA-384 and MGF1 with SHA-384
+//!
+//! ## ECDSA
+//!
+//! - ES256: ECDSA using P-256 and SHA-256
+//! - ES384: ECDSA using P-384 and SHA-384
+//!
+//! # Unsupported algorithms
+//!
+//! This crate does not support signing or verification with the `none` algorithm,
+//! as it is generally a security vulnerability.
+//!
+//! Currently, there is no support for the following algorithms:
+//!
+//! - EdDSA: EdDSA using Ed25519 is not yet supported.
+//! - ES512: ECDSA using P-521 and SHA-512 is not yet supported.
+//!
+//! All of these algorithms could be supported by providing suitable implementations
+//! of the [`JoseAlgorithm`] trait and the [`TokenSigner`] and [`TokenVerifier`] traits.
+//!
 //! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
+use bytes::Bytes;
+use digest::Digest;
 use serde::{Deserialize, Serialize};
+use signature::SignatureEncoding;
 
-use crate::key;
+#[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
+pub use sha2::Sha256;
+
+#[cfg(any(feature = "p348", feature = "hmac", feature = "rsa"))]
+pub use sha2::Sha384;
+
+#[cfg(any(feature = "hmac", feature = "rsa"))]
+pub use sha2::Sha512;
 
 #[cfg(feature = "ecdsa")]
 pub mod ecdsa;
@@ -88,59 +143,104 @@ impl AlgorithmIdentifier {
 ///
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
 /// They are set in the [crate::jose::Header] automatically when signing the JWT.
-pub trait Algorithm {
+pub trait JoseAlgorithm {
     /// The identifier for this algorithm when used in a JWT registered header.
     ///
     /// This is the `alg` field in the JOSE header.
     const IDENTIFIER: AlgorithmIdentifier;
 
-    /// The type of the signature, which should be representable as bytes.
-    type Signature: AsRef<[u8]>;
+    /// The type of the signature, which must support encoding.
+    type Signature: SignatureEncoding;
+}
+
+/// A trait to associate an algorithm with a digest for signing.
+pub trait JoseDigestAlgorithm: JoseAlgorithm {
+    /// The digest algorithm used by this signature.
+    type Digest: Digest;
 }
 
 /// A trait to represent an algorithm which can sign a JWT.
 ///
 /// This trait should apply to signing keys.
-pub trait SigningAlgorithm: Algorithm {
-    /// Error type returned when signing fails.
-    type Error;
-
-    /// The inner key type (e.g. [::rsa::RsaPrivateKey]) used to complete the registered
-    /// header values.
-    type Key: key::SerializeJWK;
+pub trait TokenSigner: JoseAlgorithm {
+    /// Sign the contents of the JWT, when provided with the base64url-encoded header
+    /// and payload. This is the JWS Signature value, and will be base64url-encoded
+    /// and appended to the compact representation of the JWT.
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+    ) -> Result<Self::Signature, signature::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
     /// and appended to the compact representation of the JWT.
-    fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error>;
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the signature cannot be computed.
+    fn sign_token(&self, header: &str, payload: &str) -> Self::Signature {
+        self.try_sign_token(header, payload).unwrap()
+    }
+}
 
-    /// Return a reference to the key used to sign the JWT.
-    fn key(&self) -> &Self::Key;
+impl<K> TokenSigner for K
+where
+    K: JoseDigestAlgorithm,
+    K: signature::DigestSigner<K::Digest, K::Signature>,
+{
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+    ) -> Result<Self::Signature, signature::Error> {
+        let message = format!("{}.{}", header, payload);
+
+        let mut digest = <Self as JoseDigestAlgorithm>::Digest::new();
+        digest.update(message.as_bytes());
+
+        self.try_sign_digest(digest)
+    }
 }
 
 /// A trait to represent an algorithm which can verify a JWT.
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
 /// to verify a JWT signature, but not necessarily to sing it.
-pub trait VerifyAlgorithm: Algorithm {
-    /// Error type returned when verification fails.
-    type Error;
-
-    /// The inner key type (e.g. [::rsa::RsaPublicKey]) used to complete the registered
-    /// header values.
-    type Key: key::SerializeJWK;
-
+pub trait TokenVerifier: JoseAlgorithm {
     /// Verify the signature of the JWT, when provided with the base64url-encoded header
     /// and payload.
-    fn verify(
+    fn verify_token(
         &self,
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<Self::Signature, Self::Error>;
+    ) -> Result<Self::Signature, signature::Error>;
+}
 
-    /// Return a reference to the key used to verify the JWT.
-    fn key(&self) -> &Self::Key;
+impl<K> TokenVerifier for K
+where
+    K: JoseDigestAlgorithm,
+    K: signature::DigestVerifier<K::Digest, K::Signature>,
+{
+    fn verify_token(
+        &self,
+        header: &[u8],
+        payload: &[u8],
+        signature: &[u8],
+    ) -> Result<Self::Signature, signature::Error> {
+        let mut digest = <Self as JoseDigestAlgorithm>::Digest::new();
+        digest.update(header);
+        digest.update(b".");
+        digest.update(payload);
+
+        let signature = signature
+            .try_into()
+            .map_err(|_| signature::Error::default())?;
+
+        self.verify_digest(digest, &signature)?;
+        Ok(signature)
+    }
 }
 
 /// A signature which has not been matched to an algorithm or key.
@@ -148,20 +248,8 @@ pub trait VerifyAlgorithm: Algorithm {
 /// This is a basic signature `struct` which can be used to store any signature
 /// on the heap. It is used to store the signature of a JWT before it is verified,
 /// or if a signature has a variable length.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
-pub struct SignatureBytes(Vec<u8>);
-
-impl SignatureBytes {
-    /// Add to this signature from a byte slice.
-    pub fn extend_from_slice(&mut self, other: &[u8]) {
-        self.0.extend_from_slice(other);
-    }
-
-    /// Create a new signature with the given capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        SignatureBytes(Vec::with_capacity(capacity))
-    }
-}
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SignatureBytes(Bytes);
 
 impl AsRef<[u8]> for SignatureBytes {
     fn as_ref(&self) -> &[u8] {
@@ -171,12 +259,28 @@ impl AsRef<[u8]> for SignatureBytes {
 
 impl From<&[u8]> for SignatureBytes {
     fn from(bytes: &[u8]) -> Self {
-        SignatureBytes(bytes.to_vec())
+        SignatureBytes(bytes.to_owned().into())
+    }
+}
+
+impl From<Bytes> for SignatureBytes {
+    fn from(bytes: Bytes) -> Self {
+        SignatureBytes(bytes)
+    }
+}
+
+impl From<SignatureBytes> for Bytes {
+    fn from(bytes: SignatureBytes) -> Self {
+        bytes.0.clone()
     }
 }
 
 impl From<Vec<u8>> for SignatureBytes {
     fn from(bytes: Vec<u8>) -> Self {
-        SignatureBytes(bytes)
+        SignatureBytes(bytes.into())
     }
+}
+
+impl signature::SignatureEncoding for SignatureBytes {
+    type Repr = Bytes;
 }

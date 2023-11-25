@@ -4,12 +4,66 @@
 //!
 //! See the submodules for specific algorithm implementations for signing.
 //!
+//! # Algorithm Traits
+//!
+//! JOSE uses a few traits to define appropriate signing algorithms. [`JoseAlgorithm`] is the main trait,
+//! which defines the algorithm identifier and the type of the signature. [`JoseDigestAlgorithm`] is a
+//! subtrait which defines the digest algorithm used by the signature, for algorithms which use digest
+//! signing (e.g. RSA-PSS, RSA-PKCS1-v1_5, ECDSA), and where a specific digest is specified by the algorithm
+//! identifier.
+//!
+//! [`TokenSigner`] and [`TokenVerifier`] are traits which define the ability to sign and verify a JWT.
+//! They are implemented for any [`JoseDigestAlgorithm`] which is also a [`DigestSigner`][signature::DigestSigner] or [`DigestVerifier`][signature::DigestVerifier].
+//!
+//! # Supported Algorithms
+//!
+//! ## HMAC
+//!
+//! - HS256: HMAC using SHA-256
+//! - HS384: HMAC using SHA-384
+//! - HS512: HMAC using SHA-512
+//!
+//! ## RSA
+//!
+//! - RS256: RSASSA-PKCS1-v1_5 using SHA-256
+//! - RS384: RSASSA-PKCS1-v1_5 using SHA-384
+//! - RS512: RSASSA-PKCS1-v1_5 using SHA-512
+//! - PS256: RSASSA-PSS using SHA-256 and MGF1 with SHA-256
+//! - PS384: RSASSA-PSS using SHA-384 and MGF1 with SHA-384
+//!
+//! ## ECDSA
+//!
+//! - ES256: ECDSA using P-256 and SHA-256
+//! - ES384: ECDSA using P-384 and SHA-384
+//!
+//! # Unsupported algorithms
+//!
+//! This crate does not support signing or verification with the `none` algorithm,
+//! as it is generally a security vulnerability.
+//!
+//! Currently, there is no support for the following algorithms:
+//!
+//! - EdDSA: EdDSA using Ed25519 is not yet supported.
+//! - ES512: ECDSA using P-521 and SHA-512 is not yet supported.
+//!
+//! All of these algorithms could be supported by providing suitable implementations
+//! of the [`JoseAlgorithm`] trait and the [`TokenSigner`] and [`TokenVerifier`] traits.
+//!
 //! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
 use bytes::Bytes;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use signature::SignatureEncoding;
+
+#[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
+pub use sha2::Sha256;
+
+#[cfg(any(feature = "p348", feature = "hmac", feature = "rsa"))]
+pub use sha2::Sha384;
+
+#[cfg(any(feature = "hmac", feature = "rsa"))]
+pub use sha2::Sha512;
 
 #[cfg(feature = "ecdsa")]
 pub mod ecdsa;

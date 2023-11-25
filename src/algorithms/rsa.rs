@@ -2,8 +2,7 @@
 //!
 //! # PKCS#1 v1.5 (RS256, RS384, RS512)
 //! This algorithm is used to sign and verify JSON Web Tokens using the RSASSA-PKCS1-v1_5.
-//! A [rsa::pkcs1v15::SigningKey] signing key is used to provide the underlying signature
-//! algorithm.
+//! Use [rsa::pkcs1v15::SigningKey] to sign tokens, and [rsa::pkcs1v15::VerifyingKey] to verify tokens.
 //!
 //! A key of size 2048 bits or larger MUST be used with these algorithms.
 //!
@@ -14,9 +13,14 @@
 //!
 //! # PSS (PS256, PS384, PS512)
 //! This algorithm is used to sign and verify JSON Web Tokens using the RSASSA-PSS.
+//!
+//! Use [rsa::pss::BlindedSigningKey] to sign tokens, and [rsa::pss::VerifyingKey] to verify tokens.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rsa::PublicKeyParts;
+
+pub use rsa::pkcs1v15;
+pub use rsa::pss;
 
 impl crate::key::JWKeyType for rsa::RsaPublicKey {
     const KEY_TYPE: &'static str = "RSA";

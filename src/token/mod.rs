@@ -816,10 +816,10 @@ mod test_hmac {
 
         let token = Token::compact((), "This is an HMAC'd message");
 
-        // let signed = token.sign(&algorithm).unwrap();
+        let signed = token.sign(&algorithm).unwrap();
 
-        // let verified = signed.unverify().verify(&algorithm).unwrap();
+        let verified = signed.unverify().verify(&algorithm).unwrap();
 
-        // assert_eq!(verified.payload(), Some(&"This is an HMAC'd message"));
+        assert_eq!(verified.payload(), Some(&"This is an HMAC'd message"));
     }
 }

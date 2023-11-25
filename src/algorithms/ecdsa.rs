@@ -2,7 +2,7 @@
 //!
 //! This module provides implementations of the ECDSA signing algorithms for use with JSON Web Tokens.
 //!
-//! It uses [elliptic_curve::SecretKey] as the base type, and provides implementations of the ECDSA
+//! It uses [ecdsa::SigningKey] and [ecdsa::VerifyingKey] as the key types, and provides implementations of the ECDSA
 //! signing algorithms for the following curves:
 //! - P-256 (ES256)
 //! - P-384 (ES384)
@@ -66,7 +66,8 @@ println!("{}", signed.formatted());
 "#
 )]
 
-use ::ecdsa::{hazmat::SignPrimitive, PrimeCurve, SignatureSize, SigningKey, VerifyingKey};
+use ::ecdsa::{hazmat::SignPrimitive, PrimeCurve, SignatureSize};
+pub use ::ecdsa::{SigningKey, VerifyingKey};
 use base64ct::Encoding;
 use digest::generic_array::ArrayLength;
 use elliptic_curve::{
@@ -88,10 +89,6 @@ pub use p521::NistP521;
 impl<C> crate::key::JWKeyType for VerifyingKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
 {
     const KEY_TYPE: &'static str = "EC";
 }
@@ -99,8 +96,6 @@ where
 impl<C> crate::key::SerializeJWK for VerifyingKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -146,8 +141,6 @@ where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
 {
     const KEY_TYPE: &'static str = "EC";
 }

@@ -35,18 +35,20 @@ pub enum DecodeError {
 /// Wrapper type to indicate that the inner type should be serialized
 /// as bytes with a Base64 URL-safe encoding.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Base64Data<T>(pub T);
+pub struct Base64Signature<T>(pub T);
 
-impl<T> Base64Data<T>
+impl<T> Base64Signature<T>
 where
-    T: AsRef<[u8]>,
+    T: signature::SignatureEncoding,
 {
     pub(crate) fn serialized_value(&self) -> Result<String, serde_json::Error> {
-        Ok(base64ct::Base64UrlUnpadded::encode_string(self.0.as_ref()))
+        Ok(base64ct::Base64UrlUnpadded::encode_string(
+            self.0.to_bytes().as_ref(),
+        ))
     }
 }
 
-impl<T> Base64Data<T>
+impl<T> Base64Signature<T>
 where
     T: TryFrom<Vec<u8>>,
     T::Error: std::error::Error + Send + Sync + 'static,
@@ -54,19 +56,19 @@ where
     pub(crate) fn parse(value: &str) -> Result<Self, DecodeError> {
         let data = base64ct::Base64UrlUnpadded::decode_vec(value)?;
         let data = T::try_from(data).map_err(|err| DecodeError::InvalidData(err.into()))?;
-        Ok(Base64Data(data))
+        Ok(Base64Signature(data))
     }
 }
 
-impl<T> From<T> for Base64Data<T> {
+impl<T> From<T> for Base64Signature<T> {
     fn from(value: T) -> Self {
-        Base64Data(value)
+        Base64Signature(value)
     }
 }
 
-impl<T> ser::Serialize for Base64Data<T>
+impl<T> ser::Serialize for Base64Signature<T>
 where
-    T: AsRef<[u8]>,
+    T: signature::SignatureEncoding,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -79,7 +81,7 @@ where
     }
 }
 
-impl<T> AsRef<[u8]> for Base64Data<T>
+impl<T> AsRef<[u8]> for Base64Signature<T>
 where
     T: AsRef<[u8]>,
 {
@@ -94,7 +96,7 @@ impl<'de, T> de::Visitor<'de> for Base64Visitor<T>
 where
     T: for<'a> TryFrom<&'a [u8]>,
 {
-    type Value = Base64Data<T>;
+    type Value = Base64Signature<T>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("base64url encoded data")
@@ -109,11 +111,11 @@ where
 
         let realized = T::try_from(data.as_ref())
             .map_err(|_| E::invalid_value(de::Unexpected::Str(v), &"can't parse internal data"))?;
-        Ok(Base64Data(realized))
+        Ok(Base64Signature(realized))
     }
 }
 
-impl<'de, T> de::Deserialize<'de> for Base64Data<T>
+impl<'de, T> de::Deserialize<'de> for Base64Signature<T>
 where
     T: for<'a> TryFrom<&'a [u8]>,
 {
@@ -126,7 +128,7 @@ where
 }
 
 #[cfg(feature = "fmt")]
-impl<T> fmt::JWTFormat for Base64Data<T>
+impl<T> fmt::JWTFormat for Base64Signature<T>
 where
     T: AsRef<[u8]>,
 {
@@ -274,13 +276,15 @@ mod test {
     use serde_json::{json, Value};
 
     use super::*;
+    use crate::algorithms::SignatureBytes;
 
     #[test]
     fn test_base64_data() {
-        let data = Base64Data::from(vec![1, 2, 3, 4]);
+        let data = Base64Signature::from(SignatureBytes::from(vec![1, 2, 3, 4]));
         let serialized = serde_json::to_string(&data).unwrap();
         assert_eq!(serialized, r#""AQIDBA""#);
-        let deserialized: Base64Data<Vec<u8>> = serde_json::from_str(&serialized).unwrap();
+        let deserialized: Base64Signature<SignatureBytes> =
+            serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized, data);
     }
 

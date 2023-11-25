@@ -21,7 +21,7 @@ Signing with an ECDSA key:
 ```rust
 use serde_json::json;
 
-use elliptic_curve::SecretKey;
+use ecdsa::SigningKey;
 use elliptic_curve::FieldBytes;
 use base64ct::{Encoding, Base64UrlUnpadded};
 
@@ -33,7 +33,7 @@ use jaws::JWTFormat;
 
 let mut key_bytes = FieldBytes::<p256::NistP256>::default();
 base64ct::Base64UrlUnpadded::decode("jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI", &mut key_bytes).unwrap();
-let key: SecretKey<p256::NistP256> = SecretKey::from_slice(&key_bytes).unwrap();
+let key: SigningKey<p256::NistP256> = SigningKey::from_slice(&key_bytes).unwrap();
 
 // Claims can combine registered and custom fields. The claims object
 // can be any type which implements [serde::Serialize]
@@ -66,25 +66,15 @@ println!("{}", signed.formatted());
 "#
 )]
 
-use std::ops::Add;
-
-use ::ecdsa::{
-    der::{MaxOverhead, MaxSize},
-    hazmat::SignPrimitive,
-    PrimeCurve, SignatureSize,
-};
+use ::ecdsa::{hazmat::SignPrimitive, PrimeCurve, SignatureSize, SigningKey, VerifyingKey};
 use base64ct::Encoding;
-use bytes::BytesMut;
 use digest::generic_array::ArrayLength;
-use ecdsa::{hazmat::VerifyPrimitive, Signature, VerifyingKey};
 use elliptic_curve::{
     ops::Invert,
     sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint},
     subtle::CtOption,
-    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, PublicKey, Scalar,
+    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, Scalar,
 };
-
-pub use elliptic_curve::SecretKey;
 
 #[cfg(feature = "p256")]
 pub use p256::NistP256;
@@ -94,16 +84,19 @@ pub use p384::NistP384;
 
 #[cfg(feature = "p521")]
 pub use p521::NistP521;
-use signature::Verifier;
 
-impl<C> crate::key::JWKeyType for PublicKey<C>
+impl<C> crate::key::JWKeyType for VerifyingKey<C>
 where
-    C: elliptic_curve::Curve + elliptic_curve::CurveArithmetic,
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
 {
     const KEY_TYPE: &'static str = "EC";
 }
 
-impl<C> crate::key::SerializeJWK for PublicKey<C>
+impl<C> crate::key::SerializeJWK for VerifyingKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
@@ -135,44 +128,7 @@ where
     }
 }
 
-impl<C> crate::key::SerializeJWK for SecretKey<C>
-where
-    C: PrimeCurve + CurveArithmetic + JwkParameters,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
-{
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.public_key().parameters()
-    }
-}
-
-impl<C> crate::key::SerializeJWK for ecdsa::VerifyingKey<C>
-where
-    C: PrimeCurve + CurveArithmetic + JwkParameters,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
-{
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        PublicKey::<C>::from(self).parameters()
-    }
-}
-
-impl<C> crate::key::JWKeyType for ecdsa::VerifyingKey<C>
-where
-    C: PrimeCurve + CurveArithmetic + JwkParameters,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
-{
-    const KEY_TYPE: &'static str = "EC";
-}
-
-impl<C> crate::key::SerializeJWK for ecdsa::SigningKey<C>
+impl<C> crate::key::SerializeJWK for SigningKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
@@ -196,119 +152,41 @@ where
     const KEY_TYPE: &'static str = "EC";
 }
 
-impl<C> crate::key::JWKeyType for SecretKey<C>
-where
-    C: elliptic_curve::Curve,
-{
-    const KEY_TYPE: &'static str = "EC";
+macro_rules! jose_ecdsa_algorithm {
+    ($alg:ident, $curve:ty) => {
+        impl crate::algorithms::JoseAlgorithm for ecdsa::SigningKey<$curve> {
+            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
+                crate::algorithms::AlgorithmIdentifier::$alg;
+            type Signature = ecdsa::Signature<$curve>;
+        }
+
+        impl crate::algorithms::JoseDigestAlgorithm for ecdsa::SigningKey<$curve> {
+            type Digest = <$curve as ::ecdsa::hazmat::DigestPrimitive>::Digest;
+        }
+
+        impl crate::algorithms::JoseAlgorithm for ecdsa::VerifyingKey<$curve> {
+            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
+                crate::algorithms::AlgorithmIdentifier::$alg;
+            type Signature = ecdsa::Signature<$curve>;
+        }
+
+        impl crate::algorithms::JoseDigestAlgorithm for ecdsa::VerifyingKey<$curve> {
+            type Digest = <$curve as ::ecdsa::hazmat::DigestPrimitive>::Digest;
+        }
+    };
 }
 
 #[cfg(feature = "p256")]
-impl super::Algorithm for SecretKey<NistP256> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES256;
-    type Signature = ecdsa::SignatureBytes<NistP256>;
-}
+jose_ecdsa_algorithm!(ES256, NistP256);
 
 #[cfg(feature = "p384")]
-impl super::Algorithm for SecretKey<NistP384> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES384;
-    type Signature = ecdsa::SignatureBytes<NistP384>;
-}
-
-#[cfg(feature = "p521")]
-impl super::Algorithm for SecretKey<NistP521> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES512;
-    type Signature = ecdsa::SignatureBytes<NistP521>;
-}
-
-impl<C> super::SigningAlgorithm for SecretKey<C>
-where
-    C: PrimeCurve + CurveArithmetic + JwkParameters + ecdsa::hazmat::DigestPrimitive,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
-    MaxSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
-    SecretKey<C>: super::Algorithm<Signature = ecdsa::SignatureBytes<C>>,
-    <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
-{
-    type Error = ecdsa::Error;
-    type Key = SecretKey<C>;
-
-    fn sign(&self, header: &str, payload: &str) -> Result<Self::Signature, Self::Error> {
-        let message = format!("{}.{}", header, payload);
-        let signature =
-            <::ecdsa::SigningKey<C> as signature::Signer<::ecdsa::Signature<C>>>::try_sign(
-                &self.into(),
-                message.as_bytes(),
-            )
-            .map(|sig| sig.to_bytes())?;
-        Ok(signature)
-    }
-
-    fn key(&self) -> &Self::Key {
-        self
-    }
-}
-
-impl<C> super::VerifyAlgorithm for VerifyingKey<C>
-where
-    C: PrimeCurve + CurveArithmetic + JwkParameters + ecdsa::hazmat::DigestPrimitive,
-    <C as CurveArithmetic>::AffinePoint: VerifyPrimitive<C>,
-    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
-    SignatureSize<C>: ArrayLength<u8>,
-    MaxSize<C>: ArrayLength<u8>,
-    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
-    FieldBytesSize<C>: ModulusSize,
-    VerifyingKey<C>: super::Algorithm<Signature = ecdsa::SignatureBytes<C>>,
-    <FieldBytesSize<C> as Add>::Output: Add<MaxOverhead> + ArrayLength<u8>,
-{
-    type Error = ecdsa::Error;
-    type Key = VerifyingKey<C>;
-
-    fn verify(
-        &self,
-        header: &[u8],
-        payload: &[u8],
-        signature: &[u8],
-    ) -> Result<Self::Signature, Self::Error> {
-        let mut message = BytesMut::with_capacity(header.len() + payload.len() + 1);
-        message.extend_from_slice(header);
-        message.extend_from_slice(b".");
-        message.extend_from_slice(payload);
-
-        let signature = ecdsa::Signature::try_from(signature)?;
-        <Self as Verifier<Signature<C>>>::verify(self, message.as_ref(), &signature)?;
-        Ok(signature.into())
-    }
-
-    fn key(&self) -> &Self::Key {
-        self
-    }
-}
-
-#[cfg(feature = "p256")]
-impl super::Algorithm for VerifyingKey<NistP256> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES256;
-    type Signature = ecdsa::SignatureBytes<NistP256>;
-}
-
-#[cfg(feature = "p384")]
-impl super::Algorithm for VerifyingKey<NistP384> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES384;
-    type Signature = ecdsa::SignatureBytes<NistP384>;
-}
-
-#[cfg(feature = "p521")]
-impl super::Algorithm for VerifyingKey<NistP521> {
-    const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::ES512;
-    type Signature = ecdsa::SignatureBytes<NistP521>;
-}
+jose_ecdsa_algorithm!(ES384, NistP384);
 
 #[cfg(all(test, feature = "p256"))]
 mod test {
 
     use super::*;
+    use crate::algorithms::TokenSigner;
 
     use base64ct::Encoding;
     use elliptic_curve::FieldBytes;
@@ -319,12 +197,12 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
-    fn ecdsa(jwk: &serde_json::Value) -> SecretKey<p256::NistP256> {
+    fn ecdsa(jwk: &serde_json::Value) -> SigningKey<p256::NistP256> {
         let d_b64 = strip_whitespace(jwk["d"].as_str().unwrap());
         let mut d_bytes = FieldBytes::<p256::NistP256>::default();
         base64ct::Base64UrlUnpadded::decode(&d_b64, &mut d_bytes).unwrap();
 
-        let key = SecretKey::from_slice(&d_bytes).unwrap();
+        let key = SigningKey::from_slice(&d_bytes).unwrap();
         d_bytes.zeroize();
         key
     }
@@ -348,12 +226,8 @@ mod test {
 
         let header = strip_whitespace("eyJhbGciOiJFUzI1NiJ9");
 
-        let signature = <SecretKey<p256::NistP256> as super::super::SigningAlgorithm>::sign(
-            &key, &header, &payload,
-        )
-        .unwrap();
-
-        let _sig = base64ct::Base64UrlUnpadded::encode_string(signature.as_ref());
+        let signature = key.sign_token(&header, &payload);
+        let _sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 
         // This won't work because the signature is non-deterministic
         // assert_eq!(

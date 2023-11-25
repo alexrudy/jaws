@@ -10,7 +10,6 @@ use jaws::JWTFormat;
 // signing and verification status.
 use jaws::Token;
 
-use jaws::algorithms::rsa::RsaPkcs1v15Verify;
 // The unverified token state, used like `Token<.., Unverified<..>, ..>`.
 // It is generic over the type of the custom header parameters.
 use jaws::token::Unverified;
@@ -25,10 +24,6 @@ use rsa::pkcs8::DecodePrivateKey;
 // The signing algorithm we will use (`RS256`) relies on the SHA-256 hash
 // function, so we get it here from the `sha2` crate in the RustCrypto suite.
 use sha2::Sha256;
-
-// This is an alias for the RSA PKCS#1 v1.5 signing algorithm, which is
-// implemented in the rsa crate as `rsa::pkcs1v15::SigningKey`.
-use jaws::algorithms::rsa::RsaPkcs1v15;
 
 // Using serde_json allows us to quickly construct a serializable payload,
 // but applications may want to instead define a struct and use serde to
@@ -49,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // RsaPkcs1v15 is really an alias to the digital signature algorithm
     // implementation in the `rsa` crate, but provided in JAWS to make
     // it clear which types are compatible with JWTs.
-    let alg = RsaPkcs1v15::<Sha256>::new_with_prefix(key);
+    let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new_with_prefix(key);
 
     // Claims can combine registered and custom fields. The claims object
     // can be any type which implements [serde::Serialize].
@@ -118,7 +113,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(&key, alg.as_ref().deref());
 
-    let alg: RsaPkcs1v15Verify<Sha256> = RsaPkcs1v15Verify::new_with_prefix(key);
+    let alg: rsa::pkcs1v15::VerifyingKey<Sha256> =
+        rsa::pkcs1v15::VerifyingKey::new_with_prefix(key);
 
     // We can't access the claims until we verify the token.
     let verified = token.verify(&alg).unwrap();

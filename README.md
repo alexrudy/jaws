@@ -4,7 +4,6 @@
 [![Docs][docs-image]][docs-link]
 [![Build Status][build-image]][build-link]
 ![MIT licensed][license-image]
-![Rust Version][rustc-image]
 
 JSON Web Tokens are used to send signed, authenticated and/or encrypted data using
 a JavaScript Object Notation (JSON) object. This crate provides a strongly typed
@@ -15,7 +14,7 @@ ecosystem.
 
 This is an example [JWT][], taken from the ACME standard ([RFC 8555][RFC8555]):
 
-```json
+```
 {
   "protected": base64url({
     "alg": "ES256",
@@ -272,4 +271,3 @@ However, the `fmt` feature is not required for most functionality, and rather is
 [build-image]: https://github.com/alexrudy/jaws/actions/workflows/ci.yml/badge.svg
 [build-link]: https://github.com/alexrudy/jaws/actions/workflows/ci.yml
 [license-image]: https://img.shields.io/badge/license-MIT-blue.svg
-[rustc-image]: https://img.shields.io/badge/rustc-1.65+-blue.svg

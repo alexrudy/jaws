@@ -29,7 +29,7 @@ use crate::{
     jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
 
-mod formats;
+pub mod formats;
 mod state;
 
 use self::formats::TokenParseError;
@@ -170,6 +170,9 @@ where
 ///
 /// # Examples
 ///
+/// A few examples are shown below, but the most powerful examples are shown
+/// in the `examples` directory.
+///
 /// ## Creating a compact token
 /// ```
 /// use jaws::token::Token;
@@ -186,7 +189,6 @@ To view a debug representation of the token, use the [`fmt::JWTFormat`] trait:
 ```
 # use jaws::token::Token;
 # let token = Token::compact((), ());
-
 use jaws::fmt::JWTFormat;
 
 println!("{}", token.formatted());
@@ -194,11 +196,64 @@ println!("{}", token.formatted());
 "#
 )]
 ///
-///
 /// ## Transitioning a token between states
 ///
-/// See [`Token::sign`], [`Token::verify`], and [`Token::unverify`].
+/// Tokens start in either the [`Unsigned`] or [`Unverified`] state. [`Unsigned`] tokens
+/// are ones constructed locally, but before a signature has been applied. [`Unverified`]
+/// tokens are ones which have been parsed from a string, but which have not yet been
+/// checked.
 ///
+#[cfg_attr(
+    feature = "rsa",
+    doc = r#"
+To transition a token from the [`Unsigned`] state to the [`Signed`] state, use the
+[`Token::sign`] method:
+
+```rust
+# use jaws::token::Token;
+let key = rsa::pkcs1v15::SigningKey::random(&mut rand::thread_rng(), 2048).unwrap();
+let token = Token::compact((), ());
+
+// The only way to get a signed token is to sign an Unsigned token!
+let signed = token.sign(&key).unwrap();
+println!("Token: {}", signed.rendered());
+```
+
+Signed tokens can become unverified ones by discarding the memory of the key used to sign
+them. This is done with the [`Token::unverify`] method:
+
+```rust
+# use jaws::token::Token;
+# let key = rsa::pkcs1v15::SigningKey::random(&mut rand::thread_rng(), 2048).unwrap();
+# let token = Token::compact((), ());
+# let signed = token.sign(&key).unwrap();
+// We can unverify the token, which discard the memory of the key used to sign it.
+let unverified = signed.unverify();
+
+// Unverified tokens still have a signature, but it is no longer considered valid.
+println!("Token: {}", unverified.rendered());
+```
+
+Tokens can also be transitioned from the [`Unverified`] state to the [`Verified`] state
+by checking the signature. This is done with the [`Token::verify`] method:
+
+```rust
+# use jaws::token::Token;
+# use signature::Keypair;
+# let key = rsa::pkcs1v15::SigningKey::random(&mut rand::thread_rng(), 2048).unwrap();
+# let verifying_key = key.verifying_key()
+# let token = Token::compact((), ());
+# let signed = token.sign(&key).unwrap();
+# let unverified = signed.unverify();
+let verified = unverified.verify(&verifying_key).unwrap();
+println!("Token: {}", verified.rendered());
+```
+
+Verification can fail if the signature is invalid, or if the algorithm does not match the
+one specified in the header. Since keys are strongly typed, it is not possible to make a
+signature substitution attack using a different key type.
+"#
+)]
 #[derive(Debug, Clone)]
 pub struct Token<P, State: MaybeSigned = Unsigned<()>, Fmt: TokenFormat = Compact> {
     payload: Payload<P>,
@@ -296,6 +351,18 @@ where
     S: MaybeSigned,
     Fmt: TokenFormat,
 {
+    /// Convert this token to a new format
+    pub fn into_format<NewFmt>(self) -> Token<P, S, NewFmt>
+    where
+        NewFmt: TokenFormat + From<Fmt>,
+    {
+        Token {
+            payload: self.payload,
+            state: self.state,
+            fmt: NewFmt::from(self.fmt),
+        }
+    }
+
     /// Get the payload and header of the token, serialized in the compact format,
     /// suitable as input into a signature algorithm.
     pub fn message(&self) -> Result<String, serde_json::Error>

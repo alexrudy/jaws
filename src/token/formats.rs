@@ -1,3 +1,7 @@
+//! JWT token formats.
+//!
+//! This module defines the token formats supported by this crate.
+
 use std::fmt::Write;
 
 use bytes::Bytes;
@@ -87,15 +91,19 @@ pub enum TokenParseError {
     #[error("missing signature")]
     MissingSignature,
 
+    /// An error occured while decoding the data as UTF-8.
     #[error(transparent)]
     Utf8(#[from] std::str::Utf8Error),
 
+    /// An error occured while decoding the base64 data.
     #[error(transparent)]
     Base64(#[from] DecodeError),
 
+    /// An error occured while deserializing the header.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    /// An error occured while deserializing the header.
     #[error("unexpected JSON value for {0}: {1}")]
     UnexpectedJSONValue(&'static str, serde_json::Value),
 }
@@ -424,5 +432,41 @@ where
         };
 
         flat.serialize(serializer)
+    }
+}
+
+impl From<Compact> for Flat {
+    fn from(_: Compact) -> Self {
+        Flat
+    }
+}
+
+impl From<Compact> for FlatUnprotected<()> {
+    fn from(_: Compact) -> Self {
+        FlatUnprotected { unprotected: () }
+    }
+}
+
+impl<U> From<FlatUnprotected<U>> for Flat {
+    fn from(_: FlatUnprotected<U>) -> Self {
+        Flat
+    }
+}
+
+impl<U> From<FlatUnprotected<U>> for Compact {
+    fn from(_: FlatUnprotected<U>) -> Self {
+        Compact
+    }
+}
+
+impl From<Flat> for Compact {
+    fn from(_: Flat) -> Self {
+        Compact
+    }
+}
+
+impl From<Flat> for FlatUnprotected<()> {
+    fn from(_: Flat) -> Self {
+        FlatUnprotected { unprotected: () }
     }
 }

@@ -47,7 +47,7 @@ fn main() {
     // RsaPkcs1v15 is really an alias to the digital signature algorithm
     // implementation in the `rsa` crate, but provided in JAWS to make
     // it clear which types are compatible with JWTs.
-    let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new_with_prefix(key);
+    let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
 
     let payload = json!({
       "termsOfServiceAgreed": true,

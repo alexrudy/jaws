@@ -1,5 +1,4 @@
 use jaws::Compact;
-use std::ops::Deref;
 
 // JAWS provides JWT format for printing JWTs in a style similar to the example above,
 // which is directly inspired by the way the ACME standard shows JWTs.
@@ -30,6 +29,9 @@ use sha2::Sha256;
 // derive serialize and deserialize for added type safety.
 use serde_json::json;
 
+// Trait to convert a SigningKey into a VerifyingKey.
+use signature::Keypair;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
     // The key here is stored as a PKCS#8 PEM file, but you can leverage
@@ -44,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // RsaPkcs1v15 is really an alias to the digital signature algorithm
     // implementation in the `rsa` crate, but provided in JAWS to make
     // it clear which types are compatible with JWTs.
-    let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new_with_prefix(key);
+    let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
 
     // Claims can combine registered and custom fields. The claims object
     // can be any type which implements [serde::Serialize].
@@ -111,10 +113,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jwk = hdr.key().unwrap();
     let key = rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap());
 
-    assert_eq!(&key, alg.as_ref().deref());
+    assert_eq!(&key, alg.verifying_key().as_ref());
 
-    let alg: rsa::pkcs1v15::VerifyingKey<Sha256> =
-        rsa::pkcs1v15::VerifyingKey::new_with_prefix(key);
+    let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(key);
 
     // We can't access the claims until we verify the token.
     let verified = token.verify(&alg).unwrap();

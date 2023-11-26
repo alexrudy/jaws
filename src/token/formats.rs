@@ -9,8 +9,7 @@ use super::{HasSignature, MaybeSigned, Unverified};
 use super::{Payload, Token};
 use crate::algorithms::SignatureBytes;
 use crate::base64data::{Base64JSON, Base64Signature, DecodeError};
-use crate::jose::{HeaderState, RenderedHeader};
-use crate::Header;
+use crate::jose::{Header, HeaderState, RenderedHeader};
 
 /// A token format that serializes the token as a compact string.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

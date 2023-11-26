@@ -17,7 +17,7 @@
 //! Use [rsa::pss::BlindedSigningKey] to sign tokens, and [rsa::pss::VerifyingKey] to verify tokens.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
-use rsa::PublicKeyParts;
+use rsa::traits::PublicKeyParts;
 
 pub use rsa::pkcs1v15;
 pub use rsa::pss;
@@ -148,12 +148,13 @@ jose_rsa_pss_algorithm!(PS512, sha2::Sha512);
 #[cfg(test)]
 mod test {
 
-    use crate::algorithms::TokenSigner;
+    use crate::algorithms::TokenSigner as _;
     use crate::key::jwk_reader::rsa;
 
-    use base64ct::Encoding;
+    use base64ct::Encoding as _;
     use serde_json::json;
     use sha2::Sha256;
+    use signature::SignatureEncoding as _;
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -200,12 +201,11 @@ mod test {
 
         let header = strip_whitespace("eyJhbGciOiJSUzI1NiJ9");
 
-        let algorithm: rsa::pkcs1v15::SigningKey<Sha256> =
-            rsa::pkcs1v15::SigningKey::new_with_prefix(pkey);
+        let algorithm: rsa::pkcs1v15::SigningKey<Sha256> = rsa::pkcs1v15::SigningKey::new(pkey);
 
         let signature = algorithm.sign_token(&header, &payload);
 
-        let sig = base64ct::Base64UrlUnpadded::encode_string(signature.as_ref());
+        let sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 
         assert_eq!(
             sig,

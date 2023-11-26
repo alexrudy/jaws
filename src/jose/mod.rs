@@ -135,6 +135,18 @@ pub struct Header<H, State> {
     pub custom: H,
 }
 
+impl<H, State> Header<H, State> {
+    /// Access fields on the header
+    pub fn access(&self) -> HeaderAccess<'_, H, State> {
+        HeaderAccess::new(self)
+    }
+
+    /// Access fields on the header in a mutable fashion
+    pub fn access_mut(&mut self) -> HeaderAccessMut<'_, H, State> {
+        HeaderAccessMut::new(self)
+    }
+}
+
 impl<H, State> Serialize for Header<H, State>
 where
     State: HeaderState,

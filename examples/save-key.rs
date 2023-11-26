@@ -5,6 +5,7 @@ use serde_json::json;
 
 mod reader {
     use base64ct::Encoding;
+    use rsa::traits::PrivateKeyParts;
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -85,7 +86,10 @@ fn main() {
     .write_all(pemdata.as_bytes())
     .unwrap();
 
-    let pemdata = pkey.to_pkcs1_pem(Default::default()).unwrap();
+    let pemdata = pkey
+        .to_public_key()
+        .to_pkcs1_pem(Default::default())
+        .unwrap();
 
     std::io::BufWriter::new(
         std::fs::File::create(concat!(

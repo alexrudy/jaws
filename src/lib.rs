@@ -31,6 +31,5 @@ pub mod token;
 pub use claims::{Claims, RegisteredClaims};
 #[cfg(feature = "fmt")]
 pub use fmt::JWTFormat;
-pub use jose::Header;
 pub use token::Token;
 pub use token::{Compact, Flat, FlatUnprotected};

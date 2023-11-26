@@ -153,6 +153,32 @@ pub trait JoseAlgorithm {
     type Signature: SignatureEncoding;
 }
 
+/// A trait to associate an alogritm identifier with an algorithm.
+///
+/// This is a dynamic version of [`JoseAlgorithm`], which allows for
+/// dynamic dispatch of the algorithm, and object-safety for the trait.
+///
+/// This trait does not need to be implemented manually, as it is implemented
+/// for any type which implements [`JoseAlgorithm`].
+pub trait DynJoseAlgorithm {
+    /// The type of the signature, which must support encoding.
+    type Signature: SignatureEncoding;
+
+    /// The identifier for this algorithm when used in a JWT registered header.
+    fn identifier(&self) -> AlgorithmIdentifier;
+}
+
+impl<T> DynJoseAlgorithm for T
+where
+    T: JoseAlgorithm,
+{
+    type Signature = T::Signature;
+
+    fn identifier(&self) -> AlgorithmIdentifier {
+        T::IDENTIFIER
+    }
+}
+
 /// A trait to associate an algorithm with a digest for signing.
 pub trait JoseDigestAlgorithm: JoseAlgorithm {
     /// The digest algorithm used by this signature.
@@ -162,7 +188,7 @@ pub trait JoseDigestAlgorithm: JoseAlgorithm {
 /// A trait to represent an algorithm which can sign a JWT.
 ///
 /// This trait should apply to signing keys.
-pub trait TokenSigner: JoseAlgorithm {
+pub trait TokenSigner: DynJoseAlgorithm {
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
     /// and appended to the compact representation of the JWT.
@@ -207,7 +233,7 @@ where
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
 /// to verify a JWT signature, but not necessarily to sing it.
-pub trait TokenVerifier: JoseAlgorithm {
+pub trait TokenVerifier: DynJoseAlgorithm {
     /// Verify the signature of the JWT, when provided with the base64url-encoded header
     /// and payload.
     fn verify_token(

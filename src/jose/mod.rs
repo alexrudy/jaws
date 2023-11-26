@@ -187,7 +187,7 @@ impl<H> Header<H, UnsignedHeader> {
         A: crate::algorithms::TokenSigner + crate::key::SerializeJWK + Clone,
     {
         let state = SignedHeader {
-            algorithm: A::IDENTIFIER,
+            algorithm: key.identifier(),
             key: DerivedKeyValue::derive(self.state.key, key),
             thumbprint: DerivedKeyValue::derive(self.state.thumbprint, key),
             thumbprint_sha256: DerivedKeyValue::derive(self.state.thumbprint_sha256, key),
@@ -260,10 +260,10 @@ impl<H> Header<H, RenderedHeader> {
     where
         A: crate::algorithms::TokenVerifier + crate::key::SerializeJWK,
     {
-        if *self.algorithm() != A::IDENTIFIER {
+        if *self.algorithm() != key.identifier() {
             panic!(
                 "algorithm mismatch: expected header to have {:?}, got {:?}",
-                A::IDENTIFIER,
+                key.identifier(),
                 self.algorithm()
             );
         }

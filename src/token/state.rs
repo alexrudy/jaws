@@ -3,7 +3,7 @@ use serde::Serialize;
 use signature::SignatureEncoding;
 
 use crate::{
-    algorithms::{JoseAlgorithm, SignatureBytes, TokenSigner},
+    algorithms::{DynJoseAlgorithm, SignatureBytes, TokenSigner},
     base64data::Base64Signature,
     jose,
     key::SerializeJWK,
@@ -92,7 +92,7 @@ impl<H> MaybeSigned for Unsigned<H> {
 #[serde(bound(serialize = "H: Serialize, Alg: Clone, Alg::Signature: Serialize",))]
 pub struct Signed<H, Alg>
 where
-    Alg: JoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + SerializeJWK,
 {
     pub(super) header: jose::Header<H, jose::SignedHeader<Alg>>,
     pub(super) signature: Alg::Signature,
@@ -143,7 +143,7 @@ where
 #[serde(bound(serialize = "H: Serialize, Alg: Clone, Alg::Signature: Serialize",))]
 pub struct Verified<H, Alg>
 where
-    Alg: JoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + SerializeJWK,
 {
     pub(super) header: jose::Header<H, jose::SignedHeader<Alg>>,
     pub(super) signature: Alg::Signature,
@@ -151,7 +151,7 @@ where
 
 impl<H, Alg> MaybeSigned for Verified<H, Alg>
 where
-    Alg: JoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + SerializeJWK,
 {
     type HeaderState = jose::SignedHeader<Alg>;
     type Header = H;
@@ -175,7 +175,7 @@ where
 
 impl<H, Alg> HasSignature for Verified<H, Alg>
 where
-    Alg: JoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + SerializeJWK,
 {
     type Signature = Alg::Signature;
 

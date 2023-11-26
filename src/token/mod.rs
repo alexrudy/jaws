@@ -467,9 +467,9 @@ where
         P: Serialize,
         H: Serialize,
     {
-        if A::IDENTIFIER != *self.state.header.algorithm() {
+        if algorithm.identifier() != *self.state.header.algorithm() {
             return Err(TokenVerifyingError::Algorithm(
-                A::IDENTIFIER,
+                algorithm.identifier(),
                 *self.state.header.algorithm(),
             ));
         }

@@ -211,27 +211,32 @@ To transition a token from the [`Unsigned`] state to the [`Signed`] state, use t
 
 ```rust
 # use jaws::token::Token;
-let key = rsa::pkcs1v15::SigningKey::random(&mut rand::thread_rng(), 2048).unwrap();
+# use signature::rand_core as rand;
+let key = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 let token = Token::compact((), ());
 
 // The only way to get a signed token is to sign an Unsigned token!
-let signed = token.sign(&key).unwrap();
-println!("Token: {}", signed.rendered());
+let signed = token.sign::<rsa::pkcs1v15::SigningKey<sha2::Sha256>>(&key).unwrap();
+println!("Token: {}", signed.rendered().unwrap());
 ```
+Signing often requires specifying the algorithm to use. In the example above, we use
+`RS256`, which is the RSA-PKCS1-v1-5 signature algorithm with SHA-256. The algorithm is
+specified by constraining the type of `key` when calling [`Token::sign`].
 
 Signed tokens can become unverified ones by discarding the memory of the key used to sign
 them. This is done with the [`Token::unverify`] method:
 
 ```rust
 # use jaws::token::Token;
-# let key = rsa::pkcs1v15::SigningKey::random(&mut rand::thread_rng(), 2048).unwrap();
+# use signature::rand_core as rand;
+# let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 # let token = Token::compact((), ());
 # let signed = token.sign(&key).unwrap();
 // We can unverify the token, which discard the memory of the key used to sign it.
 let unverified = signed.unverify();
 
 // Unverified tokens still have a signature, but it is no longer considered valid.
-println!("Token: {}", unverified.rendered());
+println!("Token: {}", unverified.rendered().unwrap());
 ```
 
 Tokens can also be transitioned from the [`Unverified`] state to the [`Verified`] state
@@ -240,13 +245,14 @@ by checking the signature. This is done with the [`Token::verify`] method:
 ```rust
 # use jaws::token::Token;
 # use signature::Keypair;
-# let key = rsa::pkcs1v15::SigningKey::random(&mut rand::thread_rng(), 2048).unwrap();
-# let verifying_key = key.verifying_key()
+# use signature::rand_core as rand;
+# let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
+# let verifying_key = key.verifying_key();
 # let token = Token::compact((), ());
 # let signed = token.sign(&key).unwrap();
 # let unverified = signed.unverify();
 let verified = unverified.verify(&verifying_key).unwrap();
-println!("Token: {}", verified.rendered());
+println!("Token: {}", verified.rendered().unwrap());
 ```
 
 Verification can fail if the signature is invalid, or if the algorithm does not match the

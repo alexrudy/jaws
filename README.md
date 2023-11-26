@@ -1,5 +1,11 @@
 # JAWS: JSON Web tokens
 
+[![crate][crate-image]][crate-link]
+[![Docs][docs-image]][docs-link]
+[![Build Status][build-image]][build-link]
+![MIT licensed][license-image]
+![Rust Version][rustc-image]
+
 JSON Web Tokens are used to send signed, authenticated and/or encrypted data using
 a JavaScript Object Notation (JSON) object. This crate provides a strongly typed
 interface for creating and validating [JWTs][JWT], built on top of the [RustCrypto][]
@@ -241,7 +247,7 @@ There are quite a few JWT crates in the Rust ecosystem, but I wanted to create o
 for a few reasons:
 
 1. I wanted to try to build a JWT crate which is strongly typed and models as much of the JWT ecosystm in the rust type system as possible. This means that sometimes types proliferate (see the [`jose`] module), but it also means that illegal states are difficult, if not hopefully impossible, to represent in this crate.
-2. I wanted to ensure I had strongly typed support for registered headers and registered claims, and to do so in a fashion which correctly handles interdependent fields, especially the `alg` header value, which depends on the encryption key used. Most other JWT crates provide an error at runtime for setting the `alg` header to an incompatible value, but this crate will not compile if you try to do so.
+2. I wanted to ensure I had strongly typed support for registered headers and registered claims, and to do so in a fashion which correctly handles interdependent fields, especially the `alg` header value, which depends on the encryption key used. Most other JWT crates provide an error at runtime for setting the `alg` header to an incompatible value, but this crate simply does not make that possible. Additional header values (e.g. `x5t`, `jwk`) can be derived from the signing key, so that they are always correct for the key in use.
 3. I wanted broad support for the [RustCrypto][] ecosystem, and where possible, I've tried to implement JWTs on top of native [RustCrypto][] traits. For example, the `RS256` signing algorithm is represented by the [`rsa::pkcs1v15::SigningKey<sha2::SHA256>`][rsa::pkcs1v15::SigningKey] type, with no additional wrappers.
 4. I also wanted to provide a strong high level interface which makes examples easy to use and easy to follow. I hope that despite the copious comments in my example above, it is clear that JAWS APIs are pretty easy to use.
 
@@ -256,3 +262,14 @@ However, the `fmt` feature is not required for most functionality, and rather is
 [JWK]: https://tools.ietf.org/html/rfc7517
 [JWT]: https://tools.ietf.org/html/rfc7519
 [JWS]: https://tools.ietf.org/html/rfc7515
+
+[//]: # (badges)
+
+[crate-image]: https://buildstats.info/crate/jaws
+[crate-link]: https://crates.io/crates/jaws
+[docs-image]: https://docs.rs/jaws/badge.svg
+[docs-link]: https://docs.rs/jaws/
+[build-image]: https://github.com/alexrudy/jaws/actions/workflows/ci.yml/badge.svg
+[build-link]: https://github.com/alexrudy/jaws/actions/workflows/ci.yml
+[license-image]: https://img.shields.io/badge/license-MIT-blue.svg
+[rustc-image]: https://img.shields.io/badge/rustc-1.65+-blue.svg

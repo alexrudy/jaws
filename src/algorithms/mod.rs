@@ -310,3 +310,17 @@ impl From<Vec<u8>> for SignatureBytes {
 impl signature::SignatureEncoding for SignatureBytes {
     type Repr = Bytes;
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use static_assertions as sa;
+
+    // NOTE: The test requires an explicit value for the signature
+    // associated type, and we use `SignatureBytes` for this.
+    // it is assumed that external dependencies will provide either
+    // a concrete `Signature` type, or an object-safe trait.
+    sa::assert_obj_safe!(TokenSigner<Signature = SignatureBytes>);
+    sa::assert_obj_safe!(TokenVerifier<Signature = SignatureBytes>);
+}

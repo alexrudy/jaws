@@ -28,19 +28,26 @@ where
     const KEY_TYPE: &'static str = T::KEY_TYPE;
 }
 
-/// Trait for keys which can be serialized as a JWK.
-pub trait SerializeJWK: JWKeyType {
-    /// Return a list of parameters to be serialized in the JWK.
-    fn parameters(&self) -> Vec<(String, serde_json::Value)>;
+/// Trait for keys which can be used as a JWK, automatically implemented for
+/// types which implement `JWKeyType`, to make `SerializeJWK` object-safe.
+pub trait DynJwkKeyType {
+    /// The string used to identify the JWK type in the `kty` field.
+    fn key_type(&self) -> &'static str;
 }
 
-impl<T> SerializeJWK for &T
+impl<T> DynJwkKeyType for T
 where
-    T: SerializeJWK,
+    T: JWKeyType,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        (*self).parameters()
+    fn key_type(&self) -> &'static str {
+        T::KEY_TYPE
     }
+}
+
+/// Trait for keys which can be serialized as a JWK.
+pub trait SerializeJWK: DynJwkKeyType {
+    /// Return a list of parameters to be serialized in the JWK.
+    fn parameters(&self) -> Vec<(String, serde_json::Value)>;
 }
 
 /// Trait for keys which can be deserialized from a JWK.
@@ -83,11 +90,10 @@ where
         let mut keys = BTreeMap::new();
         keys.insert(
             "kty".to_owned(),
-            serde_json::Value::String(Key::KEY_TYPE.to_owned()),
+            serde_json::Value::String(self.0.key_type().into()),
         );
-        for (key, value) in self.0.parameters() {
-            keys.insert(key, value);
-        }
+
+        keys.extend(self.0.parameters().into_iter());
 
         // Put them back so we can serialize them in lexical order.
         let mut map = serializer.serialize_map(Some(keys.len()))?;
@@ -137,7 +143,7 @@ where
 {
     fn from(key: JsonWebKeyBuilder<K>) -> Self {
         JsonWebKey {
-            key_type: K::KEY_TYPE.into(),
+            key_type: key.0.key_type().into(),
             parameters: key.0.parameters().into_iter().collect(),
         }
     }
@@ -375,6 +381,12 @@ pub(crate) mod jwk_reader {
 
 #[cfg(test)]
 mod test {
+
+    use super::*;
+
+    use static_assertions as sa;
+
+    sa::assert_obj_safe!(SerializeJWK);
 
     #[cfg(all(test, feature = "rsa"))]
     mod rsa {

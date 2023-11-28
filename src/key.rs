@@ -170,7 +170,7 @@ where
         K: SerializeJWK + ?Sized,
     {
         let jwk = JsonWebKey::build(key);
-        let thumb = serde_json::to_vec(&jwk).map_err(|err| SignatureError::from_source(err))?;
+        let thumb = serde_json::to_vec(&jwk).map_err(SignatureError::from_source)?;
 
         let mut hasher = Digest::new();
         hasher.update(&thumb);
@@ -187,7 +187,7 @@ where
     Digest: digest::Digest,
 {
     fn build(key: &Key) -> Result<Thumbprint<Digest>, signature::Error> {
-        Thumbprint::build(key).map_err(|err| signature::Error::from_source(err))
+        Thumbprint::build(key).map_err(signature::Error::from_source)
     }
 }
 

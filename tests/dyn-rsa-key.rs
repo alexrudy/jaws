@@ -79,7 +79,7 @@ fn roundtrip(token: Token<Unverified<()>>) -> Token<Unverified<()>> {
 #[test]
 fn dyn_rsa_verify() {
     let token = unsigned_token();
-    println!("=== {} ===", "Unsigned Token");
+    println!("=== Unsigned Token ===");
     println!("{}", token.formatted());
     println!(
         "Payload: {}",
@@ -92,7 +92,7 @@ fn dyn_rsa_verify() {
 
     let unverified = roundtrip(signed.unverify());
 
-    println!("=== {} ===", "Unverified Token");
+    println!("=== Unverified Token ===");
     println!("{}", unverified.formatted());
 
     let verified = unverified
@@ -105,14 +105,14 @@ fn dyn_rsa_verify() {
         .verify::<_, SignatureBytes>(dyn_verifier().as_ref())
         .unwrap();
 
-    println!("=== {} ===", "Verified Token");
+    println!("=== Verified Token ===");
     println!("{}", verified.formatted());
 }
 
 #[test]
 fn dyn_rsa_sign() {
     let token = unsigned_token();
-    println!("=== {} ===", "Unsigned Token");
+    println!("=== Unsigned Token ===");
     println!("{}", token.formatted());
     println!(
         "Payload: {}",
@@ -125,7 +125,7 @@ fn dyn_rsa_sign() {
 
     let unverified = roundtrip(signed.unverify());
 
-    println!("=== {} ===", "Unverified Token");
+    println!("=== Unverified Token ===");
     println!("{}", unverified.formatted());
 
     let verified = unverified
@@ -138,6 +138,6 @@ fn dyn_rsa_sign() {
         .verify::<_, SignatureBytes>(dyn_verifier().as_ref())
         .unwrap();
 
-    println!("=== {} ===", "Verified Token");
+    println!("=== Verified Token ===");
     println!("{}", verified.formatted());
 }

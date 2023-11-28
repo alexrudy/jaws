@@ -259,7 +259,7 @@ where
 
         let signature = signature
             .try_into()
-            .map_err(|error| signature::Error::from_source(error))?;
+            .map_err(signature::Error::from_source)?;
 
         self.verify_digest(digest, &signature)?;
         Ok(signature)

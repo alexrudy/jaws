@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // this will derive the JWK field in the header from the signing key.
     token.header_mut().key().derived();
 
-    println!("=== {} ===", "Initial JWT");
+    println!("=== Initial JWT ===");
 
     // Initially the JWT has no defined signature:
     println!("{}", token.formatted());
@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token: Token<Claims<serde_json::Value>, Unverified<()>, Compact> =
         rendered.parse().unwrap();
 
-    println!("=== {} ===", "Parsed JWT");
+    println!("=== Parsed JWT ===");
 
     // Unverified tokens can be printed for debugging, but there is deliberately
     // no access to the payload, only to the header fields.
@@ -84,13 +84,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap()),
     );
 
-    println!("=== {} === ", "Verification");
+    println!("=== Verification === ");
     // Check it against the verified key
     token
         .clone()
-        .verify::<_, rsa::pkcs1v15::Signature>(&rsa::pkcs1v15::VerifyingKey::<Sha256>::from(
-            verify_key,
-        ))
+        .verify::<_, rsa::pkcs1v15::Signature>(&verify_key)
         .unwrap();
     println!("Verified with dyn verify key (typed)");
 
@@ -114,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     println!("Verified with original key");
 
-    println!("=== {} ===", "Verified JWT");
+    println!("=== Verified JWT ===");
     println!("JWT:");
     println!("{}", verified.formatted());
     println!(

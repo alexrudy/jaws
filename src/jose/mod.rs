@@ -14,10 +14,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha1::Sha1;
 use sha2::Sha256;
+use signature::SignatureEncoding;
 use url::Url;
 
+use crate::algorithms::AlgorithmIdentifier;
 use crate::base64data::Base64JSON;
-use crate::{algorithms::AlgorithmIdentifier, key::SerializeJWK};
 
 #[cfg(feature = "fmt")]
 use crate::fmt;
@@ -28,8 +29,7 @@ mod rendered;
 mod signed;
 mod unsigned;
 
-use self::derive::DerivedKeyValue;
-pub use self::derive::KeyDerivation;
+pub use self::derive::DeriveFromKey;
 pub use self::rendered::RenderedHeader;
 pub use self::signed::SignedHeader;
 pub use self::unsigned::UnsignedHeader;
@@ -44,7 +44,7 @@ pub struct Certificate;
 /// The state of a JOSE header with respect to its signature.
 pub trait HeaderState {
     /// The state-dependent parameters of the header.
-    fn parameters(&self) -> BTreeMap<String, serde_json::Value>;
+    fn parameters(&self) -> Result<BTreeMap<String, serde_json::Value>, serde_json::Error>;
 }
 
 /// Error when constructing a JOSE header.
@@ -182,29 +182,30 @@ impl<H> Header<H, UnsignedHeader> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn into_signed_header<A>(self, key: &A) -> Header<H, SignedHeader<A>>
+    pub(crate) fn into_signed_header<A, S>(
+        self,
+        key: &A,
+    ) -> Result<Header<H, SignedHeader>, signature::Error>
     where
-        A: crate::algorithms::TokenSigner + crate::key::SerializeJWK + Clone,
+        A: crate::algorithms::TokenSigner<S> + crate::key::SerializeJWK + ?Sized,
+        S: SignatureEncoding,
     {
         let state = SignedHeader {
             algorithm: key.identifier(),
-            key: DerivedKeyValue::derive(self.state.key, key),
-            thumbprint: DerivedKeyValue::derive(self.state.thumbprint, key),
-            thumbprint_sha256: DerivedKeyValue::derive(self.state.thumbprint_sha256, key),
+            json_web_key: self.state.key.render(key)?,
+            thumbprint: self.state.thumbprint.render(key)?,
+            thumbprint_sha256: self.state.thumbprint_sha256.render(key)?,
         };
 
-        Header {
+        Ok(Header {
             state,
             registered: self.registered,
             custom: self.custom,
-        }
+        })
     }
 }
 
-impl<H, Key> Header<H, SignedHeader<Key>>
-where
-    Key: SerializeJWK,
-{
+impl<H> Header<H, SignedHeader> {
     /// JWK signing algorithm in use.
     pub(crate) fn algorithm(&self) -> &AlgorithmIdentifier {
         &self.state.algorithm
@@ -220,7 +221,6 @@ where
     pub(crate) fn into_rendered_header(self) -> Header<H, RenderedHeader>
     where
         H: Serialize,
-        SignedHeader<Key>: HeaderState,
     {
         let headers = Base64JSON(&self)
             .serialized_bytes()
@@ -229,9 +229,9 @@ where
         let state = RenderedHeader {
             raw: headers,
             algorithm: *self.algorithm(),
-            key: self.state.key.build(),
-            thumbprint: self.state.thumbprint.build(),
-            thumbprint_sha256: self.state.thumbprint_sha256.build(),
+            key: self.state.json_web_key,
+            thumbprint: self.state.thumbprint,
+            thumbprint_sha256: self.state.thumbprint_sha256,
         };
 
         Header {
@@ -256,9 +256,10 @@ impl<H> Header<H, RenderedHeader> {
     ///
     /// If the key algorithm does not match the header's algorithm.
     #[allow(unused_variables)]
-    pub(crate) fn into_signed_header<A>(self, key: &A) -> Header<H, SignedHeader<A>>
+    pub(crate) fn into_signed_header<A, S>(self, key: &A) -> Header<H, SignedHeader>
     where
-        A: crate::algorithms::TokenVerifier + crate::key::SerializeJWK,
+        A: crate::algorithms::TokenVerifier<S> + ?Sized,
+        S: SignatureEncoding,
     {
         if *self.algorithm() != key.identifier() {
             panic!(
@@ -271,9 +272,9 @@ impl<H> Header<H, RenderedHeader> {
         Header {
             state: SignedHeader {
                 algorithm: *self.algorithm(),
-                key: DerivedKeyValue::explicit(self.state.key),
-                thumbprint: DerivedKeyValue::explicit(self.state.thumbprint),
-                thumbprint_sha256: DerivedKeyValue::explicit(self.state.thumbprint_sha256),
+                json_web_key: self.state.key,
+                thumbprint: self.state.thumbprint,
+                thumbprint_sha256: self.state.thumbprint_sha256,
             },
             registered: self.registered,
             custom: self.custom,
@@ -301,7 +302,7 @@ where
         // Re-using the parameters map here is important, because it will
         // alphabetize our keys, resulting in a consistent key order in rendered
         // tokens.
-        let mut parameters = self.state.parameters();
+        let mut parameters = self.state.parameters()?;
         let header = serde_json::to_value(&self.registered)?;
         let custom = serde_json::to_value(&self.custom)?;
 
@@ -410,43 +411,40 @@ impl<'h, H, State> HeaderAccess<'h, H, State> {
 
 impl<'h, H> HeaderAccess<'h, H, UnsignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> &KeyDerivation<JsonWebKey> {
+    pub fn key(&self) -> &DeriveFromKey<JsonWebKey> {
         &self.header.state.key
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> &KeyDerivation<Thumbprint<Sha1>> {
+    pub fn thumbprint(&self) -> &DeriveFromKey<Thumbprint<Sha1>> {
         &self.header.state.thumbprint
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> &KeyDerivation<Thumbprint<Sha256>> {
+    pub fn thumbprint_sha256(&self) -> &DeriveFromKey<Thumbprint<Sha256>> {
         &self.header.state.thumbprint_sha256
     }
 }
 
-impl<'h, H, K> HeaderAccess<'h, H, SignedHeader<K>>
-where
-    K: SerializeJWK + Clone,
-{
+impl<'h, H> HeaderAccess<'h, H, SignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
         self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> Option<JsonWebKey> {
-        self.header.state.key.value()
+    pub fn key(&self) -> Option<&JsonWebKey> {
+        self.header.state.json_web_key.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> Option<Thumbprint<Sha1>> {
-        self.header.state.thumbprint.value()
+    pub fn thumbprint(&self) -> Option<&Thumbprint<Sha1>> {
+        self.header.state.thumbprint.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> Option<Thumbprint<Sha256>> {
-        self.header.state.thumbprint_sha256.value()
+    pub fn thumbprint_sha256(&self) -> Option<&Thumbprint<Sha256>> {
+        self.header.state.thumbprint_sha256.as_ref()
     }
 }
 
@@ -541,43 +539,40 @@ impl<'h, H, State> HeaderAccessMut<'h, H, State> {
 
 impl<'h, H> HeaderAccessMut<'h, H, UnsignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&mut self) -> &mut KeyDerivation<JsonWebKey> {
+    pub fn key(&mut self) -> &mut DeriveFromKey<JsonWebKey> {
         &mut self.header.state.key
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&mut self) -> &mut KeyDerivation<Thumbprint<Sha1>> {
+    pub fn thumbprint(&mut self) -> &mut DeriveFromKey<Thumbprint<Sha1>> {
         &mut self.header.state.thumbprint
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&mut self) -> &mut KeyDerivation<Thumbprint<Sha256>> {
+    pub fn thumbprint_sha256(&mut self) -> &mut DeriveFromKey<Thumbprint<Sha256>> {
         &mut self.header.state.thumbprint_sha256
     }
 }
 
-impl<'h, H, K> HeaderAccessMut<'h, H, SignedHeader<K>>
-where
-    K: SerializeJWK + Clone,
-{
+impl<'h, H> HeaderAccessMut<'h, H, SignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
         self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> Option<JsonWebKey> {
-        self.header.state.key.value()
+    pub fn key(&self) -> Option<&JsonWebKey> {
+        self.header.state.json_web_key.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> Option<Thumbprint<Sha1>> {
-        self.header.state.thumbprint.value()
+    pub fn thumbprint(&self) -> Option<&Thumbprint<Sha1>> {
+        self.header.state.thumbprint.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> Option<Thumbprint<Sha256>> {
-        self.header.state.thumbprint_sha256.value()
+    pub fn thumbprint_sha256(&self) -> Option<&Thumbprint<Sha256>> {
+        self.header.state.thumbprint_sha256.as_ref()
     }
 }
 

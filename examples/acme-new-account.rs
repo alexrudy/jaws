@@ -68,7 +68,7 @@ fn main() {
     token.header_mut().key().derived();
 
     // Sign the token with the algorithm and key we specified above.
-    let signed = token.sign(&alg).unwrap();
+    let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
 
     // Print the token in the ACME example format.
     println!("{}", signed.formatted());

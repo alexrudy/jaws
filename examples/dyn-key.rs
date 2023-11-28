@@ -1,36 +1,19 @@
-use jaws::Compact;
-
-// JAWS provides JWT format for printing JWTs in a style similar to the example above,
-// which is directly inspired by the way the ACME standard shows JWTs.
-use jaws::JWTFormat;
-
-// JAWS provides a single token type which is generic over the state of the token.
-// The states are defined in the `state` module, and are used to track the
-// signing and verification status.
-use jaws::Token;
-
-// The unverified token state, used like `Token<.., Unverified<..>, ..>`.
-// It is generic over the type of the custom header parameters.
+use jaws::algorithms::SignatureBytes;
+use jaws::algorithms::TokenSigner;
+use jaws::algorithms::TokenVerifier;
+use jaws::key::SerializeJWK;
 use jaws::token::Unverified;
-
-// JAWS provides type-safe support for JWT claims.
+use jaws::Compact;
+use jaws::JWTFormat;
+use jaws::Token;
 use jaws::{Claims, RegisteredClaims};
-
-// We are going to use an RSA private key to sign our JWT, provided by
-// the `rsa` crate in the RustCrypto suite.
 use rsa::pkcs8::DecodePrivateKey;
-
-// The signing algorithm we will use (`RS256`) relies on the SHA-256 hash
-// function, so we get it here from the `sha2` crate in the RustCrypto suite.
+use serde_json::json;
 use sha2::Sha256;
 
-// Using serde_json allows us to quickly construct a serializable payload,
-// but applications may want to instead define a struct and use serde to
-// derive serialize and deserialize for added type safety.
-use serde_json::json;
+trait TokenSigningKey: TokenSigner<SignatureBytes> + SerializeJWK {}
 
-// Trait to convert a SigningKey into a VerifyingKey.
-use signature::Keypair;
+impl<T> TokenSigningKey for T where T: TokenSigner<SignatureBytes> + SerializeJWK {}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
@@ -41,12 +24,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "/examples/rfc7515a2.pem"
     )))
     .unwrap();
-
-    // We will sign the JWT with the RS256 algorithm: RSA with SHA-256.
-    // RsaPkcs1v15 is really an alias to the digital signature algorithm
-    // implementation in the `rsa` crate, but provided in JAWS to make
-    // it clear which types are compatible with JWTs.
-    let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
+    let verify_key: rsa::pkcs1v15::VerifyingKey<Sha256> =
+        rsa::pkcs1v15::VerifyingKey::new(key.to_public_key());
+    let verify_alg: Box<dyn TokenVerifier<SignatureBytes>> = Box::new(verify_key.clone());
+    let alg: Box<dyn TokenSigningKey> =
+        Box::new(rsa::pkcs1v15::SigningKey::<Sha256>::new(key.clone()));
 
     // Claims can combine registered and custom fields. The claims object
     // can be any type which implements [serde::Serialize].
@@ -80,25 +62,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", token.formatted());
 
     // Sign the token with the algorithm, and print the result.
-    let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
+    let signed = token.sign::<_, SignatureBytes>(alg.as_ref()).unwrap();
 
-    println!("=== {} ===", "Signed JWT");
-
-    println!("JWT:");
-    println!("{}", signed.formatted());
-    println!("Token: {}", signed.rendered().unwrap());
-
-    // We can't modify the token after signing it (that would change the signature)
-    // but we can access fields and read from them:
-    println!(
-        "Type: {:?}, Algorithm: {:?}",
-        signed.header().r#type(),
-        signed.header().algorithm(),
-    );
+    let rendered = signed.rendered().unwrap();
 
     // We can also verify tokens.
     let token: Token<Claims<serde_json::Value>, Unverified<()>, Compact> =
-        signed.rendered().unwrap().parse().unwrap();
+        rendered.parse().unwrap();
 
     println!("=== {} ===", "Parsed JWT");
 
@@ -110,19 +80,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We can use the JWK to verify that the token is signed with the correct key.
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
-    let key = rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap());
+    let key: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(
+        rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap()),
+    );
 
-    assert_eq!(&key, alg.verifying_key().as_ref());
     println!("=== {} === ", "Verification");
+    // Check it against the verified key
+    token
+        .clone()
+        .verify::<_, rsa::pkcs1v15::Signature>(&rsa::pkcs1v15::VerifyingKey::<Sha256>::from(
+            verify_key,
+        ))
+        .unwrap();
+    println!("Verified with dyn verify key (typed)");
 
-    // let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(key);
-    let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = alg.verifying_key();
+    // Check it against the verified key
+    token
+        .clone()
+        .verify::<_, SignatureBytes>(verify_alg.as_ref())
+        .unwrap();
+    println!("Verified with dyn verify key");
+
+    // Check it against its own JWT
+    token
+        .clone()
+        .verify::<_, rsa::pkcs1v15::Signature>(&key)
+        .unwrap();
+    println!("Verified with JWT");
 
     // We can't access the claims until we verify the token.
-    // let verified = token.verify::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
     let verified = token
-        .verify::<_, jaws::algorithms::SignatureBytes>(&alg)
+        .verify::<_, SignatureBytes>(verify_alg.as_ref())
         .unwrap();
+    println!("Verified with original key");
 
     println!("=== {} ===", "Verified JWT");
     println!("JWT:");

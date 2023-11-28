@@ -83,25 +83,13 @@ where
 
 macro_rules! jose_rsa_pkcs1v15_algorithm {
     ($alg:ident, $digest:ty) => {
-        impl crate::algorithms::JoseAlgorithm for rsa::pkcs1v15::SigningKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pkcs1v15::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pkcs1v15::SigningKey<$digest> {
-            type Digest = $digest;
-        }
-
-        impl crate::algorithms::JoseAlgorithm for rsa::pkcs1v15::VerifyingKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pkcs1v15::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pkcs1v15::VerifyingKey<$digest> {
-            type Digest = $digest;
-        }
+        $crate::jose_algorithm!(
+            $alg,
+            rsa::pkcs1v15::SigningKey<$digest>,
+            rsa::pkcs1v15::VerifyingKey<$digest>,
+            $digest,
+            rsa::pkcs1v15::Signature
+        );
     };
 }
 
@@ -141,33 +129,21 @@ where
     }
 }
 
-macro_rules! jose_rsa_pss_algorithm {
-    ($alg:ident, $digest:ty) => {
-        impl crate::algorithms::JoseAlgorithm for rsa::pss::BlindedSigningKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pss::Signature;
-        }
+// macro_rules! jose_rsa_pss_algorithm {
+//     ($alg:ident, $digest:ty) => {
+//         $crate::jose_algorithm!(
+//             $alg,
+//             rsa::pss::SigningKey<$digest>,
+//             rsa::pss::VerifyingKey<$digest>,
+//             $digest,
+//             rsa::pss::Signature
+//         );
+//     };
+// }
 
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pss::BlindedSigningKey<$digest> {
-            type Digest = $digest;
-        }
-
-        impl crate::algorithms::JoseAlgorithm for rsa::pss::VerifyingKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pss::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pss::VerifyingKey<$digest> {
-            type Digest = $digest;
-        }
-    };
-}
-
-jose_rsa_pss_algorithm!(PS256, sha2::Sha256);
-jose_rsa_pss_algorithm!(PS384, sha2::Sha384);
-jose_rsa_pss_algorithm!(PS512, sha2::Sha512);
+// jose_rsa_pss_algorithm!(PS256, sha2::Sha256);
+// jose_rsa_pss_algorithm!(PS384, sha2::Sha384);
+// jose_rsa_pss_algorithm!(PS512, sha2::Sha512);
 
 #[cfg(test)]
 mod test {
@@ -178,7 +154,7 @@ mod test {
     use base64ct::Encoding as _;
     use serde_json::json;
     use sha2::Sha256;
-    use signature::SignatureEncoding as _;
+    use signature::SignatureEncoding;
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -227,7 +203,7 @@ mod test {
 
         let algorithm: rsa::pkcs1v15::SigningKey<Sha256> = rsa::pkcs1v15::SigningKey::new(pkey);
 
-        let signature = algorithm.sign_token(&header, &payload);
+        let signature: rsa::pkcs1v15::Signature = algorithm.sign_token(&header, &payload);
 
         let sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 

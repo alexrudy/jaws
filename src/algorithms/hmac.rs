@@ -160,7 +160,6 @@ macro_rules! hmac_algorithm {
         impl crate::algorithms::JoseAlgorithm for Hmac<$digest> {
             const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
                 crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = DigestSignature<$digest>;
         }
     };
 }
@@ -169,16 +168,16 @@ hmac_algorithm!(HS256, sha2::Sha256);
 hmac_algorithm!(HS384, sha2::Sha384);
 hmac_algorithm!(HS512, sha2::Sha512);
 
-impl<D> super::TokenSigner for Hmac<D>
+impl<D> super::TokenSigner<DigestSignature<D>> for Hmac<D>
 where
-    Hmac<D>: JoseAlgorithm<Signature = DigestSignature<D>>,
-    D: Digest + digest::core_api::BlockSizeUser,
+    Hmac<D>: JoseAlgorithm,
+    D: Digest + digest::core_api::BlockSizeUser + Clone,
 {
     fn try_sign_token(
         &self,
         header: &str,
         payload: &str,
-    ) -> Result<Self::Signature, signature::Error> {
+    ) -> Result<DigestSignature<D>, signature::Error> {
         let mut mac: SimpleHmac<D> =
             SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
         mac.update(header.as_bytes());
@@ -188,9 +187,9 @@ where
     }
 }
 
-impl<D> super::TokenVerifier for Hmac<D>
+impl<D> super::TokenVerifier<DigestSignature<D>> for Hmac<D>
 where
-    Hmac<D>: JoseAlgorithm<Signature = DigestSignature<D>>,
+    Hmac<D>: JoseAlgorithm,
     D: Digest + digest::core_api::BlockSizeUser + Clone,
 {
     fn verify_token(
@@ -198,7 +197,7 @@ where
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<Self::Signature, signature::Error> {
+    ) -> Result<DigestSignature<D>, signature::Error> {
         let mut mac: SimpleHmac<D> =
             SimpleHmac::new_from_slice(self.key.as_ref()).expect("Valid key");
         mac.update(header);

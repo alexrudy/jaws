@@ -2,6 +2,14 @@
 //!
 //! This module provides implementations of the ECDSA signing algorithms for use with JSON Web Tokens.
 //!
+//! Although the ECDSA algorithm is defined in [RFC7518](https://tools.ietf.org/html/rfc7518), it is defined
+//! against the non-deterministic version, which has been shown to have problems with key recovery, and so uses
+//! the deterministic version defined in [RFC6979](https://tools.ietf.org/html/rfc6979).
+//!
+//! This could be changed to use the non-deterministic version specified in [RFC6979](https://tools.ietf.org/html/rfc6979)
+//! by requiring an random number generator as an additional parameter to the signing algorithm, but this is not
+//! currently easily supported.
+//!
 //! It uses [ecdsa::SigningKey] and [ecdsa::VerifyingKey] as the key types, and provides implementations of the ECDSA
 //! signing algorithms for the following curves:
 //! - P-256 (ES256)
@@ -69,14 +77,17 @@ println!("{}", signed.formatted());
 
 use ::ecdsa::{hazmat::SignPrimitive, PrimeCurve, SignatureSize};
 pub use ::ecdsa::{SigningKey, VerifyingKey};
+use base64ct::Base64UrlUnpadded as Base64Url;
 use base64ct::Encoding;
 use bytes::Bytes;
-use digest::generic_array::ArrayLength;
+use digest::generic_array::{ArrayLength, GenericArray};
+use ecdsa::EncodedPoint;
 use elliptic_curve::{
     ops::Invert,
-    sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint},
+    sec1::{Coordinates, FromEncodedPoint, ModulusSize, ToEncodedPoint, ValidatePublicKey},
     subtle::CtOption,
-    AffinePoint, CurveArithmetic, FieldBytesSize, JwkParameters, Scalar,
+    AffinePoint, Curve, CurveArithmetic, FieldBytes, FieldBytesSize, JwkParameters, PublicKey,
+    Scalar, SecretKey,
 };
 
 #[cfg(feature = "p256")]
@@ -89,6 +100,8 @@ pub use p384::NistP384;
 pub use p521::NistP521;
 use signature::SignatureEncoding;
 
+use crate::key::JsonWebKeyError;
+
 impl<C> From<::ecdsa::Signature<C>> for super::SignatureBytes
 where
     C: PrimeCurve,
@@ -96,6 +109,96 @@ where
 {
     fn from(sig: ::ecdsa::Signature<C>) -> Self {
         Self(Bytes::copy_from_slice(sig.to_bytes().as_ref()))
+    }
+}
+
+impl<C> crate::key::JWKeyType for PublicKey<C>
+where
+    C: Curve + CurveArithmetic,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl<C> crate::key::SerializeJWK for PublicKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        let mut params = Vec::with_capacity(3);
+
+        params.push((
+            "crv".to_owned(),
+            serde_json::Value::String(C::CRV.to_owned()),
+        ));
+        let point = self.to_encoded_point(false);
+        let Coordinates::Uncompressed { x, y } = point.coordinates() else {
+            panic!("can't extract jwk coordinates from compressed or compact field points")
+        };
+
+        params.push(("x".to_owned(), Base64Url::encode_string(x).into()));
+        params.push(("y".to_owned(), Base64Url::encode_string(y).into()));
+        params
+    }
+}
+
+impl<C> crate::key::DeserializeJWK for PublicKey<C>
+where
+    C: Curve + CurveArithmetic + JwkParameters,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        let crv = parameters
+            .get("crv")
+            .and_then(|c| c.as_str())
+            .ok_or(crate::key::JsonWebKeyError::MissingParameter("crv"))?;
+
+        if crv != C::CRV {
+            return Err(crate::key::JsonWebKeyError::InvalidKey(
+                "EC",
+                format!("got crv {}, expected {}", crv, C::CRV).into(),
+            ));
+        }
+
+        fn get<C>(
+            parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+            name: &'static str,
+        ) -> Result<GenericArray<u8, <C as Curve>::FieldBytesSize>, crate::key::JsonWebKeyError>
+        where
+            C: Curve,
+        {
+            parameters
+                .get(name)
+                .and_then(|c| c.as_str())
+                .ok_or(crate::key::JsonWebKeyError::MissingParameter(name))
+                .and_then(|c| {
+                    let mut bytes: GenericArray<u8, <C as Curve>::FieldBytesSize> =
+                        Default::default();
+                    Base64Url::decode(c, bytes.as_mut()).map_err(|error| {
+                        crate::key::JsonWebKeyError::InvalidKey(
+                            "EC",
+                            format!("invalid base64 encoding for {}: {}", name, error).into(),
+                        )
+                    })?;
+                    Ok(bytes)
+                })
+        }
+
+        let x = get::<C>(&parameters, "x")?;
+        let y = get::<C>(&parameters, "y")?;
+
+        let point: EncodedPoint<C> = EncodedPoint::<C>::from_affine_coordinates(&x, &y, false);
+
+        Option::from(Self::from_encoded_point(&point)).ok_or_else(|| {
+            crate::key::JsonWebKeyError::InvalidKey(
+                "EC",
+                String::from("An error occured encoding the EC point").into(),
+            )
+        })
     }
 }
 
@@ -113,27 +216,93 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        let mut params = Vec::with_capacity(3);
-
-        params.push((
-            "crv".to_owned(),
-            serde_json::Value::String(C::CRV.to_owned()),
-        ));
-        let point = self.to_encoded_point(false);
-        let Coordinates::Uncompressed { x, y } = point.coordinates() else {
-            panic!("can't extract jwk coordinates")
-        };
-
-        params.push((
-            "x".to_owned(),
-            base64ct::Base64UrlUnpadded::encode_string(x).into(),
-        ));
-        params.push((
-            "y".to_owned(),
-            base64ct::Base64UrlUnpadded::encode_string(y).into(),
-        ));
-        params
+        PublicKey::from(self).parameters()
     }
+}
+
+impl<C> crate::key::DeserializeJWK for VerifyingKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        PublicKey::build(parameters).map(Self::from)
+    }
+}
+
+impl<C> crate::key::SerializeJWK for SecretKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        let mut parameters = self.public_key().parameters();
+        let d = self.to_sec1_der().expect("d is valid sec1 der");
+        parameters.push((
+            "d".to_owned(),
+            base64ct::Base64UrlUnpadded::encode_string(d.as_ref()).into(),
+        ));
+
+        parameters
+    }
+}
+
+impl<C> crate::key::JWKeyType for SecretKey<C>
+where
+    C: Curve,
+{
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl<C> crate::key::DeserializeJWK for SecretKey<C>
+where
+    C: Curve + CurveArithmetic + JwkParameters + ValidatePublicKey,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        let d = parameters
+            .get("d")
+            .and_then(|c| c.as_str())
+            .ok_or(crate::key::JsonWebKeyError::MissingParameter("d"))?;
+        let mut d_bytes = FieldBytes::<C>::default();
+        base64ct::Base64UrlUnpadded::decode(d, &mut d_bytes).map_err(|error| {
+            crate::key::JsonWebKeyError::InvalidKey(
+                "EC",
+                format!("invalid base64 encoding for d: {}", error).into(),
+            )
+        })?;
+        let secret_key = SecretKey::from_bytes(&d_bytes).map_err(|error| {
+            crate::key::JsonWebKeyError::InvalidKey(
+                "EC",
+                format!("invalid secret key: {}", error).into(),
+            )
+        })?;
+
+        let public_key: PublicKey<C> = PublicKey::build(parameters)?;
+        C::validate_public_key(&secret_key, &public_key.to_encoded_point(false)).map_err(
+            |error: elliptic_curve::Error| JsonWebKeyError::InvalidKey("EC", error.into()),
+        )?;
+
+        Ok(secret_key)
+    }
+}
+
+impl<C> crate::key::JWKeyType for SigningKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+{
+    const KEY_TYPE: &'static str = "EC";
 }
 
 impl<C> crate::key::SerializeJWK for SigningKey<C>
@@ -145,17 +314,23 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.verifying_key().parameters()
+        SecretKey::from(self).parameters()
     }
 }
 
-impl<C> crate::key::JWKeyType for ecdsa::SigningKey<C>
+impl<C> crate::key::DeserializeJWK for SigningKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
 {
-    const KEY_TYPE: &'static str = "EC";
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        SecretKey::build(parameters).map(Self::from)
+    }
 }
 
 macro_rules! jose_ecdsa_algorithm {
@@ -182,14 +357,12 @@ mod test {
     use super::*;
     use crate::{
         algorithms::{TokenSigner, TokenVerifier},
-        key::SerializeJWK,
+        key::{DeserializeJWK as _, SerializeJWK},
+        SignatureBytes,
     };
 
-    use base64ct::Encoding;
-    use elliptic_curve::FieldBytes;
     use serde_json::json;
     use static_assertions as sa;
-    use zeroize::Zeroize;
 
     sa::assert_impl_all!(SigningKey<NistP256>: TokenSigner<ecdsa::Signature<NistP256>>, SerializeJWK);
     sa::assert_impl_all!(VerifyingKey<NistP256>: TokenVerifier<ecdsa::Signature<NistP256>>, SerializeJWK);
@@ -198,19 +371,9 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
-    fn ecdsa(jwk: &serde_json::Value) -> SigningKey<p256::NistP256> {
-        let d_b64 = strip_whitespace(jwk["d"].as_str().unwrap());
-        let mut d_bytes = FieldBytes::<p256::NistP256>::default();
-        base64ct::Base64UrlUnpadded::decode(&d_b64, &mut d_bytes).unwrap();
-
-        let key = SigningKey::from_slice(&d_bytes).unwrap();
-        d_bytes.zeroize();
-        key
-    }
-
     #[test]
     fn rfc7515_example_a3_signature() {
-        let pkey = &json!({
+        let pkey = json!({
         "kty":"EC",
         "crv":"P-256",
         "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
@@ -218,7 +381,14 @@ mod test {
         "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
         });
 
-        let key = ecdsa(pkey);
+        let ecpkey: elliptic_curve::JwkEcKey = serde_json::from_value(pkey.clone()).unwrap();
+        let key = SigningKey::from_value(pkey).unwrap();
+
+        assert_eq!(ecpkey.to_secret_key::<NistP256>().unwrap(), (&key).into());
+
+        let point: EncodedPoint<NistP256> = key.verifying_key().to_encoded_point(false);
+        let ecpoint: EncodedPoint<NistP256> = ecpkey.to_encoded_point::<NistP256>().unwrap();
+        assert_eq!(ecpoint, point);
 
         let payload = strip_whitespace(
             "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFt
@@ -228,15 +398,29 @@ mod test {
         let header = strip_whitespace("eyJhbGciOiJFUzI1NiJ9");
 
         let signature: ::ecdsa::Signature<NistP256> = key.sign_token(&header, &payload);
-        let _sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
+        eprintln!("sig: {:?}", signature.to_bytes().as_slice());
 
-        // This won't work because the signature is non-deterministic
-        // assert_eq!(
-        //     sig,
-        //     strip_whitespace(
-        //         "DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q"
-        //     ),
-        //     "signature"
-        // );
+        let verify = key.verifying_key().clone();
+        assert_eq!(ecpkey.to_public_key().unwrap(), (&verify).into());
+
+        TokenVerifier::<ecdsa::Signature<NistP256>>::verify_token(
+            &verify,
+            header.as_bytes(),
+            payload.as_bytes(),
+            signature.to_bytes().as_slice(),
+        )
+        .expect("signature verification for internal example failed");
+
+        let signature = SignatureBytes::from_b64url(&strip_whitespace(
+            "DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q"
+        )).unwrap();
+
+        TokenVerifier::<SignatureBytes>::verify_token(
+            &verify,
+            header.as_bytes(),
+            payload.as_bytes(),
+            signature.to_bytes().as_ref(),
+        )
+        .expect("signature verification for RFC7515a3 example failed");
     }
 }

@@ -1,48 +1,11 @@
 use std::io::Write;
 
+use jaws::key::DeserializeJWK as _;
 use rsa::{pkcs1::EncodeRsaPublicKey, pkcs8::EncodePrivateKey};
 use serde_json::json;
 
-mod reader {
-    use base64ct::Encoding;
-    use rsa::traits::PrivateKeyParts;
-
-    fn strip_whitespace(s: &str) -> String {
-        s.chars().filter(|c| !c.is_whitespace()).collect()
-    }
-
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
-    pub(crate) fn rsa(key: &serde_json::Value) -> rsa::RsaPrivateKey {
-        let primes = vec![
-            to_biguint(&key["p"]).expect("p"),
-            to_biguint(&key["q"]).expect("q"),
-        ];
-
-        let pkey = rsa::RsaPrivateKey::from_components(
-            to_biguint(&key["n"]).expect("n"),
-            to_biguint(&key["e"]).expect("e"),
-            to_biguint(&key["d"]).expect("d"),
-            primes,
-        )
-        .unwrap();
-
-        assert_eq!(&to_biguint(&key["dp"]).expect("dp"), pkey.dp().unwrap());
-        assert_eq!(&to_biguint(&key["dq"]).expect("dq"), pkey.dq().unwrap());
-
-        pkey
-    }
-}
-
 fn main() {
-    let pkey = reader::rsa(&json!( {"kty":"RSA",
+    let pkey = rsa::RsaPrivateKey::from_value(json!( {"kty":"RSA",
         "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
    HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
    D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
@@ -72,7 +35,8 @@ fn main() {
    y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
    W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
        }
-    ));
+    ))
+    .unwrap();
 
     let pemdata = pkey.to_pkcs8_pem(Default::default()).unwrap();
 

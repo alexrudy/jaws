@@ -1,7 +1,9 @@
 use jaws::algorithms::SignatureBytes;
 use jaws::algorithms::TokenSigner;
 use jaws::algorithms::TokenVerifier;
+use jaws::key::DeserializeJWK;
 use jaws::key::SerializeJWK;
+use jaws::key::SerializePublicJWK;
 use jaws::token::Unverified;
 use jaws::Compact;
 use jaws::JWTFormat;
@@ -11,9 +13,12 @@ use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;
 use sha2::Sha256;
 
-trait TokenSigningKey: TokenSigner<SignatureBytes> + SerializeJWK {}
+trait TokenSigningKey: TokenSigner<SignatureBytes> + SerializePublicJWK {}
 
-impl<T> TokenSigningKey for T where T: TokenSigner<SignatureBytes> + SerializeJWK {}
+impl<T> TokenSigningKey for T where
+    T: TokenSigner<SignatureBytes> + SerializeJWK + SerializePublicJWK
+{
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
@@ -80,9 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We can use the JWK to verify that the token is signed with the correct key.
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
-    let key: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(
-        rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap()),
-    );
+    let key: rsa::pkcs1v15::VerifyingKey<Sha256> =
+        rsa::pkcs1v15::VerifyingKey::new(rsa::RsaPublicKey::from_jwk(&jwk).unwrap());
 
     println!("=== Verification === ");
     // Check it against the verified key
@@ -121,28 +125,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
-}
-
-mod rsa_jwk_reader {
-    use base64ct::Encoding;
-
-    fn strip_whitespace(s: &str) -> String {
-        s.chars().filter(|c| !c.is_whitespace()).collect()
-    }
-
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
-    pub(crate) fn rsa_pub(key: &serde_json::Value) -> rsa::RsaPublicKey {
-        let n = to_biguint(&key["n"]).expect("decode n");
-        let e = to_biguint(&key["e"]).expect("decode e");
-
-        rsa::RsaPublicKey::new(n, e).expect("valid key parameters")
-    }
 }

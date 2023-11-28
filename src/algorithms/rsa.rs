@@ -17,10 +17,14 @@
 //! Use [rsa::pss::BlindedSigningKey] to sign tokens, and [rsa::pss::VerifyingKey] to verify tokens.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
+use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
+use rsa::RsaPrivateKey;
 
 pub use rsa::pkcs1v15;
 pub use rsa::pss;
+
+use crate::key::DeserializeJWK;
 
 impl crate::key::JWKeyType for rsa::RsaPublicKey {
     const KEY_TYPE: &'static str = "RSA";
@@ -39,13 +43,156 @@ impl crate::key::SerializeJWK for rsa::RsaPublicKey {
     }
 }
 
+fn strip_whitespace(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
+    let val = strip_whitespace(v.as_str()?);
+    Some(rsa::BigUint::from_bytes_be(
+        base64ct::Base64UrlUnpadded::decode_vec(&val)
+            .ok()?
+            .as_slice(),
+    ))
+}
+
+fn rsa_key_parameter(
+    parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+    name: &'static str,
+) -> Result<rsa::BigUint, crate::key::JsonWebKeyError> {
+    let val = parameters
+        .get(name)
+        .ok_or(crate::key::JsonWebKeyError::MissingParameter(name))?;
+    to_biguint(val).ok_or(crate::key::JsonWebKeyError::MissingParameter(name))
+}
+
+impl crate::key::DeserializeJWK for rsa::RsaPublicKey {
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError>
+    where
+        Self: Sized,
+    {
+        let n = rsa_key_parameter(&parameters, "n")?;
+        let e = rsa_key_parameter(&parameters, "e")?;
+
+        rsa::RsaPublicKey::new(n, e)
+            .map_err(|error| crate::key::JsonWebKeyError::InvalidKey("RSA", error.into()))
+    }
+}
+
 impl crate::key::JWKeyType for rsa::RsaPrivateKey {
     const KEY_TYPE: &'static str = "RSA";
 }
 
 impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.to_public_key().parameters()
+        fn from_biguint(n: &rsa::BigUint) -> String {
+            let bytes = n.to_bytes_be();
+            Base64UrlUnpadded::encode_string(&bytes)
+        }
+
+        let mut params = self.to_public_key().parameters();
+        params.push(("d".into(), from_biguint(self.d()).into()));
+
+        let mut additional_params = Vec::new();
+        let mut primes = self.primes().iter();
+
+        additional_params.push((
+            "p".into(),
+            from_biguint(primes.next().expect("At least 1 RSA prime is available")).into(),
+        ));
+        additional_params.push((
+            "q".into(),
+            from_biguint(primes.next().expect("At least 2 RSA primes are available")).into(),
+        ));
+
+        // We may not have the following parameters if we have not pre-computed their value.
+        // If any parameter is missing, we should not include any of them.
+        if let Some(dp) = self.dp() {
+            additional_params.push(("dp".into(), from_biguint(dp).into()));
+        } else {
+            additional_params.clear();
+        }
+
+        if let Some(dq) = self.dq() {
+            additional_params.push(("dq".into(), from_biguint(dq).into()));
+        } else {
+            additional_params.clear();
+        }
+
+        if let Some(qi) = self.qinv() {
+            additional_params.push((
+                "qi".into(),
+                from_biguint(&qi.to_biguint().expect("qinv is positive")).into(),
+            ));
+        } else {
+            additional_params.clear();
+        }
+
+        #[allow(unused)]
+        for (prime, crt) in primes.zip(self.crt_values().into_iter()) {
+            todo!("Support for multiple primes is not yet implemented");
+        }
+
+        params.extend(additional_params);
+
+        params
+    }
+}
+
+impl DeserializeJWK for RsaPrivateKey {
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError>
+    where
+        Self: Sized,
+    {
+        fn validate_key_parameter(
+            parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+            name: &'static str,
+            precomputed: Option<&rsa::BigUint>,
+        ) -> Result<(), crate::key::JsonWebKeyError> {
+            if let Some(val) = parameters.get(name) {
+                let value =
+                    to_biguint(val).ok_or(crate::key::JsonWebKeyError::MissingParameter(name))?;
+
+                if let Some(pc_value) = precomputed {
+                    if value != *pc_value {
+                        return Err(crate::key::JsonWebKeyError::InvalidKey(
+                            "RSA",
+                            format!("{} does not match precomputed value", name).into(),
+                        ));
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let primes = vec![
+            rsa_key_parameter(&parameters, "p")?,
+            rsa_key_parameter(&parameters, "q")?,
+        ];
+
+        let n = rsa_key_parameter(&parameters, "n")?;
+        let e = rsa_key_parameter(&parameters, "e")?;
+        let d = rsa_key_parameter(&parameters, "d")?;
+
+        let key = RsaPrivateKey::from_components(n, e, d, primes)
+            .map_err(|error| crate::key::JsonWebKeyError::InvalidKey("RSA", error.into()))?;
+
+        key.validate()
+            .map_err(|error| crate::key::JsonWebKeyError::InvalidKey("RSA", error.into()))?;
+
+        validate_key_parameter(&parameters, "dp", key.dp())?;
+        validate_key_parameter(&parameters, "dq", key.dq())?;
+        validate_key_parameter(
+            &parameters,
+            "qi",
+            key.qinv().and_then(|inv| inv.to_biguint()).as_ref(),
+        )?;
+
+        Ok(key)
     }
 }
 
@@ -149,7 +296,7 @@ where
 mod test {
 
     use crate::algorithms::TokenSigner as _;
-    use crate::key::jwk_reader::rsa;
+    use crate::key::DeserializeJWK;
 
     use base64ct::Encoding as _;
     use serde_json::json;
@@ -160,9 +307,13 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
+    fn rsa(jwk: serde_json::Value) -> rsa::RsaPrivateKey {
+        rsa::RsaPrivateKey::from_value(jwk).unwrap()
+    }
+
     #[test]
     fn rfc7515_example_a2_signature() {
-        let pkey = rsa(&json!( {"kty":"RSA",
+        let pkey = rsa(json!( {"kty":"RSA",
               "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
              HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
              D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH

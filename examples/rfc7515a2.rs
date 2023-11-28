@@ -9,6 +9,7 @@ use jaws::JWTFormat;
 // signing and verification status.
 use jaws::Token;
 
+use jaws::key::DeserializeJWK;
 // The unverified token state, used like `Token<.., Unverified<..>, ..>`.
 // It is generic over the type of the custom header parameters.
 use jaws::token::Unverified;
@@ -110,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We can use the JWK to verify that the token is signed with the correct key.
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
-    let key = rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap());
+    let key = rsa::RsaPublicKey::from_jwk(jwk).unwrap();
 
     assert_eq!(&key, alg.verifying_key().as_ref());
     println!("=== Verification === ");
@@ -133,28 +134,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
-}
-
-mod rsa_jwk_reader {
-    use base64ct::Encoding;
-
-    fn strip_whitespace(s: &str) -> String {
-        s.chars().filter(|c| !c.is_whitespace()).collect()
-    }
-
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
-    pub(crate) fn rsa_pub(key: &serde_json::Value) -> rsa::RsaPublicKey {
-        let n = to_biguint(&key["n"]).expect("decode n");
-        let e = to_biguint(&key["e"]).expect("decode e");
-
-        rsa::RsaPublicKey::new(n, e).expect("valid key parameters")
-    }
 }

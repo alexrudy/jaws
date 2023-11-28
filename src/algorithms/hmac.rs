@@ -24,11 +24,11 @@ use std::{marker::PhantomData, ops::Deref};
 use base64ct::Encoding;
 use digest::{Digest, Mac};
 use hmac::SimpleHmac;
-use signature::SignatureEncoding;
+use signature::{Keypair, SignatureEncoding};
 
 use crate::key::{JWKeyType, SerializeJWK};
 
-use super::JoseAlgorithm;
+use super::JsonWebAlgorithm;
 
 /// A key used to seed an HMAC signature.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Default)]
@@ -82,7 +82,7 @@ impl AsRef<[u8]> for HmacKey {
 /// This type exists to associate the original key value with the digest.
 /// This is required for verification, and for the `jwk` field in the JWS header,
 /// if that field is enabled.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Hmac<D> {
     key: HmacKey,
     _digest: PhantomData<D>,
@@ -105,6 +105,15 @@ impl<D> Hmac<D> {
     }
 }
 
+impl<D> Clone for Hmac<D> {
+    fn clone(&self) -> Self {
+        Self {
+            key: self.key.clone(),
+            _digest: PhantomData,
+        }
+    }
+}
+
 impl<D> JWKeyType for Hmac<D> {
     const KEY_TYPE: &'static str = "oct";
 }
@@ -115,6 +124,14 @@ impl<D> SerializeJWK for Hmac<D> {
             "k".to_string(),
             serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key.key)),
         )]
+    }
+}
+
+impl<D> Keypair for Hmac<D> {
+    type VerifyingKey = Hmac<D>;
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        self.clone()
     }
 }
 
@@ -157,7 +174,7 @@ where
 
 macro_rules! hmac_algorithm {
     ($alg:ident, $digest:ty) => {
-        impl crate::algorithms::JoseAlgorithm for Hmac<$digest> {
+        impl crate::algorithms::JsonWebAlgorithm for Hmac<$digest> {
             const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
                 crate::algorithms::AlgorithmIdentifier::$alg;
         }
@@ -170,7 +187,7 @@ hmac_algorithm!(HS512, sha2::Sha512);
 
 impl<D> super::TokenSigner<DigestSignature<D>> for Hmac<D>
 where
-    Hmac<D>: JoseAlgorithm,
+    Hmac<D>: JsonWebAlgorithm,
     D: Digest + digest::core_api::BlockSizeUser + Clone,
 {
     fn try_sign_token(
@@ -189,7 +206,7 @@ where
 
 impl<D> super::TokenVerifier<DigestSignature<D>> for Hmac<D>
 where
-    Hmac<D>: JoseAlgorithm,
+    Hmac<D>: JsonWebAlgorithm,
     D: Digest + digest::core_api::BlockSizeUser + Clone,
 {
     fn verify_token(

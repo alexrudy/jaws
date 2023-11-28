@@ -22,6 +22,7 @@ Signing with an ECDSA key:
 use serde_json::json;
 
 use ecdsa::SigningKey;
+use ecdsa::Signature;
 use elliptic_curve::FieldBytes;
 use base64ct::{Encoding, Base64UrlUnpadded};
 
@@ -56,7 +57,7 @@ let mut token = Token::compact((), claims);
 *token.header_mut().r#type() = Some("JWT".to_string());
 
 // Sign the token with the ECDSA key, and print the result.
-let signed = token.sign(&key).unwrap();
+let signed = token.sign::<_, Signature<_>>(&key).unwrap();
 // Print out the compact form you would use as a token
 println!("{}", signed.rendered().unwrap());
 

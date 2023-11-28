@@ -157,16 +157,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // this will derive the JWK field in the header from the signing key.
     token.header_mut().key().derived();
 
-    println!("Initial JWT");
+    println!("=== {} ===", "Initial JWT");
 
     // Initially the JWT has no defined signature:
-    println!("JWT:");
     println!("{}", token.formatted());
 
     // Sign the token with the algorithm, and print the result.
-    let signed = token.sign(&alg).unwrap();
+    let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
 
-    println!("Signed JWT");
+    println!("=== {} ===", "Signed JWT");
 
     println!("JWT:");
     println!("{}", signed.formatted());
@@ -184,7 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token: Token<Claims<serde_json::Value>, Unverified<()>, Compact> =
         signed.rendered().unwrap().parse().unwrap();
 
-    println!("Parsed JWT");
+    println!("=== {} ===", "Parsed JWT");
 
     // Unverified tokens can be printed for debugging, but there is deliberately
     // no access to the payload, only to the header fields.
@@ -197,13 +196,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap());
 
     assert_eq!(&key, alg.verifying_key().as_ref());
+    println!("=== {} === ", "Verification");
 
-    let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(key);
+    // let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(key);
+    let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = alg.verifying_key();
 
     // We can't access the claims until we verify the token.
-    let verified = token.verify(&alg).unwrap();
+    // let verified = token.verify::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
+    let verified = token
+        .verify::<_, jaws::algorithms::SignatureBytes>(&alg)
+        .unwrap();
 
-    println!("Verified JWT");
+    println!("=== {} ===", "Verified JWT");
     println!("JWT:");
     println!("{}", verified.formatted());
     println!(

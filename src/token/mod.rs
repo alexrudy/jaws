@@ -215,7 +215,7 @@ let key = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 let token = Token::compact((), ());
 
 // The only way to get a signed token is to sign an Unsigned token!
-let signed = token.sign::<rsa::pkcs1v15::SigningKey<sha2::Sha256>>(&key).unwrap();
+let signed = token.sign::<rsa::pkcs1v15::SigningKey<sha2::Sha256>, rsa::pkcs1v15::Signature>(&key).unwrap();
 println!("Token: {}", signed.rendered().unwrap());
 ```
 Signing often requires specifying the algorithm to use. In the example above, we use
@@ -230,7 +230,7 @@ them. This is done with the [`Token::unverify`] method:
 # use signature::rand_core as rand;
 # let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 # let token = Token::compact((), ());
-# let signed = token.sign(&key).unwrap();
+# let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&key).unwrap();
 // We can unverify the token, which discard the memory of the key used to sign it.
 let unverified = signed.unverify();
 
@@ -248,9 +248,9 @@ by checking the signature. This is done with the [`Token::verify`] method:
 # let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 # let verifying_key = key.verifying_key();
 # let token = Token::compact((), ());
-# let signed = token.sign(&key).unwrap();
+# let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&key).unwrap();
 # let unverified = signed.unverify();
-let verified = unverified.verify(&verifying_key).unwrap();
+let verified = unverified.verify::<_, rsa::pkcs1v15::Signature>(&verifying_key).unwrap();
 println!("Token: {}", verified.rendered().unwrap());
 ```
 

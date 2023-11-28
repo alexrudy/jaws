@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
@@ -14,7 +16,7 @@ use super::HeaderState;
 ///
 /// This is different from [super::SignedHeader] in that it contains the actual data,
 /// and not thd derivation, so the fields may be in inconsistent states.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RenderedHeader {
     /// The raw bytes of the header, as it was signed.
     #[serde(skip)]
@@ -38,26 +40,25 @@ pub struct RenderedHeader {
 }
 
 impl HeaderState for RenderedHeader {
-    fn parameters(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+    fn parameters(
+        &self,
+    ) -> Result<BTreeMap<std::string::String, serde_json::Value>, serde_json::Error> {
         let mut data = std::collections::BTreeMap::new();
 
-        data.insert(
-            "alg".to_owned(),
-            serde_json::to_value(self.algorithm).unwrap(),
-        );
+        data.insert("alg".to_owned(), serde_json::to_value(self.algorithm)?);
 
         if let Some(value) = self.key.as_ref() {
-            data.insert("jwk".to_owned(), serde_json::to_value(value).unwrap());
+            data.insert("jwk".to_owned(), serde_json::to_value(value)?);
         }
 
         if let Some(value) = self.thumbprint.as_ref() {
-            data.insert("x5t".to_owned(), serde_json::to_value(value).unwrap());
+            data.insert("x5t".to_owned(), serde_json::to_value(value)?);
         }
 
         if let Some(value) = self.thumbprint_sha256.as_ref() {
-            data.insert("x5t#S256".to_owned(), serde_json::to_value(value).unwrap());
+            data.insert("x5t#S256".to_owned(), serde_json::to_value(value)?);
         }
 
-        data
+        Ok(data)
     }
 }

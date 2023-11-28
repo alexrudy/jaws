@@ -8,12 +8,12 @@
 use std::{collections::BTreeMap, hash::Hash, marker::PhantomData};
 
 use base64ct::Encoding;
-use digest::Digest;
 use serde::{
     de,
     ser::{self, SerializeMap},
     Deserialize, Serialize,
 };
+use signature::Error as SignatureError;
 
 /// Trait for keys which can be used as a JWK.
 pub trait JWKeyType {
@@ -28,19 +28,26 @@ where
     const KEY_TYPE: &'static str = T::KEY_TYPE;
 }
 
-/// Trait for keys which can be serialized as a JWK.
-pub trait SerializeJWK: JWKeyType {
-    /// Return a list of parameters to be serialized in the JWK.
-    fn parameters(&self) -> Vec<(String, serde_json::Value)>;
+/// Trait for keys which can be used as a JWK, automatically implemented for
+/// types which implement `JWKeyType`, to make `SerializeJWK` object-safe.
+pub trait DynJwkKeyType {
+    /// The string used to identify the JWK type in the `kty` field.
+    fn key_type(&self) -> &'static str;
 }
 
-impl<T> SerializeJWK for &T
+impl<T> DynJwkKeyType for T
 where
-    T: SerializeJWK,
+    T: JWKeyType,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        (*self).parameters()
+    fn key_type(&self) -> &'static str {
+        T::KEY_TYPE
     }
+}
+
+/// Trait for keys which can be serialized as a JWK.
+pub trait SerializeJWK: DynJwkKeyType {
+    /// Return a list of parameters to be serialized in the JWK.
+    fn parameters(&self) -> Vec<(String, serde_json::Value)>;
 }
 
 /// Trait for keys which can be deserialized from a JWK.
@@ -52,61 +59,22 @@ pub trait DeserializeJWK: JWKeyType {
 }
 
 /// Trait for building values derived from a key.
-pub trait KeyDerivedBuilder<Key>: From<Key> {
-    /// Output value type.
-    type Value;
-
+pub trait BuildFromKey<Key: ?Sized> {
     /// Build a value from a key.
-    fn build(self) -> Self::Value;
-}
-/// A JSON Web Key with the original key contained inside.
-///
-/// The actual key isn't produced until this is serialized.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct JsonWebKeyBuilder<K>(K);
-
-impl<K> From<K> for JsonWebKeyBuilder<K> {
-    fn from(key: K) -> Self {
-        Self(key)
-    }
-}
-
-impl<Key> Serialize for JsonWebKeyBuilder<Key>
-where
-    Key: SerializeJWK,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn build(key: &Key) -> Result<Self, SignatureError>
     where
-        S: serde::Serializer,
-    {
-        // Asseble keys first so that we can order them.
-        let mut keys = BTreeMap::new();
-        keys.insert(
-            "kty".to_owned(),
-            serde_json::Value::String(Key::KEY_TYPE.to_owned()),
-        );
-        for (key, value) in self.0.parameters() {
-            keys.insert(key, value);
-        }
-
-        // Put them back so we can serialize them in lexical order.
-        let mut map = serializer.serialize_map(Some(keys.len()))?;
-        for (key, value) in keys {
-            map.serialize_entry(&key, &value)?;
-        }
-
-        map.end()
-    }
+        Self: Sized;
 }
 
-impl<Key> KeyDerivedBuilder<Key> for JsonWebKeyBuilder<Key>
+impl<Key> BuildFromKey<Key> for JsonWebKey
 where
-    Key: SerializeJWK,
+    Key: SerializeJWK + ?Sized,
 {
-    type Value = JsonWebKey;
-
-    fn build(self) -> Self::Value {
-        JsonWebKey::from(self)
+    fn build(key: &Key) -> Result<Self, SignatureError> {
+        Ok(JsonWebKey {
+            key_type: key.key_type().into(),
+            parameters: key.parameters().into_iter().collect(),
+        })
     }
 }
 
@@ -123,22 +91,11 @@ pub struct JsonWebKey {
 }
 
 impl JsonWebKey {
-    /// Create a builder for a new JWK.
-    ///
-    /// The builder ensures that the JWK fields are set consistently.
-    pub fn builder<Key>(key: Key) -> JsonWebKeyBuilder<Key> {
-        JsonWebKeyBuilder::from(key)
-    }
-}
-
-impl<K> From<JsonWebKeyBuilder<K>> for JsonWebKey
-where
-    K: SerializeJWK,
-{
-    fn from(key: JsonWebKeyBuilder<K>) -> Self {
+    /// Build a JWK from a key.
+    pub fn build<K: SerializeJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
-            key_type: K::KEY_TYPE.into(),
-            parameters: key.0.parameters().into_iter().collect(),
+            key_type: key.key_type().into(),
+            parameters: key.parameters().into_iter().collect(),
         }
     }
 }
@@ -163,78 +120,6 @@ impl Serialize for JsonWebKey {
             map.serialize_entry(key, value)?;
         }
         map.end()
-    }
-}
-
-/// A JSON Web Key Thumbprint (RFC 7638) calculator.
-///
-/// This type contains the raw parts to build a JWK and then digest
-/// them to form a thumbprint.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Thumbprinter<Digest, Key> {
-    digest: PhantomData<Digest>,
-    key: JsonWebKeyBuilder<Key>,
-}
-
-impl<D, K> Thumbprinter<D, K> {
-    /// Create a new JWK Thumbprinter from a key.
-    pub fn new(key: K) -> Self {
-        Self {
-            digest: PhantomData,
-            key: JsonWebKeyBuilder::from(key),
-        }
-    }
-}
-
-impl<D, K> Thumbprinter<D, K>
-where
-    D: Digest,
-    K: SerializeJWK,
-{
-    /// Compute the raw digest of the JWK.
-    pub fn digest(&self) -> Vec<u8> {
-        let thumb = serde_json::to_vec(&self.key).expect("Valid JSON format");
-
-        let mut hasher = D::new();
-        hasher.update(&thumb);
-        let digest = hasher.finalize();
-        digest.to_vec()
-    }
-
-    /// Compute the base64url-encoded digest of the JWK.
-    pub fn thumbprint(&self) -> Thumbprint<D> {
-        Thumbprint::new(base64ct::Base64UrlUnpadded::encode_string(&self.digest()))
-    }
-}
-
-impl<D, K> Serialize for Thumbprinter<D, K>
-where
-    K: SerializeJWK,
-    D: Digest,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.thumbprint())
-    }
-}
-
-impl<D, K> KeyDerivedBuilder<K> for Thumbprinter<D, K>
-where
-    K: SerializeJWK,
-    D: Digest,
-{
-    type Value = Thumbprint<D>;
-
-    fn build(self) -> Self::Value {
-        self.thumbprint()
-    }
-}
-
-impl<D, K> From<K> for Thumbprinter<D, K> {
-    fn from(key: K) -> Self {
-        Self::new(key)
     }
 }
 
@@ -268,13 +153,41 @@ impl<Digest> PartialEq for Thumbprint<Digest> {
 
 impl<Digest> Eq for Thumbprint<Digest> {}
 
-impl<Digest> Thumbprint<Digest> {
+impl<Digest> Thumbprint<Digest>
+where
+    Digest: digest::Digest,
+{
     /// Create a new thumbprint from a base64url-encoded digest.
     pub fn new(thumbprint: String) -> Self {
         Self {
             thumbprint,
             digest: PhantomData,
         }
+    }
+
+    fn build<K>(key: &K) -> Result<Self, SignatureError>
+    where
+        K: SerializeJWK + ?Sized,
+    {
+        let jwk = JsonWebKey::build(key);
+        let thumb = serde_json::to_vec(&jwk).map_err(SignatureError::from_source)?;
+
+        let mut hasher = Digest::new();
+        hasher.update(&thumb);
+        let digest = hasher.finalize();
+        Ok(Self::new(base64ct::Base64UrlUnpadded::encode_string(
+            &digest,
+        )))
+    }
+}
+
+impl<Digest, Key> BuildFromKey<Key> for Thumbprint<Digest>
+where
+    Key: SerializeJWK + ?Sized,
+    Digest: digest::Digest,
+{
+    fn build(key: &Key) -> Result<Thumbprint<Digest>, signature::Error> {
+        Thumbprint::build(key).map_err(signature::Error::from_source)
     }
 }
 
@@ -289,7 +202,10 @@ impl<Digest> ser::Serialize for Thumbprint<Digest> {
 
 struct ThumbprintVisitor<D>(PhantomData<D>);
 
-impl<'de, D> de::Visitor<'de> for ThumbprintVisitor<D> {
+impl<'de, D> de::Visitor<'de> for ThumbprintVisitor<D>
+where
+    D: digest::Digest,
+{
     type Value = Thumbprint<D>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -304,7 +220,10 @@ impl<'de, D> de::Visitor<'de> for ThumbprintVisitor<D> {
     }
 }
 
-impl<'de, Digest> de::Deserialize<'de> for Thumbprint<Digest> {
+impl<'de, Digest> de::Deserialize<'de> for Thumbprint<Digest>
+where
+    Digest: digest::Digest,
+{
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -376,10 +295,15 @@ pub(crate) mod jwk_reader {
 #[cfg(test)]
 mod test {
 
+    use super::*;
+
+    use static_assertions as sa;
+
+    sa::assert_obj_safe!(SerializeJWK);
+
     #[cfg(all(test, feature = "rsa"))]
     mod rsa {
         use super::super::*;
-        use std::ops::Deref;
 
         use serde_json::json;
 
@@ -400,12 +324,9 @@ mod test {
                  }
             ));
 
-            let thumb = Thumbprinter::<sha2::Sha256, _>::new(key);
+            let thumb: Thumbprint<sha2::Sha256> = Thumbprint::build(&key).unwrap();
 
-            assert_eq!(
-                thumb.thumbprint().deref(),
-                "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
-            );
+            assert_eq!(&*thumb, "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs");
         }
     }
 }

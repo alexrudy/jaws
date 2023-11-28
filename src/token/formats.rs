@@ -16,7 +16,7 @@ use crate::base64data::{Base64JSON, Base64Signature, DecodeError};
 use crate::jose::{Header, HeaderState, RenderedHeader};
 
 /// A token format that serializes the token as a compact string.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Compact;
 
 impl Compact {
@@ -31,7 +31,7 @@ impl Compact {
 
 /// A token format that serializes the token as a single JSON object,
 /// with the unprotected header as a top-level field.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlatUnprotected<U> {
     unprotected: U,
 }
@@ -54,7 +54,7 @@ impl<U> FlatUnprotected<U> {
 }
 
 /// A token format that serializes the token as a single JSON object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Flat;
 
 /// Error returned when a token cannot be formatted as a string.

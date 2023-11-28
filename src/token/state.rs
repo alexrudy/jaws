@@ -1,12 +1,13 @@
+use std::marker::PhantomData;
+
 use bytes::Bytes;
 use serde::Serialize;
 use signature::SignatureEncoding;
 
 use crate::{
-    algorithms::{DynJoseAlgorithm, SignatureBytes, TokenSigner},
+    algorithms::{DynJoseAlgorithm, SignatureBytes},
     base64data::Base64Signature,
     jose,
-    key::SerializeJWK,
 };
 
 /// A trait used to represent the state of a token with respect to
@@ -58,7 +59,7 @@ pub trait HasSignature: MaybeSigned {
 ///
 /// This token contains just the unsigned parts which are used as the
 /// input to the cryptographic signature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unsigned<H> {
     pub(super) header: jose::Header<H, jose::UnsignedHeader>,
 }
@@ -88,32 +89,36 @@ impl<H> MaybeSigned for Unsigned<H> {
 ///
 /// This state is used when this program applied the signature, so we know that the
 /// signature is both consistent and valid.
-#[derive(Debug, Clone, Serialize)]
-#[serde(bound(serialize = "H: Serialize, Alg: Clone, Alg::Signature: Serialize",))]
-pub struct Signed<H, Alg>
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
+pub struct Signed<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
 {
-    pub(super) header: jose::Header<H, jose::SignedHeader<Alg>>,
-    pub(super) signature: Alg::Signature,
+    pub(super) header: jose::Header<H, jose::SignedHeader>,
+    pub(super) signature: Sig,
+
+    #[serde(skip)]
+    pub(super) _phantom_key: PhantomData<Alg>,
 }
 
-impl<H, Alg> HasSignature for Signed<H, Alg>
+impl<H, Alg, Sig> HasSignature for Signed<H, Alg, Sig>
 where
-    Alg: TokenSigner + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
+    Sig: SignatureEncoding,
 {
-    type Signature = Alg::Signature;
+    type Signature = Sig;
 
     fn signature(&self) -> &Self::Signature {
         &self.signature
     }
 }
 
-impl<H, Alg> MaybeSigned for Signed<H, Alg>
+impl<H, Alg, Sig> MaybeSigned for Signed<H, Alg, Sig>
 where
-    Alg: TokenSigner + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
 {
-    type HeaderState = jose::SignedHeader<Alg>;
+    type HeaderState = jose::SignedHeader;
     type Header = H;
 
     fn header(&self) -> &jose::Header<H, Self::HeaderState> {
@@ -139,21 +144,24 @@ where
 /// signature is valid and consistent with the header values. However, we also know that
 /// we did not create the token, and modifying it may result in headers which are not
 /// consistent with the signature.
-#[derive(Debug, Clone, Serialize)]
-#[serde(bound(serialize = "H: Serialize, Alg: Clone, Alg::Signature: Serialize",))]
-pub struct Verified<H, Alg>
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
+pub struct Verified<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
 {
-    pub(super) header: jose::Header<H, jose::SignedHeader<Alg>>,
-    pub(super) signature: Alg::Signature,
+    pub(super) header: jose::Header<H, jose::SignedHeader>,
+    pub(super) signature: Sig,
+
+    #[serde(skip)]
+    pub(super) _phantom_key: PhantomData<Alg>,
 }
 
-impl<H, Alg> MaybeSigned for Verified<H, Alg>
+impl<H, Alg, Sig> MaybeSigned for Verified<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
 {
-    type HeaderState = jose::SignedHeader<Alg>;
+    type HeaderState = jose::SignedHeader;
     type Header = H;
 
     fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState> {
@@ -173,11 +181,12 @@ where
     }
 }
 
-impl<H, Alg> HasSignature for Verified<H, Alg>
+impl<H, Alg, Sig> HasSignature for Verified<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
+    Sig: SignatureEncoding,
 {
-    type Signature = Alg::Signature;
+    type Signature = Sig;
 
     fn signature(&self) -> &Self::Signature {
         &self.signature
@@ -188,7 +197,7 @@ where
 ///
 /// This state indicates that we have recieved the token from elsewhere, and
 /// many fields could be in inconsistnet states.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unverified<H> {
     pub(super) payload: Bytes,
     pub(super) header: jose::Header<H, jose::RenderedHeader>,

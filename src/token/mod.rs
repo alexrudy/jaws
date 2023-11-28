@@ -19,12 +19,11 @@ use serde::{
 };
 use signature::SignatureEncoding;
 
-use crate::algorithms::TokenVerifier;
 #[cfg(feature = "fmt")]
 use crate::fmt;
 use crate::key::SerializeJWK;
 use crate::{
-    algorithms::{AlgorithmIdentifier, TokenSigner},
+    algorithms::{AlgorithmIdentifier, DynJoseAlgorithm},
     base64data::{Base64JSON, Base64Signature, DecodeError},
     jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
@@ -42,7 +41,7 @@ pub use self::state::{HasSignature, MaybeSigned, Signed, Unsigned, Unverified, V
 ///
 /// It is hard to express this empty type naturally in the Rust type system in a way that interacts
 /// well with [serde_json].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Payload<P> {
     /// A payload which will be serialized as JSON and then base64url encoded.
     Json(Base64JSON<P>),
@@ -216,7 +215,7 @@ let key = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 let token = Token::compact((), ());
 
 // The only way to get a signed token is to sign an Unsigned token!
-let signed = token.sign::<rsa::pkcs1v15::SigningKey<sha2::Sha256>>(&key).unwrap();
+let signed = token.sign::<rsa::pkcs1v15::SigningKey<sha2::Sha256>, rsa::pkcs1v15::Signature>(&key).unwrap();
 println!("Token: {}", signed.rendered().unwrap());
 ```
 Signing often requires specifying the algorithm to use. In the example above, we use
@@ -231,7 +230,7 @@ them. This is done with the [`Token::unverify`] method:
 # use signature::rand_core as rand;
 # let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 # let token = Token::compact((), ());
-# let signed = token.sign(&key).unwrap();
+# let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&key).unwrap();
 // We can unverify the token, which discard the memory of the key used to sign it.
 let unverified = signed.unverify();
 
@@ -249,9 +248,9 @@ by checking the signature. This is done with the [`Token::verify`] method:
 # let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
 # let verifying_key = key.verifying_key();
 # let token = Token::compact((), ());
-# let signed = token.sign(&key).unwrap();
+# let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&key).unwrap();
 # let unverified = signed.unverify();
-let verified = unverified.verify(&verifying_key).unwrap();
+let verified = unverified.verify::<_, rsa::pkcs1v15::Signature>(&verifying_key).unwrap();
 println!("Token: {}", verified.rendered().unwrap());
 ```
 
@@ -260,7 +259,7 @@ one specified in the header. Since keys are strongly typed, it is not possible t
 signature substitution attack using a different key type.
 "#
 )]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token<P, State: MaybeSigned = Unsigned<()>, Fmt: TokenFormat = Compact> {
     payload: Payload<P>,
     state: State,
@@ -426,12 +425,15 @@ where
     /// Once the signature is attached, the internal fields are no longer mutable (as that
     /// would invalidate the signature), but they are still recoverable.
     #[allow(clippy::type_complexity)]
-    pub fn sign<A>(self, algorithm: &A) -> Result<Token<P, Signed<H, A>, Fmt>, TokenSigningError>
+    pub fn sign<A, S>(
+        self,
+        algorithm: &A,
+    ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenSigningError>
     where
-        A: crate::algorithms::TokenSigner + SerializeJWK + Clone,
-        // A::Signature: Serialize,
+        A: crate::algorithms::TokenSigner<S> + SerializeJWK + ?Sized,
+        S: SignatureEncoding,
     {
-        let header = self.state.header.into_signed_header(algorithm);
+        let header = self.state.header.into_signed_header(algorithm)?;
         let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
@@ -439,7 +441,11 @@ where
             .map_err(TokenSigningError::Signing)?;
         Ok(Token {
             payload: self.payload,
-            state: Signed { header, signature },
+            state: Signed {
+                header,
+                signature,
+                _phantom_key: PhantomData,
+            },
             fmt: self.fmt,
         })
     }
@@ -458,14 +464,15 @@ where
     /// The algorithm must be uniquely specified for verification, otherwise the token
     /// could perform a signature downgrade attack.
     #[allow(clippy::type_complexity)]
-    pub fn verify<A>(
+    pub fn verify<A, S>(
         self,
         algorithm: &A,
-    ) -> Result<Token<P, Verified<H, A>, Fmt>, TokenVerifyingError>
+    ) -> Result<Token<P, Verified<H, A, S>, Fmt>, TokenVerifyingError>
     where
-        A: crate::algorithms::TokenVerifier + SerializeJWK,
+        A: crate::algorithms::TokenVerifier<S> + ?Sized,
+        S: SignatureEncoding,
         P: Serialize,
-        H: Serialize,
+        H: Serialize + std::fmt::Debug,
     {
         if algorithm.identifier() != *self.state.header.algorithm() {
             return Err(TokenVerifyingError::Algorithm(
@@ -483,11 +490,15 @@ where
             )
             .map_err(TokenVerifyingError::Verify)?;
 
-        let header = self.state.header.into_signed_header::<A>(algorithm);
+        let header = self.state.header.into_signed_header::<A, S>(algorithm);
 
         Ok(Token {
             payload: self.payload,
-            state: Verified { header, signature },
+            state: Verified {
+                header,
+                signature,
+                _phantom_key: PhantomData,
+            },
             fmt: self.fmt,
         })
     }
@@ -506,10 +517,11 @@ where
     }
 }
 
-impl<P, H, Alg, Fmt> Token<P, Signed<H, Alg>, Fmt>
+impl<P, H, Alg, Sig, Fmt> Token<P, Signed<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: TokenSigner + SerializeJWK + Clone,
+    Alg: DynJoseAlgorithm + ?Sized,
+    Sig: SignatureEncoding,
     H: Serialize,
     P: Serialize,
 {
@@ -534,10 +546,10 @@ where
     }
 }
 
-impl<H, Fmt, P, Alg> Token<P, Signed<H, Alg>, Fmt>
+impl<H, Fmt, P, Alg, Sig> Token<P, Signed<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: TokenSigner + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
 {
     /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
@@ -548,10 +560,11 @@ where
     }
 }
 
-impl<P, H, Alg, Fmt> Token<P, Verified<H, Alg>, Fmt>
+impl<P, H, Alg, Sig, Fmt> Token<P, Verified<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: TokenVerifier + SerializeJWK + Clone,
+    Alg: DynJoseAlgorithm + ?Sized,
+    Sig: SignatureEncoding,
     H: Serialize,
     P: Serialize,
 {
@@ -576,10 +589,10 @@ where
     }
 }
 
-impl<H, Fmt, P, Alg> Token<P, Verified<H, Alg>, Fmt>
+impl<H, Fmt, P, Alg, Sig> Token<P, Verified<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: TokenVerifier + SerializeJWK,
+    Alg: DynJoseAlgorithm + ?Sized,
 {
     /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
@@ -671,7 +684,7 @@ pub enum TokenSigningError {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.
     #[error("signing: {0}")]
-    Signing(signature::Error),
+    Signing(#[from] signature::Error),
 
     /// An error occured while serailizing the header or payload for
     /// signature computation. This indicates that something is probably
@@ -756,7 +769,9 @@ mod test_rsa {
 
         let token = Token::new((), claims, Compact::new());
         let algorithm: rsa::pkcs1v15::SigningKey<Sha256> = rsa::pkcs1v15::SigningKey::new(pkey);
-        let signed = token.sign(&algorithm).unwrap();
+        let signed = token
+            .sign::<_, rsa::pkcs1v15::Signature>(&algorithm)
+            .unwrap();
         {
             let hdr = base64ct::Base64UrlUnpadded::encode_string(
                 &serde_json::to_vec(&signed.state.header()).unwrap(),
@@ -799,7 +814,10 @@ mod test_rsa {
 
         let algorithm = algorithm.verifying_key();
 
-        signed.unverify().verify(&algorithm).unwrap();
+        signed
+            .unverify()
+            .verify::<_, rsa::pkcs1v15::Signature>(&algorithm)
+            .unwrap();
     }
 }
 
@@ -841,11 +859,14 @@ mod test_ecdsa {
 
         let token = Token::compact((), "This is a signed message");
 
-        let signed = token.sign(&key).unwrap();
+        let signed = token.sign::<_, ::ecdsa::Signature<_>>(&key).unwrap();
 
         let verifying_key = key.verifying_key();
 
-        let verified = signed.unverify().verify(verifying_key).unwrap();
+        let verified = signed
+            .unverify()
+            .verify::<_, ::ecdsa::Signature<_>>(verifying_key)
+            .unwrap();
 
         assert_eq!(verified.payload(), Some(&"This is a signed message"));
     }

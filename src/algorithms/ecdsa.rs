@@ -22,6 +22,7 @@ Signing with an ECDSA key:
 use serde_json::json;
 
 use ecdsa::SigningKey;
+use ecdsa::Signature;
 use elliptic_curve::FieldBytes;
 use base64ct::{Encoding, Base64UrlUnpadded};
 
@@ -56,7 +57,7 @@ let mut token = Token::compact((), claims);
 *token.header_mut().r#type() = Some("JWT".to_string());
 
 // Sign the token with the ECDSA key, and print the result.
-let signed = token.sign(&key).unwrap();
+let signed = token.sign::<_, Signature<_>>(&key).unwrap();
 // Print out the compact form you would use as a token
 println!("{}", signed.rendered().unwrap());
 
@@ -69,6 +70,7 @@ println!("{}", signed.formatted());
 use ::ecdsa::{hazmat::SignPrimitive, PrimeCurve, SignatureSize};
 pub use ::ecdsa::{SigningKey, VerifyingKey};
 use base64ct::Encoding;
+use bytes::Bytes;
 use digest::generic_array::ArrayLength;
 use elliptic_curve::{
     ops::Invert,
@@ -85,6 +87,17 @@ pub use p384::NistP384;
 
 #[cfg(feature = "p521")]
 pub use p521::NistP521;
+use signature::SignatureEncoding;
+
+impl<C> From<::ecdsa::Signature<C>> for super::SignatureBytes
+where
+    C: PrimeCurve,
+    ::ecdsa::Signature<C>: SignatureEncoding,
+{
+    fn from(sig: ::ecdsa::Signature<C>) -> Self {
+        Self(Bytes::copy_from_slice(sig.to_bytes().as_ref()))
+    }
+}
 
 impl<C> crate::key::JWKeyType for VerifyingKey<C>
 where
@@ -147,25 +160,13 @@ where
 
 macro_rules! jose_ecdsa_algorithm {
     ($alg:ident, $curve:ty) => {
-        impl crate::algorithms::JoseAlgorithm for ecdsa::SigningKey<$curve> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = ecdsa::Signature<$curve>;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for ecdsa::SigningKey<$curve> {
-            type Digest = <$curve as ::ecdsa::hazmat::DigestPrimitive>::Digest;
-        }
-
-        impl crate::algorithms::JoseAlgorithm for ecdsa::VerifyingKey<$curve> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = ecdsa::Signature<$curve>;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for ecdsa::VerifyingKey<$curve> {
-            type Digest = <$curve as ::ecdsa::hazmat::DigestPrimitive>::Digest;
-        }
+        $crate::jose_algorithm!(
+            $alg,
+            ecdsa::SigningKey<$curve>,
+            ecdsa::VerifyingKey<$curve>,
+            <$curve as ::ecdsa::hazmat::DigestPrimitive>::Digest,
+            ::ecdsa::Signature<$curve>
+        );
     };
 }
 
@@ -179,12 +180,19 @@ jose_ecdsa_algorithm!(ES384, NistP384);
 mod test {
 
     use super::*;
-    use crate::algorithms::TokenSigner;
+    use crate::{
+        algorithms::{TokenSigner, TokenVerifier},
+        key::SerializeJWK,
+    };
 
     use base64ct::Encoding;
     use elliptic_curve::FieldBytes;
     use serde_json::json;
+    use static_assertions as sa;
     use zeroize::Zeroize;
+
+    sa::assert_impl_all!(SigningKey<NistP256>: TokenSigner<ecdsa::Signature<NistP256>>, SerializeJWK);
+    sa::assert_impl_all!(VerifyingKey<NistP256>: TokenVerifier<ecdsa::Signature<NistP256>>, SerializeJWK);
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -219,7 +227,7 @@ mod test {
 
         let header = strip_whitespace("eyJhbGciOiJFUzI1NiJ9");
 
-        let signature = key.sign_token(&header, &payload);
+        let signature: ::ecdsa::Signature<NistP256> = key.sign_token(&header, &payload);
         let _sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 
         // This won't work because the signature is non-deterministic

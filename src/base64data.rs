@@ -34,7 +34,7 @@ pub enum DecodeError {
 
 /// Wrapper type to indicate that the inner type should be serialized
 /// as bytes with a Base64 URL-safe encoding.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Base64Signature<T>(pub T);
 
 impl<T> Base64Signature<T>
@@ -45,6 +45,17 @@ where
         Ok(base64ct::Base64UrlUnpadded::encode_string(
             self.0.to_bytes().as_ref(),
         ))
+    }
+}
+
+impl<T> std::fmt::Debug for Base64Signature<T>
+where
+    T: signature::SignatureEncoding,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Base64Signature")
+            .field(&self.serialized_value().unwrap())
+            .finish()
     }
 }
 

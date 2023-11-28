@@ -49,47 +49,47 @@ impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
     }
 }
 
+impl<D> crate::key::JWKeyType for rsa::pkcs1v15::SigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    const KEY_TYPE: &'static str = "RSA";
+}
+
+impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::SigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.as_ref().to_public_key().parameters()
+    }
+}
+
+impl<D> crate::key::JWKeyType for rsa::pkcs1v15::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+{
+    const KEY_TYPE: &'static str = "RSA";
+}
+
+impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.as_ref().parameters()
+    }
+}
+
 macro_rules! jose_rsa_pkcs1v15_algorithm {
     ($alg:ident, $digest:ty) => {
-        impl crate::algorithms::JoseAlgorithm for rsa::pkcs1v15::SigningKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pkcs1v15::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pkcs1v15::SigningKey<$digest> {
-            type Digest = $digest;
-        }
-
-        impl crate::key::JWKeyType for rsa::pkcs1v15::SigningKey<$digest> {
-            const KEY_TYPE: &'static str = "RSA";
-        }
-
-        impl crate::key::SerializeJWK for rsa::pkcs1v15::SigningKey<$digest> {
-            fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-                self.as_ref().to_public_key().parameters()
-            }
-        }
-
-        impl crate::algorithms::JoseAlgorithm for rsa::pkcs1v15::VerifyingKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pkcs1v15::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pkcs1v15::VerifyingKey<$digest> {
-            type Digest = $digest;
-        }
-
-        impl crate::key::JWKeyType for rsa::pkcs1v15::VerifyingKey<$digest> {
-            const KEY_TYPE: &'static str = "RSA";
-        }
-
-        impl crate::key::SerializeJWK for rsa::pkcs1v15::VerifyingKey<$digest> {
-            fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-                self.as_ref().parameters()
-            }
-        }
+        $crate::jose_algorithm!(
+            $alg,
+            rsa::pkcs1v15::SigningKey<$digest>,
+            rsa::pkcs1v15::VerifyingKey<$digest>,
+            $digest,
+            rsa::pkcs1v15::Signature
+        );
     };
 }
 
@@ -97,53 +97,53 @@ jose_rsa_pkcs1v15_algorithm!(RS256, sha2::Sha256);
 jose_rsa_pkcs1v15_algorithm!(RS384, sha2::Sha384);
 jose_rsa_pkcs1v15_algorithm!(RS512, sha2::Sha512);
 
-macro_rules! jose_rsa_pss_algorithm {
-    ($alg:ident, $digest:ty) => {
-        impl crate::algorithms::JoseAlgorithm for rsa::pss::BlindedSigningKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pss::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pss::BlindedSigningKey<$digest> {
-            type Digest = $digest;
-        }
-
-        impl crate::key::JWKeyType for rsa::pss::BlindedSigningKey<$digest> {
-            const KEY_TYPE: &'static str = "RSA";
-        }
-
-        impl crate::key::SerializeJWK for rsa::pss::BlindedSigningKey<$digest> {
-            fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-                self.as_ref().to_public_key().parameters()
-            }
-        }
-
-        impl crate::algorithms::JoseAlgorithm for rsa::pss::VerifyingKey<$digest> {
-            const IDENTIFIER: crate::algorithms::AlgorithmIdentifier =
-                crate::algorithms::AlgorithmIdentifier::$alg;
-            type Signature = rsa::pss::Signature;
-        }
-
-        impl crate::algorithms::JoseDigestAlgorithm for rsa::pss::VerifyingKey<$digest> {
-            type Digest = $digest;
-        }
-
-        impl crate::key::JWKeyType for rsa::pss::VerifyingKey<$digest> {
-            const KEY_TYPE: &'static str = "RSA";
-        }
-
-        impl crate::key::SerializeJWK for rsa::pss::VerifyingKey<$digest> {
-            fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-                self.as_ref().parameters()
-            }
-        }
-    };
+impl<D> crate::key::JWKeyType for rsa::pss::BlindedSigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    const KEY_TYPE: &'static str = "RSA";
 }
 
-jose_rsa_pss_algorithm!(PS256, sha2::Sha256);
-jose_rsa_pss_algorithm!(PS384, sha2::Sha384);
-jose_rsa_pss_algorithm!(PS512, sha2::Sha512);
+impl<D> crate::key::SerializeJWK for rsa::pss::BlindedSigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.as_ref().to_public_key().parameters()
+    }
+}
+
+impl<D> crate::key::JWKeyType for rsa::pss::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+{
+    const KEY_TYPE: &'static str = "RSA";
+}
+
+impl<D> crate::key::SerializeJWK for rsa::pss::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.as_ref().parameters()
+    }
+}
+
+// macro_rules! jose_rsa_pss_algorithm {
+//     ($alg:ident, $digest:ty) => {
+//         $crate::jose_algorithm!(
+//             $alg,
+//             rsa::pss::SigningKey<$digest>,
+//             rsa::pss::VerifyingKey<$digest>,
+//             $digest,
+//             rsa::pss::Signature
+//         );
+//     };
+// }
+
+// jose_rsa_pss_algorithm!(PS256, sha2::Sha256);
+// jose_rsa_pss_algorithm!(PS384, sha2::Sha384);
+// jose_rsa_pss_algorithm!(PS512, sha2::Sha512);
 
 #[cfg(test)]
 mod test {
@@ -154,7 +154,7 @@ mod test {
     use base64ct::Encoding as _;
     use serde_json::json;
     use sha2::Sha256;
-    use signature::SignatureEncoding as _;
+    use signature::SignatureEncoding;
 
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -203,7 +203,7 @@ mod test {
 
         let algorithm: rsa::pkcs1v15::SigningKey<Sha256> = rsa::pkcs1v15::SigningKey::new(pkey);
 
-        let signature = algorithm.sign_token(&header, &payload);
+        let signature: rsa::pkcs1v15::Signature = algorithm.sign_token(&header, &payload);
 
         let sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 

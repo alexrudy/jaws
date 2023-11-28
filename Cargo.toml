@@ -40,6 +40,9 @@ version = "0.13"
 features = ["pkcs8", "jwk", "arithmetic", "sec1", "ecdh"]
 optional = true
 
+[dev-dependencies]
+static_assertions = "1.1.0"
+
 [features]
 default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac"]
 fmt = []
@@ -61,6 +64,17 @@ path = "examples/rfc7515a2.rs"
 required-features = ["fmt", "rsa"]
 
 [[example]]
+name = "dyn-key"
+path = "examples/dyn-key.rs"
+required-features = ["fmt", "rsa"]
+
+
+[[example]]
 name = "save-key"
 path = "examples/save-key.rs"
+required-features = ["fmt", "rsa"]
+
+[[test]]
+name = "dyn-rsa-key"
+path = "tests/dyn-rsa-key.rs"
 required-features = ["fmt", "rsa"]

@@ -51,6 +51,9 @@
 //!
 //! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
+use std::fmt;
+
+use base64ct::Encoding as _;
 use bytes::Bytes;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
@@ -148,9 +151,6 @@ pub trait JoseAlgorithm {
     ///
     /// This is the `alg` field in the JOSE header.
     const IDENTIFIER: AlgorithmIdentifier;
-
-    /// The type of the signature, which must support encoding.
-    type Signature: SignatureEncoding;
 }
 
 /// A trait to associate an alogritm identifier with an algorithm.
@@ -161,9 +161,6 @@ pub trait JoseAlgorithm {
 /// This trait does not need to be implemented manually, as it is implemented
 /// for any type which implements [`JoseAlgorithm`].
 pub trait DynJoseAlgorithm {
-    /// The type of the signature, which must support encoding.
-    type Signature: SignatureEncoding;
-
     /// The identifier for this algorithm when used in a JWT registered header.
     fn identifier(&self) -> AlgorithmIdentifier;
 }
@@ -172,8 +169,6 @@ impl<T> DynJoseAlgorithm for T
 where
     T: JoseAlgorithm,
 {
-    type Signature = T::Signature;
-
     fn identifier(&self) -> AlgorithmIdentifier {
         T::IDENTIFIER
     }
@@ -188,15 +183,14 @@ pub trait JoseDigestAlgorithm: JoseAlgorithm {
 /// A trait to represent an algorithm which can sign a JWT.
 ///
 /// This trait should apply to signing keys.
-pub trait TokenSigner: DynJoseAlgorithm {
+pub trait TokenSigner<S>: DynJoseAlgorithm
+where
+    S: SignatureEncoding,
+{
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
     /// and appended to the compact representation of the JWT.
-    fn try_sign_token(
-        &self,
-        header: &str,
-        payload: &str,
-    ) -> Result<Self::Signature, signature::Error>;
+    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
@@ -205,21 +199,18 @@ pub trait TokenSigner: DynJoseAlgorithm {
     /// # Panics
     ///
     /// This function will panic if the signature cannot be computed.
-    fn sign_token(&self, header: &str, payload: &str) -> Self::Signature {
+    fn sign_token(&self, header: &str, payload: &str) -> S {
         self.try_sign_token(header, payload).unwrap()
     }
 }
 
-impl<K> TokenSigner for K
+impl<K, S> TokenSigner<S> for K
 where
     K: JoseDigestAlgorithm,
-    K: signature::DigestSigner<K::Digest, K::Signature>,
+    K: signature::DigestSigner<K::Digest, S>,
+    S: SignatureEncoding,
 {
-    fn try_sign_token(
-        &self,
-        header: &str,
-        payload: &str,
-    ) -> Result<Self::Signature, signature::Error> {
+    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error> {
         let message = format!("{}.{}", header, payload);
 
         let mut digest = <Self as JoseDigestAlgorithm>::Digest::new();
@@ -233,7 +224,10 @@ where
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
 /// to verify a JWT signature, but not necessarily to sing it.
-pub trait TokenVerifier: DynJoseAlgorithm {
+pub trait TokenVerifier<S>: DynJoseAlgorithm
+where
+    S: SignatureEncoding,
+{
     /// Verify the signature of the JWT, when provided with the base64url-encoded header
     /// and payload.
     fn verify_token(
@@ -241,20 +235,23 @@ pub trait TokenVerifier: DynJoseAlgorithm {
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<Self::Signature, signature::Error>;
+    ) -> Result<S, signature::Error>;
 }
 
-impl<K> TokenVerifier for K
+impl<K, S> TokenVerifier<S> for K
 where
-    K: JoseDigestAlgorithm,
-    K: signature::DigestVerifier<K::Digest, K::Signature>,
+    K: JoseDigestAlgorithm + std::fmt::Debug,
+    K: signature::DigestVerifier<K::Digest, S>,
+    K::Digest: Clone + std::fmt::Debug,
+    S: SignatureEncoding + std::fmt::Debug,
+    for<'a> <S as TryFrom<&'a [u8]>>::Error: std::error::Error + Send + Sync + 'static,
 {
     fn verify_token(
         &self,
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<Self::Signature, signature::Error> {
+    ) -> Result<S, signature::Error> {
         let mut digest = <Self as JoseDigestAlgorithm>::Digest::new();
         digest.update(header);
         digest.update(b".");
@@ -262,7 +259,7 @@ where
 
         let signature = signature
             .try_into()
-            .map_err(|_| signature::Error::default())?;
+            .map_err(signature::Error::from_source)?;
 
         self.verify_digest(digest, &signature)?;
         Ok(signature)
@@ -274,8 +271,16 @@ where
 /// This is a basic signature `struct` which can be used to store any signature
 /// on the heap. It is used to store the signature of a JWT before it is verified,
 /// or if a signature has a variable length.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SignatureBytes(Bytes);
+
+impl fmt::Debug for SignatureBytes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("SignatureBytes")
+            .field(&base64ct::Base64UrlUnpadded::encode_string(self.0.as_ref()))
+            .finish()
+    }
+}
 
 impl AsRef<[u8]> for SignatureBytes {
     fn as_ref(&self) -> &[u8] {
@@ -309,4 +314,80 @@ impl From<Vec<u8>> for SignatureBytes {
 
 impl signature::SignatureEncoding for SignatureBytes {
     type Repr = Bytes;
+}
+
+/// A macro to implement the required traits for common JWS alogorithms.
+#[macro_export]
+macro_rules! jose_algorithm {
+    ($alg:ident, $signer:ty, $verifier:ty, $digest:ty, $signature:ty) => {
+        impl $crate::algorithms::JoseAlgorithm for $signer {
+            const IDENTIFIER: $crate::algorithms::AlgorithmIdentifier =
+                $crate::algorithms::AlgorithmIdentifier::$alg;
+        }
+
+        impl $crate::algorithms::JoseDigestAlgorithm for $signer {
+            type Digest = $digest;
+        }
+
+        impl signature::DigestSigner<$digest, $crate::algorithms::SignatureBytes> for $signer {
+            fn try_sign_digest(
+                &self,
+                digest: $digest,
+            ) -> Result<$crate::algorithms::SignatureBytes, signature::Error> {
+                #[allow(unused_imports)]
+                use signature::SignatureEncoding as _;
+
+                let sig = <Self as signature::DigestSigner<$digest, $signature>>::sign_digest(
+                    self, digest,
+                );
+                Ok($crate::algorithms::SignatureBytes::from(
+                    sig.to_bytes().as_ref(),
+                ))
+            }
+        }
+
+        impl $crate::algorithms::JoseAlgorithm for $verifier {
+            const IDENTIFIER: $crate::algorithms::AlgorithmIdentifier =
+                $crate::algorithms::AlgorithmIdentifier::$alg;
+        }
+
+        impl $crate::algorithms::JoseDigestAlgorithm for $verifier {
+            type Digest = $digest;
+        }
+
+        impl signature::DigestVerifier<$digest, $crate::algorithms::SignatureBytes> for $verifier {
+            fn verify_digest(
+                &self,
+                digest: $digest,
+                signature: &$crate::algorithms::SignatureBytes,
+            ) -> Result<(), signature::Error> {
+                #[allow(unused_imports)]
+                use signature::SignatureEncoding as _;
+
+                let sig: $signature = signature
+                    .to_bytes()
+                    .as_ref()
+                    .try_into()
+                    .map_err(|error| signature::Error::from_source(error))?;
+
+                <Self as signature::DigestVerifier<$digest, $signature>>::verify_digest(
+                    self, digest, &sig,
+                )
+            }
+        }
+    };
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use static_assertions as sa;
+
+    // NOTE: The test requires an explicit value for the signature
+    // associated type, and we use `SignatureBytes` for this.
+    // it is assumed that external dependencies will provide either
+    // a concrete `Signature` type, or an object-safe trait.
+    sa::assert_obj_safe!(TokenSigner<SignatureBytes>);
+    sa::assert_obj_safe!(TokenVerifier<SignatureBytes>);
 }

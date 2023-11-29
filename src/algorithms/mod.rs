@@ -43,10 +43,10 @@
 //!
 //! Currently, there is no support for the following algorithms:
 //!
-//! - EdDSA: EdDSA using Ed25519 is not yet supported, but using the [`ed25519-dalek`][ed25519-dalek] crate
+//! - EdDSA: EdDSA using Ed25519 is not yet supported, but using the [`ed25519-dalek`] crate
 //!   this should be possible.
-//! - ES512: ECDSA using P-521 and SHA-512 is not yet supported, since the [`p521`][p521] crate does not
-//!   implement signing and verifying yet.
+//! - ES512: ECDSA using P-521 and SHA-512 is not yet supported, since it is non-trivial to adapt
+//!   the [`p521`] crate to the [`signature`] crate.
 //!
 //! All of these algorithms could be supported by providing suitable implementations
 //! of the [`JsonWebAlgorithm`] trait and the [`TokenSigner`] and [`TokenVerifier`] traits.

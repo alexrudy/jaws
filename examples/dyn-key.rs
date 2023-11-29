@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
     let key: rsa::pkcs1v15::VerifyingKey<Sha256> =
-        rsa::pkcs1v15::VerifyingKey::new(rsa::RsaPublicKey::from_jwk(&jwk).unwrap());
+        rsa::pkcs1v15::VerifyingKey::new(rsa::RsaPublicKey::from_jwk(jwk).unwrap());
 
     println!("=== Verification === ");
     // Check it against the verified key

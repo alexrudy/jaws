@@ -427,7 +427,7 @@ mod test {
         let signature: ::ecdsa::Signature<NistP256> = key.sign_token(&header, &payload);
         eprintln!("sig: {:?}", signature.to_bytes().as_slice());
 
-        let verify = key.verifying_key().clone();
+        let verify = *key.verifying_key();
         assert_eq!(ecpkey.to_public_key().unwrap(), (&verify).into());
 
         TokenVerifier::<ecdsa::Signature<NistP256>>::verify_token(

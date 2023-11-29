@@ -432,7 +432,7 @@ where
         A: crate::algorithms::TokenSigner<S> + ?Sized,
         S: SignatureEncoding,
     {
-        let header = self.state.header.into_signed_header::<A, S>(algorithm)?;
+        let header = self.state.header.into_signed_header(algorithm)?;
         let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
@@ -450,6 +450,7 @@ where
     }
 
     /// Sign this token using the given algorithm, and a random number generator.
+    #[allow(clippy::type_complexity)]
     pub fn sign_randomized<A, S>(
         self,
         algorithm: &A,
@@ -459,7 +460,7 @@ where
         A: crate::algorithms::RandomizedTokenSigner<S> + ?Sized,
         S: SignatureEncoding,
     {
-        let header = self.state.header.into_signed_header::<A, S>(algorithm)?;
+        let header = self.state.header.into_signed_header(algorithm)?;
         let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm

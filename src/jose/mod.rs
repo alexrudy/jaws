@@ -182,13 +182,12 @@ impl<H> Header<H, UnsignedHeader> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn into_signed_header<A, S>(
+    pub(crate) fn into_signed_header<A>(
         self,
         key: &A,
     ) -> Result<Header<H, SignedHeader>, signature::Error>
     where
         A: DynJsonWebAlgorithm + SerializePublicJWK + ?Sized,
-        S: SignatureEncoding,
     {
         let state = SignedHeader {
             algorithm: key.identifier(),

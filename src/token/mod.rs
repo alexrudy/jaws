@@ -450,11 +450,12 @@ where
     }
 
     /// Sign this token using the given algorithm, and a random number generator.
+    #[cfg(feature = "rand")]
     #[allow(clippy::type_complexity)]
     pub fn sign_randomized<A, S>(
         self,
         algorithm: &A,
-        rng: &mut impl elliptic_curve::rand_core::CryptoRngCore,
+        rng: &mut impl rand_core::CryptoRngCore,
     ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenSigningError>
     where
         A: crate::algorithms::RandomizedTokenSigner<S> + ?Sized,
@@ -897,6 +898,7 @@ mod test_ecdsa {
         assert_eq!(verified.payload(), Some(&"This is a signed message"));
     }
 
+    #[cfg(feature = "rand")]
     #[test]
     fn rfc7515_example_a3_randomized() {
         let pkey = &json!({

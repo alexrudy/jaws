@@ -81,6 +81,7 @@ use base64ct::Base64UrlUnpadded as Base64Url;
 use base64ct::Encoding;
 use bytes::Bytes;
 use digest::generic_array::{ArrayLength, GenericArray};
+#[cfg(feature = "rand")]
 use digest::Digest;
 use ecdsa::EncodedPoint;
 use elliptic_curve::{
@@ -90,6 +91,8 @@ use elliptic_curve::{
     AffinePoint, Curve, CurveArithmetic, FieldBytes, FieldBytesSize, JwkParameters, PublicKey,
     Scalar, SecretKey,
 };
+
+#[cfg(feature = "rand")]
 use signature::RandomizedDigestSigner;
 
 #[cfg(feature = "p256")]
@@ -347,6 +350,7 @@ macro_rules! jose_ecdsa_algorithm {
     };
 }
 
+#[cfg(feature = "rand")]
 impl<S, C> crate::algorithms::RandomizedTokenSigner<S> for ecdsa::SigningKey<C>
 where
     C: PrimeCurve + CurveArithmetic + JwkParameters + ecdsa::hazmat::DigestPrimitive,
@@ -361,7 +365,7 @@ where
         &self,
         header: &str,
         payload: &str,
-        rng: &mut impl elliptic_curve::rand_core::CryptoRngCore,
+        rng: &mut impl rand_core::CryptoRngCore,
     ) -> Result<S, signature::Error> {
         let mut digest = C::Digest::new();
         digest.update(header.as_bytes());

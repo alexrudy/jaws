@@ -58,8 +58,9 @@ use std::fmt;
 use base64ct::Encoding;
 use bytes::Bytes;
 use digest::Digest;
+#[cfg(feature = "rand")]
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use signature::rand_core::CryptoRngCore;
 use signature::SignatureEncoding;
 
 #[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
@@ -225,6 +226,7 @@ where
     }
 }
 
+#[cfg(feature = "rand")]
 /// A trait to represent an algorithm which can sign a JWT, with a source of
 /// randomness.
 pub trait RandomizedTokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK

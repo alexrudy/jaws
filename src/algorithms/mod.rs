@@ -6,35 +6,35 @@
 //!
 //! # Algorithm Traits
 //!
-//! JOSE uses a few traits to define appropriate signing algorithms. [`JoseAlgorithm`] is the main trait,
-//! which defines the algorithm identifier and the type of the signature. [`JoseDigestAlgorithm`] is a
+//! JOSE uses a few traits to define appropriate signing algorithms. [`JsonWebAlgorithm`] is the main trait,
+//! which defines the algorithm identifier and the type of the signature. [`JsonWebAlgorithmDigest`] is a
 //! subtrait which defines the digest algorithm used by the signature, for algorithms which use digest
 //! signing (e.g. RSA-PSS, RSA-PKCS1-v1_5, ECDSA), and where a specific digest is specified by the algorithm
 //! identifier.
 //!
 //! [`TokenSigner`] and [`TokenVerifier`] are traits which define the ability to sign and verify a JWT.
-//! They are implemented for any [`JoseDigestAlgorithm`] which is also a [`DigestSigner`][signature::DigestSigner] or [`DigestVerifier`][signature::DigestVerifier].
+//! They are implemented for any [`JsonWebAlgorithmDigest`] which is also a [`DigestSigner`][signature::DigestSigner] or [`DigestVerifier`][signature::DigestVerifier].
 //!
 //! # Supported Algorithms
 //!
 //! ## HMAC
 //!
-//! - HS256: HMAC using SHA-256
-//! - HS384: HMAC using SHA-384
-//! - HS512: HMAC using SHA-512
+//! - HS256: HMAC using SHA-256 via [`HmacKey<Sha256>`][crate::algorithms::hmac::HmacKey]
+//! - HS384: HMAC using SHA-384 via [`HmacKey<Sha341>`][crate::algorithms::hmac::HmacKey]
+//! - HS512: HMAC using SHA-512 via [`HmacKey<Sha512>`][crate::algorithms::hmac::HmacKey]
 //!
 //! ## RSA
 //!
-//! - RS256: RSASSA-PKCS1-v1_5 using SHA-256
-//! - RS384: RSASSA-PKCS1-v1_5 using SHA-384
-//! - RS512: RSASSA-PKCS1-v1_5 using SHA-512
-//! - PS256: RSASSA-PSS using SHA-256 and MGF1 with SHA-256
-//! - PS384: RSASSA-PSS using SHA-384 and MGF1 with SHA-384
+//! - RS256: RSASSA-PKCS1-v1_5 using SHA-256 via [`rsa::pkcs1v15::SigningKey<Sha256>`][rsa::pkcs1v15::SigningKey] / [`rsa::pkcs1v15::VerifyingKey<Sha256>`][rsa::pkcs1v15::VerifyingKey]
+//! - RS384: RSASSA-PKCS1-v1_5 using SHA-384 via [`rsa::pkcs1v15::SigningKey<Sha348>`][rsa::pkcs1v15::SigningKey] / [`rsa::pkcs1v15::VerifyingKey<Sha384>`][rsa::pkcs1v15::VerifyingKey]
+//! - RS512: RSASSA-PKCS1-v1_5 using SHA-512 via [`rsa::pkcs1v15::SigningKey<Sha512>`][rsa::pkcs1v15::SigningKey] / [`rsa::pkcs1v15::VerifyingKey<Sha512>`][rsa::pkcs1v15::VerifyingKey]
+//! - PS256: RSASSA-PSS using SHA-256 and MGF1 with SHA-256 via [`rsa::pss::SigningKey<Sha256>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha256>`][rsa::pss::VerifyingKey]
+//! - PS384: RSASSA-PSS using SHA-384 and MGF1 with SHA-384 via [`rsa::pss::SigningKey<Sha384>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha384>`][rsa::pss::VerifyingKey]
 //!
 //! ## ECDSA
 //!
-//! - ES256: ECDSA using P-256 and SHA-256
-//! - ES384: ECDSA using P-384 and SHA-384
+//! - ES256: ECDSA using P-256 and SHA-256 via [`ecdsa::SigningKey<p256::NistP256>`] / [`ecdsa::VerifyingKey<p256::NistP256>`]
+//! - ES384: ECDSA using P-384 and SHA-384 via [`ecdsa::SigningKey<p348::NistP348>`] / [`ecdsa::VerifyingKey<p348::NistP348>`]
 //!
 //! # Unsupported algorithms
 //!
@@ -43,17 +43,19 @@
 //!
 //! Currently, there is no support for the following algorithms:
 //!
-//! - EdDSA: EdDSA using Ed25519 is not yet supported.
-//! - ES512: ECDSA using P-521 and SHA-512 is not yet supported.
+//! - EdDSA: EdDSA using Ed25519 is not yet supported, but using the [`ed25519-dalek`] crate
+//!   this should be possible.
+//! - ES512: ECDSA using P-521 and SHA-512 is not yet supported, since it is non-trivial to adapt
+//!   the [`p521`] crate to the [`signature`] crate.
 //!
 //! All of these algorithms could be supported by providing suitable implementations
-//! of the [`JoseAlgorithm`] trait and the [`TokenSigner`] and [`TokenVerifier`] traits.
+//! of the [`JsonWebAlgorithm`] trait and the [`TokenSigner`] and [`TokenVerifier`] traits.
 //!
 //! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
 use std::fmt;
 
-use base64ct::Encoding as _;
+use base64ct::Encoding;
 use bytes::Bytes;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
@@ -67,6 +69,8 @@ pub use sha2::Sha384;
 
 #[cfg(any(feature = "hmac", feature = "rsa"))]
 pub use sha2::Sha512;
+
+use crate::key::SerializePublicJWK;
 
 #[cfg(feature = "ecdsa")]
 pub mod ecdsa;
@@ -131,7 +135,7 @@ impl AlgorithmIdentifier {
     /// Return whether this algorithm is available for signing.
     pub fn available(&self) -> bool {
         match self {
-            Self::None => true,
+            Self::None => false,
 
             Self::HS256 | Self::HS384 | Self::HS512 => cfg!(feature = "hmac"),
             Self::RS256 | Self::RS384 | Self::RS512 => cfg!(feature = "rsa"),
@@ -146,7 +150,7 @@ impl AlgorithmIdentifier {
 ///
 /// Algorithm identifiers are used in JWS and JWE to indicate how a token is signed or encrypted.
 /// They are set in the [crate::jose::Header] automatically when signing the JWT.
-pub trait JoseAlgorithm {
+pub trait JsonWebAlgorithm {
     /// The identifier for this algorithm when used in a JWT registered header.
     ///
     /// This is the `alg` field in the JOSE header.
@@ -155,19 +159,19 @@ pub trait JoseAlgorithm {
 
 /// A trait to associate an alogritm identifier with an algorithm.
 ///
-/// This is a dynamic version of [`JoseAlgorithm`], which allows for
+/// This is a dynamic version of [`JsonWebAlgorithm`], which allows for
 /// dynamic dispatch of the algorithm, and object-safety for the trait.
 ///
 /// This trait does not need to be implemented manually, as it is implemented
-/// for any type which implements [`JoseAlgorithm`].
-pub trait DynJoseAlgorithm {
+/// for any type which implements [`JsonWebAlgorithm`].
+pub trait DynJsonWebAlgorithm {
     /// The identifier for this algorithm when used in a JWT registered header.
     fn identifier(&self) -> AlgorithmIdentifier;
 }
 
-impl<T> DynJoseAlgorithm for T
+impl<T> DynJsonWebAlgorithm for T
 where
-    T: JoseAlgorithm,
+    T: JsonWebAlgorithm,
 {
     fn identifier(&self) -> AlgorithmIdentifier {
         T::IDENTIFIER
@@ -175,7 +179,7 @@ where
 }
 
 /// A trait to associate an algorithm with a digest for signing.
-pub trait JoseDigestAlgorithm: JoseAlgorithm {
+pub trait JsonWebAlgorithmDigest: JsonWebAlgorithm {
     /// The digest algorithm used by this signature.
     type Digest: Digest;
 }
@@ -183,7 +187,7 @@ pub trait JoseDigestAlgorithm: JoseAlgorithm {
 /// A trait to represent an algorithm which can sign a JWT.
 ///
 /// This trait should apply to signing keys.
-pub trait TokenSigner<S>: DynJoseAlgorithm
+pub trait TokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
@@ -206,15 +210,15 @@ where
 
 impl<K, S> TokenSigner<S> for K
 where
-    K: JoseDigestAlgorithm,
+    K: JsonWebAlgorithmDigest + SerializePublicJWK,
     K: signature::DigestSigner<K::Digest, S>,
     S: SignatureEncoding,
 {
     fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error> {
-        let message = format!("{}.{}", header, payload);
-
-        let mut digest = <Self as JoseDigestAlgorithm>::Digest::new();
-        digest.update(message.as_bytes());
+        let mut digest = <Self as JsonWebAlgorithmDigest>::Digest::new();
+        digest.update(header.as_bytes());
+        digest.update(b".");
+        digest.update(payload.as_bytes());
 
         self.try_sign_digest(digest)
     }
@@ -224,7 +228,7 @@ where
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
 /// to verify a JWT signature, but not necessarily to sing it.
-pub trait TokenVerifier<S>: DynJoseAlgorithm
+pub trait TokenVerifier<S>: DynJsonWebAlgorithm
 where
     S: SignatureEncoding,
 {
@@ -240,7 +244,7 @@ where
 
 impl<K, S> TokenVerifier<S> for K
 where
-    K: JoseDigestAlgorithm + std::fmt::Debug,
+    K: JsonWebAlgorithmDigest + std::fmt::Debug,
     K: signature::DigestVerifier<K::Digest, S>,
     K::Digest: Clone + std::fmt::Debug,
     S: SignatureEncoding + std::fmt::Debug,
@@ -252,7 +256,7 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<S, signature::Error> {
-        let mut digest = <Self as JoseDigestAlgorithm>::Digest::new();
+        let mut digest = <Self as JsonWebAlgorithmDigest>::Digest::new();
         digest.update(header);
         digest.update(b".");
         digest.update(payload);
@@ -273,6 +277,15 @@ where
 /// or if a signature has a variable length.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SignatureBytes(Bytes);
+
+impl SignatureBytes {
+    /// Create a new signature from a base64url-encoded string.
+    pub fn from_b64url(data: &str) -> Result<Self, base64ct::Error> {
+        Ok(Self(Bytes::from(base64ct::Base64UrlUnpadded::decode_vec(
+            data,
+        )?)))
+    }
+}
 
 impl fmt::Debug for SignatureBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -320,12 +333,12 @@ impl signature::SignatureEncoding for SignatureBytes {
 #[macro_export]
 macro_rules! jose_algorithm {
     ($alg:ident, $signer:ty, $verifier:ty, $digest:ty, $signature:ty) => {
-        impl $crate::algorithms::JoseAlgorithm for $signer {
+        impl $crate::algorithms::JsonWebAlgorithm for $signer {
             const IDENTIFIER: $crate::algorithms::AlgorithmIdentifier =
                 $crate::algorithms::AlgorithmIdentifier::$alg;
         }
 
-        impl $crate::algorithms::JoseDigestAlgorithm for $signer {
+        impl $crate::algorithms::JsonWebAlgorithmDigest for $signer {
             type Digest = $digest;
         }
 
@@ -346,12 +359,12 @@ macro_rules! jose_algorithm {
             }
         }
 
-        impl $crate::algorithms::JoseAlgorithm for $verifier {
+        impl $crate::algorithms::JsonWebAlgorithm for $verifier {
             const IDENTIFIER: $crate::algorithms::AlgorithmIdentifier =
                 $crate::algorithms::AlgorithmIdentifier::$alg;
         }
 
-        impl $crate::algorithms::JoseDigestAlgorithm for $verifier {
+        impl $crate::algorithms::JsonWebAlgorithmDigest for $verifier {
             type Digest = $digest;
         }
 

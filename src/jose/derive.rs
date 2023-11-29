@@ -60,7 +60,9 @@ impl<Value> DeriveFromKey<Value> {
     {
         match self {
             DeriveFromKey::Omit => Ok(None),
-            DeriveFromKey::Derived => Ok(Some(Value::build(key)?)),
+            DeriveFromKey::Derived => Ok(Some(
+                Value::derive_from_key(key).map_err(SignatureError::from_source)?,
+            )),
             DeriveFromKey::Explicit(value) => Ok(Some(value)),
         }
     }

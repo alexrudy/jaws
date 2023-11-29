@@ -13,7 +13,36 @@ use serde::{
     ser::{self, SerializeMap},
     Deserialize, Serialize,
 };
-use signature::Error as SignatureError;
+use signature::Keypair;
+
+/// Error when building or deserializing a JWK.
+#[derive(Debug, thiserror::Error)]
+pub enum JsonWebKeyError {
+    /// JSON errors which occur while building a JWK
+    #[error(transparent)]
+    JSON(#[from] serde_json::Error),
+
+    /// Key type mismatch error
+    #[error("key type mismatch: expected {expected}, got {got}")]
+    KeyType {
+        /// The expected key type
+        expected: String,
+
+        /// The actual key type in the data
+        got: String,
+    },
+
+    /// Missing a jwk parameter
+    #[error("missing expected jwk parameter {0}")]
+    MissingParameter(&'static str),
+
+    /// Invalid key for the expected algorithm
+    #[error("invalid key for algorithm {0}: {1}")]
+    InvalidKey(
+        &'static str,
+        #[source] Box<dyn std::error::Error + Send + Sync>,
+    ),
+}
 
 /// Trait for keys which can be used as a JWK.
 pub trait JWKeyType {
@@ -50,30 +79,76 @@ pub trait SerializeJWK: DynJwkKeyType {
     fn parameters(&self) -> Vec<(String, serde_json::Value)>;
 }
 
+/// Trait for keys which can be serialized as a public JWK.
+pub trait SerializePublicJWK: DynJwkKeyType {
+    /// Return a list of parameters to be serialized in the JWK.
+    fn public_parameters(&self) -> Vec<(String, serde_json::Value)>;
+}
+
+impl<K> SerializePublicJWK for K
+where
+    K: Keypair + DynJwkKeyType,
+    K::VerifyingKey: SerializeJWK,
+{
+    fn public_parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.verifying_key().parameters()
+    }
+}
+
 /// Trait for keys which can be deserialized from a JWK.
-pub trait DeserializeJWK: JWKeyType {
+pub trait DeserializeJWK: DynJwkKeyType + Sized {
     /// From a set of parameters, build a key.
-    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, serde_json::Error>
-    where
-        Self: Sized;
+    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, JsonWebKeyError>;
+
+    /// Build a concrete key type from [`JsonWebKey`].
+    fn from_jwk(jwk: &JsonWebKey) -> Result<Self, JsonWebKeyError> {
+        let mut parameters = jwk.parameters().clone();
+        parameters.insert("kty".into(), jwk.key_type().into());
+
+        match Self::build(parameters) {
+            Ok(key) => {
+                if key.key_type() == jwk.key_type() {
+                    Ok(key)
+                } else {
+                    Err(JsonWebKeyError::KeyType {
+                        expected: key.key_type().into(),
+                        got: jwk.key_type().into(),
+                    })
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Deserialize a concrete key type from a JSON value.
+    fn from_value(value: serde_json::Value) -> Result<Self, JsonWebKeyError> {
+        let jwk: JsonWebKey = serde_json::from_value(value)?;
+        Self::from_jwk(&jwk)
+    }
+
+    /// Deserialize a concrete key type from a JSON string.
+    fn from_str(s: &str) -> Result<Self, JsonWebKeyError> {
+        let value: JsonWebKey = serde_json::from_str(s)?;
+        Self::from_jwk(&value)
+    }
 }
 
 /// Trait for building values derived from a key.
 pub trait BuildFromKey<Key: ?Sized> {
     /// Build a value from a key.
-    fn build(key: &Key) -> Result<Self, SignatureError>
+    fn derive_from_key(key: &Key) -> Result<Self, JsonWebKeyError>
     where
         Self: Sized;
 }
 
 impl<Key> BuildFromKey<Key> for JsonWebKey
 where
-    Key: SerializeJWK + ?Sized,
+    Key: SerializePublicJWK + ?Sized,
 {
-    fn build(key: &Key) -> Result<Self, SignatureError> {
+    fn derive_from_key(key: &Key) -> Result<Self, JsonWebKeyError> {
         Ok(JsonWebKey {
             key_type: key.key_type().into(),
-            parameters: key.parameters().into_iter().collect(),
+            parameters: key.public_parameters().into_iter().collect(),
         })
     }
 }
@@ -91,11 +166,46 @@ pub struct JsonWebKey {
 }
 
 impl JsonWebKey {
+    /// Create a new JWK from a key type and parameters.
+    pub fn new(key_type: String, parameters: BTreeMap<String, serde_json::Value>) -> Self {
+        Self {
+            key_type,
+            parameters,
+        }
+    }
+
     /// Build a JWK from a key.
     pub fn build<K: SerializeJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
             key_type: key.key_type().into(),
             parameters: key.parameters().into_iter().collect(),
+        }
+    }
+
+    /// Get the key type of this JWK.
+    pub fn key_type(&self) -> &str {
+        &self.key_type
+    }
+
+    /// Get the parameters of this JWK.
+    pub fn parameters(&self) -> &BTreeMap<String, serde_json::Value> {
+        &self.parameters
+    }
+
+    /// Deserialize a concrete key type from this JWK.
+    pub fn deserialize_key<K: DeserializeJWK>(&self) -> Result<K, JsonWebKeyError> {
+        match K::build(self.parameters.clone()) {
+            Ok(key) => {
+                if key.key_type() == self.key_type {
+                    Ok(key)
+                } else {
+                    Err(JsonWebKeyError::KeyType {
+                        expected: self.key_type.clone(),
+                        got: key.key_type().into(),
+                    })
+                }
+            }
+            Err(e) => Err(e),
         }
     }
 }
@@ -165,12 +275,9 @@ where
         }
     }
 
-    fn build<K>(key: &K) -> Result<Self, SignatureError>
-    where
-        K: SerializeJWK + ?Sized,
-    {
-        let jwk = JsonWebKey::build(key);
-        let thumb = serde_json::to_vec(&jwk).map_err(SignatureError::from_source)?;
+    /// Compute the thumbprint of a JWK.
+    pub fn from_jwk(jwk: &JsonWebKey) -> Result<Self, JsonWebKeyError> {
+        let thumb = serde_json::to_vec(&jwk)?;
 
         let mut hasher = Digest::new();
         hasher.update(&thumb);
@@ -183,11 +290,12 @@ where
 
 impl<Digest, Key> BuildFromKey<Key> for Thumbprint<Digest>
 where
-    Key: SerializeJWK + ?Sized,
+    Key: SerializePublicJWK + ?Sized,
     Digest: digest::Digest,
 {
-    fn build(key: &Key) -> Result<Thumbprint<Digest>, signature::Error> {
-        Thumbprint::build(key).map_err(signature::Error::from_source)
+    fn derive_from_key(key: &Key) -> Result<Thumbprint<Digest>, JsonWebKeyError> {
+        let jwk = JsonWebKey::derive_from_key(key)?;
+        Thumbprint::from_jwk(&jwk)
     }
 }
 
@@ -246,52 +354,6 @@ impl<Digest> std::ops::Deref for Thumbprint<Digest> {
     }
 }
 
-#[cfg(all(test, feature = "rsa"))]
-pub(crate) mod jwk_reader {
-    use base64ct::Encoding;
-    use rsa::traits::PrivateKeyParts;
-
-    fn strip_whitespace(s: &str) -> String {
-        s.chars().filter(|c| !c.is_whitespace()).collect()
-    }
-
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
-    pub(crate) fn rsa_pub(key: &serde_json::Value) -> rsa::RsaPublicKey {
-        let n = to_biguint(&key["n"]).expect("decode n");
-        let e = to_biguint(&key["e"]).expect("decode e");
-
-        rsa::RsaPublicKey::new(n, e).expect("valid key parameters")
-    }
-
-    pub(crate) fn rsa(key: &serde_json::Value) -> rsa::RsaPrivateKey {
-        let primes = vec![
-            to_biguint(&key["p"]).expect("p"),
-            to_biguint(&key["q"]).expect("q"),
-        ];
-
-        let pkey = rsa::RsaPrivateKey::from_components(
-            to_biguint(&key["n"]).expect("n"),
-            to_biguint(&key["e"]).expect("e"),
-            to_biguint(&key["d"]).expect("d"),
-            primes,
-        )
-        .unwrap();
-
-        assert_eq!(&to_biguint(&key["dp"]).expect("dp"), pkey.dp().unwrap());
-        assert_eq!(&to_biguint(&key["dq"]).expect("dq"), pkey.dq().unwrap());
-
-        pkey
-    }
-}
-
 #[cfg(test)]
 mod test {
 
@@ -310,7 +372,7 @@ mod test {
         #[cfg(feature = "rsa")]
         #[test]
         fn rfc7639_example() {
-            let key = jwk_reader::rsa_pub(&json!({
+            let key = rsa::RsaPublicKey::from_value(json!({
                   "kty": "RSA",
                   "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
                   VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6
@@ -322,9 +384,11 @@ mod test {
                   "alg": "RS256",
                   "kid": "2011-04-29"
                  }
-            ));
+            ))
+            .unwrap();
 
-            let thumb: Thumbprint<sha2::Sha256> = Thumbprint::build(&key).unwrap();
+            let thumb: Thumbprint<sha2::Sha256> =
+                Thumbprint::from_jwk(&JsonWebKey::build(&key)).unwrap();
 
             assert_eq!(&*thumb, "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs");
         }

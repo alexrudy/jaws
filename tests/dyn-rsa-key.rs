@@ -3,7 +3,6 @@
 use jaws::algorithms::SignatureBytes;
 use jaws::algorithms::TokenSigner;
 use jaws::algorithms::TokenVerifier;
-use jaws::key::SerializeJWK;
 use jaws::token::{Unsigned, Unverified};
 use jaws::Compact;
 use jaws::JWTFormat;
@@ -28,10 +27,6 @@ fn rsa_public() -> rsa::RsaPublicKey {
     key.to_public_key()
 }
 
-trait TokenSigningKey: TokenSigner<SignatureBytes> + SerializeJWK {}
-
-impl<T> TokenSigningKey for T where T: TokenSigner<SignatureBytes> + SerializeJWK {}
-
 fn rsa_signer() -> rsa::pkcs1v15::SigningKey<Sha256> {
     rsa::pkcs1v15::SigningKey::<Sha256>::new(rsa_private())
 }
@@ -40,7 +35,7 @@ fn rsa_verifier() -> rsa::pkcs1v15::VerifyingKey<Sha256> {
     rsa::pkcs1v15::VerifyingKey::new(rsa_public())
 }
 
-fn dyn_signer() -> Box<dyn TokenSigningKey> {
+fn dyn_signer() -> Box<dyn TokenSigner<SignatureBytes>> {
     Box::new(rsa_signer())
 }
 

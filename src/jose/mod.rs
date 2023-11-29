@@ -187,7 +187,7 @@ impl<H> Header<H, UnsignedHeader> {
         key: &A,
     ) -> Result<Header<H, SignedHeader>, signature::Error>
     where
-        A: crate::algorithms::TokenSigner<S> + crate::key::SerializeJWK + ?Sized,
+        A: crate::algorithms::TokenSigner<S> + ?Sized,
         S: SignatureEncoding,
     {
         let state = SignedHeader {

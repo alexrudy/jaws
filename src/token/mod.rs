@@ -21,9 +21,8 @@ use signature::SignatureEncoding;
 
 #[cfg(feature = "fmt")]
 use crate::fmt;
-use crate::key::SerializeJWK;
 use crate::{
-    algorithms::{AlgorithmIdentifier, DynJoseAlgorithm},
+    algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     base64data::{Base64JSON, Base64Signature, DecodeError},
     jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
@@ -430,7 +429,7 @@ where
         algorithm: &A,
     ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenSigningError>
     where
-        A: crate::algorithms::TokenSigner<S> + SerializeJWK + ?Sized,
+        A: crate::algorithms::TokenSigner<S> + ?Sized,
         S: SignatureEncoding,
     {
         let header = self.state.header.into_signed_header(algorithm)?;
@@ -520,7 +519,7 @@ where
 impl<P, H, Alg, Sig, Fmt> Token<P, Signed<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
     Sig: SignatureEncoding,
     H: Serialize,
     P: Serialize,
@@ -549,7 +548,7 @@ where
 impl<H, Fmt, P, Alg, Sig> Token<P, Signed<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
 {
     /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
@@ -563,7 +562,7 @@ where
 impl<P, H, Alg, Sig, Fmt> Token<P, Verified<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
     Sig: SignatureEncoding,
     H: Serialize,
     P: Serialize,
@@ -592,7 +591,7 @@ where
 impl<H, Fmt, P, Alg, Sig> Token<P, Verified<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
 {
     /// Get the payload of the token.
     pub fn payload(&self) -> Option<&P> {
@@ -696,7 +695,7 @@ pub enum TokenSigningError {
 #[cfg(all(test, feature = "rsa"))]
 mod test_rsa {
     use super::*;
-    use crate::claims::Claims;
+    use crate::{claims::Claims, key::DeserializeJWK as _};
 
     use base64ct::Encoding;
     use chrono::TimeZone;
@@ -705,14 +704,12 @@ mod test_rsa {
 
     use signature::Keypair;
 
-    use crate::key::jwk_reader::rsa;
-
     fn strip_whitespace(s: &str) -> String {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
     fn rfc7515_example_a2_key() -> ::rsa::RsaPrivateKey {
-        rsa(&json!( {"kty":"RSA",
+        rsa::RsaPrivateKey::from_value(json!( {"kty":"RSA",
               "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
        HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
        D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
@@ -743,6 +740,7 @@ mod test_rsa {
        W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
              }
         ))
+        .unwrap()
     }
 
     #[test]

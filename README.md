@@ -92,6 +92,7 @@ use jaws::JWTFormat;
 // signing and verification status.
 use jaws::Token;
 
+use jaws::key::DeserializeJWK;
 // The unverified token state, used like `Token<.., Unverified<..>, ..>`.
 // It is generic over the type of the custom header parameters.
 use jaws::token::Unverified;
@@ -157,7 +158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // this will derive the JWK field in the header from the signing key.
     token.header_mut().key().derived();
 
-    println!("=== {} ===", "Initial JWT");
+    println!("=== Initial JWT ===");
 
     // Initially the JWT has no defined signature:
     println!("{}", token.formatted());
@@ -165,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Sign the token with the algorithm, and print the result.
     let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
 
-    println!("=== {} ===", "Signed JWT");
+    println!("=== Signed JWT ===");
 
     println!("JWT:");
     println!("{}", signed.formatted());
@@ -183,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token: Token<Claims<serde_json::Value>, Unverified<()>, Compact> =
         signed.rendered().unwrap().parse().unwrap();
 
-    println!("=== {} ===", "Parsed JWT");
+    println!("=== Parsed JWT ===");
 
     // Unverified tokens can be printed for debugging, but there is deliberately
     // no access to the payload, only to the header fields.
@@ -193,10 +194,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We can use the JWK to verify that the token is signed with the correct key.
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
-    let key = rsa_jwk_reader::rsa_pub(&serde_json::to_value(jwk).unwrap());
+    let key = rsa::RsaPublicKey::from_jwk(jwk).unwrap();
 
     assert_eq!(&key, alg.verifying_key().as_ref());
-    println!("=== {} === ", "Verification");
+    println!("=== Verification === ");
 
     // let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(key);
     let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = alg.verifying_key();
@@ -207,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .verify::<_, jaws::algorithms::SignatureBytes>(&alg)
         .unwrap();
 
-    println!("=== {} ===", "Verified JWT");
+    println!("=== Verified JWT ===");
     println!("JWT:");
     println!("{}", verified.formatted());
     println!(
@@ -216,30 +217,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
-}
-
-mod rsa_jwk_reader {
-    use base64ct::Encoding;
-
-    fn strip_whitespace(s: &str) -> String {
-        s.chars().filter(|c| !c.is_whitespace()).collect()
-    }
-
-    fn to_biguint(v: &serde_json::Value) -> Option<rsa::BigUint> {
-        let val = strip_whitespace(v.as_str()?);
-        Some(rsa::BigUint::from_bytes_be(
-            base64ct::Base64UrlUnpadded::decode_vec(&val)
-                .ok()?
-                .as_slice(),
-        ))
-    }
-
-    pub(crate) fn rsa_pub(key: &serde_json::Value) -> rsa::RsaPublicKey {
-        let n = to_biguint(&key["n"]).expect("decode n");
-        let e = to_biguint(&key["e"]).expect("decode e");
-
-        rsa::RsaPublicKey::new(n, e).expect("valid key parameters")
-    }
 }
 
 ```

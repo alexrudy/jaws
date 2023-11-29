@@ -5,7 +5,7 @@ use serde::Serialize;
 use signature::SignatureEncoding;
 
 use crate::{
-    algorithms::{DynJoseAlgorithm, SignatureBytes},
+    algorithms::{DynJsonWebAlgorithm, SignatureBytes},
     base64data::Base64Signature,
     jose,
 };
@@ -93,7 +93,7 @@ impl<H> MaybeSigned for Unsigned<H> {
 #[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
 pub struct Signed<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
 {
     pub(super) header: jose::Header<H, jose::SignedHeader>,
     pub(super) signature: Sig,
@@ -104,7 +104,7 @@ where
 
 impl<H, Alg, Sig> HasSignature for Signed<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
     Sig: SignatureEncoding,
 {
     type Signature = Sig;
@@ -116,7 +116,7 @@ where
 
 impl<H, Alg, Sig> MaybeSigned for Signed<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
 {
     type HeaderState = jose::SignedHeader;
     type Header = H;
@@ -148,7 +148,7 @@ where
 #[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
 pub struct Verified<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
 {
     pub(super) header: jose::Header<H, jose::SignedHeader>,
     pub(super) signature: Sig,
@@ -159,7 +159,7 @@ where
 
 impl<H, Alg, Sig> MaybeSigned for Verified<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
 {
     type HeaderState = jose::SignedHeader;
     type Header = H;
@@ -183,7 +183,7 @@ where
 
 impl<H, Alg, Sig> HasSignature for Verified<H, Alg, Sig>
 where
-    Alg: DynJoseAlgorithm + ?Sized,
+    Alg: DynJsonWebAlgorithm + ?Sized,
     Sig: SignatureEncoding,
 {
     type Signature = Sig;

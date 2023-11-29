@@ -59,6 +59,7 @@ use base64ct::Encoding;
 use bytes::Bytes;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
+use signature::rand_core::CryptoRngCore;
 use signature::SignatureEncoding;
 
 #[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
@@ -221,6 +222,34 @@ where
         digest.update(payload.as_bytes());
 
         self.try_sign_digest(digest)
+    }
+}
+
+/// A trait to represent an algorithm which can sign a JWT, with a source of
+/// randomness.
+pub trait RandomizedTokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK
+where
+    S: SignatureEncoding,
+{
+    /// Sign the contents of the JWT, when provided with the base64url-encoded header
+    /// and payload. This is the JWS Signature value, and will be base64url-encoded
+    /// and appended to the compact representation of the JWT.
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<S, signature::Error>;
+
+    /// Sign the contents of the JWT, when provided with the base64url-encoded header
+    /// and payload. This is the JWS Signature value, and will be base64url-encoded
+    /// and appended to the compact representation of the JWT.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the signature cannot be computed.
+    fn sign_token(&self, header: &str, payload: &str, rng: &mut impl CryptoRngCore) -> S {
+        self.try_sign_token(header, payload, rng).unwrap()
     }
 }
 

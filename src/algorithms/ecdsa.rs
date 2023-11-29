@@ -81,6 +81,7 @@ use base64ct::Base64UrlUnpadded as Base64Url;
 use base64ct::Encoding;
 use bytes::Bytes;
 use digest::generic_array::{ArrayLength, GenericArray};
+use digest::Digest;
 use ecdsa::EncodedPoint;
 use elliptic_curve::{
     ops::Invert,
@@ -89,6 +90,7 @@ use elliptic_curve::{
     AffinePoint, Curve, CurveArithmetic, FieldBytes, FieldBytesSize, JwkParameters, PublicKey,
     Scalar, SecretKey,
 };
+use signature::RandomizedDigestSigner;
 
 #[cfg(feature = "p256")]
 pub use p256::NistP256;
@@ -343,6 +345,31 @@ macro_rules! jose_ecdsa_algorithm {
             ::ecdsa::Signature<$curve>
         );
     };
+}
+
+impl<S, C> crate::algorithms::RandomizedTokenSigner<S> for ecdsa::SigningKey<C>
+where
+    C: PrimeCurve + CurveArithmetic + JwkParameters + ecdsa::hazmat::DigestPrimitive,
+    Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+    SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+    FieldBytesSize<C>: ModulusSize,
+    S: SignatureEncoding,
+    Self: RandomizedDigestSigner<C::Digest, S> + crate::algorithms::DynJsonWebAlgorithm,
+{
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+        rng: &mut impl elliptic_curve::rand_core::CryptoRngCore,
+    ) -> Result<S, signature::Error> {
+        let mut digest = C::Digest::new();
+        digest.update(header.as_bytes());
+        digest.update(b".");
+        digest.update(payload.as_bytes());
+
+        self.try_sign_digest_with_rng(rng, digest)
+    }
 }
 
 #[cfg(feature = "p256")]

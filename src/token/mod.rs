@@ -933,7 +933,7 @@ mod test_ecdsa {
 
 #[cfg(all(test, feature = "hmac"))]
 mod test_hmac {
-    use crate::algorithms::hmac::{Hmac, HmacKey};
+    use crate::algorithms::hmac::{DigestSignature, Hmac, HmacKey};
 
     use super::*;
 
@@ -967,7 +967,7 @@ mod test_hmac {
 
         let token = Token::compact((), "This is an HMAC'd message");
 
-        let signed = token.sign(&algorithm).unwrap();
+        let signed = token.sign::<_, DigestSignature<_>>(&algorithm).unwrap();
 
         let verified = signed.unverify().verify(&algorithm).unwrap();
 

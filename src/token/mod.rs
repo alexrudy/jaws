@@ -448,6 +448,35 @@ where
             fmt: self.fmt,
         })
     }
+
+    /// Sign this token using the given algorithm, and a random number generator.
+    #[cfg(feature = "rand")]
+    #[allow(clippy::type_complexity)]
+    pub fn sign_randomized<A, S>(
+        self,
+        algorithm: &A,
+        rng: &mut impl rand_core::CryptoRngCore,
+    ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenSigningError>
+    where
+        A: crate::algorithms::RandomizedTokenSigner<S> + ?Sized,
+        S: SignatureEncoding,
+    {
+        let header = self.state.header.into_signed_header(algorithm)?;
+        let headers = Base64JSON(&header).serialized_value()?;
+        let payload = self.payload.serialized_value()?;
+        let signature = algorithm
+            .try_sign_token(&headers, &payload, rng)
+            .map_err(TokenSigningError::Signing)?;
+        Ok(Token {
+            payload: self.payload,
+            state: Signed {
+                header,
+                signature,
+                _phantom_key: PhantomData,
+            },
+            fmt: self.fmt,
+        })
+    }
 }
 
 impl<H, Fmt, P> Token<P, Unverified<H>, Fmt>
@@ -858,6 +887,38 @@ mod test_ecdsa {
         let token = Token::compact((), "This is a signed message");
 
         let signed = token.sign::<_, ::ecdsa::Signature<_>>(&key).unwrap();
+
+        let verifying_key = key.verifying_key();
+
+        let verified = signed
+            .unverify()
+            .verify::<_, ::ecdsa::Signature<_>>(verifying_key)
+            .unwrap();
+
+        assert_eq!(verified.payload(), Some(&"This is a signed message"));
+    }
+
+    #[cfg(feature = "rand")]
+    #[test]
+    fn rfc7515_example_a3_randomized() {
+        let pkey = &json!({
+        "kty":"EC",
+        "crv":"P-256",
+        "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+        "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+        "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
+        });
+
+        let key = ecdsa(pkey);
+
+        let token = Token::compact((), "This is a signed message");
+
+        let signed = token
+            .sign_randomized::<_, ::ecdsa::Signature<_>>(
+                &key,
+                &mut elliptic_curve::rand_core::OsRng,
+            )
+            .unwrap();
 
         let verifying_key = key.verifying_key();
 

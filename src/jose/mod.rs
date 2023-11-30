@@ -17,12 +17,12 @@ use sha2::Sha256;
 use signature::SignatureEncoding;
 use url::Url;
 
-use crate::algorithms::AlgorithmIdentifier;
+use crate::algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm};
 use crate::base64data::Base64JSON;
 
 #[cfg(feature = "fmt")]
 use crate::fmt;
-use crate::key::{JsonWebKey, Thumbprint};
+use crate::key::{JsonWebKey, SerializePublicJWK, Thumbprint};
 
 mod derive;
 mod rendered;
@@ -182,13 +182,12 @@ impl<H> Header<H, UnsignedHeader> {
     }
 
     /// Construct the JOSE header from the builder and signing key.
-    pub(crate) fn into_signed_header<A, S>(
+    pub(crate) fn into_signed_header<A>(
         self,
         key: &A,
     ) -> Result<Header<H, SignedHeader>, signature::Error>
     where
-        A: crate::algorithms::TokenSigner<S> + ?Sized,
-        S: SignatureEncoding,
+        A: DynJsonWebAlgorithm + SerializePublicJWK + ?Sized,
     {
         let state = SignedHeader {
             algorithm: key.identifier(),

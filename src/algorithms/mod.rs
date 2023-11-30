@@ -189,7 +189,7 @@ pub trait JsonWebAlgorithmDigest: JsonWebAlgorithm {
 /// A trait to represent an algorithm which can sign a JWT.
 ///
 /// This trait should apply to signing keys.
-pub trait TokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK
+pub trait TokenSigner<S = SignatureBytes>: DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
@@ -229,7 +229,8 @@ where
 #[cfg(feature = "rand")]
 /// A trait to represent an algorithm which can sign a JWT, with a source of
 /// randomness.
-pub trait RandomizedTokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK
+pub trait RandomizedTokenSigner<S = SignatureBytes>:
+    DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
@@ -259,7 +260,7 @@ where
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
 /// to verify a JWT signature, but not necessarily to sing it.
-pub trait TokenVerifier<S>: DynJsonWebAlgorithm
+pub trait TokenVerifier<S = SignatureBytes>: DynJsonWebAlgorithm
 where
     S: SignatureEncoding,
 {

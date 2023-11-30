@@ -14,7 +14,7 @@ ecosystem.
 
 This is an example [JWT][], taken from the ACME standard ([RFC 8555][RFC8555]):
 
-```json
+```javascript
 {
   "protected": base64url({
     "alg": "ES256",

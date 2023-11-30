@@ -159,7 +159,7 @@ pub trait JsonWebAlgorithm {
     const IDENTIFIER: AlgorithmIdentifier;
 }
 
-/// A trait to associate an alogritm identifier with an algorithm.
+/// An object-safe trait to associate an alogritm identifier with an algorithm.
 ///
 /// This is a dynamic version of [`JsonWebAlgorithm`], which allows for
 /// dynamic dispatch of the algorithm, and object-safety for the trait.
@@ -434,4 +434,5 @@ mod test {
     // a concrete `Signature` type, or an object-safe trait.
     sa::assert_obj_safe!(TokenSigner<SignatureBytes>);
     sa::assert_obj_safe!(TokenVerifier<SignatureBytes>);
+    sa::assert_obj_safe!(DynJsonWebAlgorithm);
 }

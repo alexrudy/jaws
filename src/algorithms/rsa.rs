@@ -27,6 +27,7 @@ pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
 use crate::key::DeserializeJWK;
+use crate::SignatureBytes;
 
 impl crate::key::JWKeyType for rsa::RsaPublicKey {
     const KEY_TYPE: &'static str = "RSA";
@@ -296,6 +297,46 @@ macro_rules! rsa_pss_algorithm {
         impl $crate::algorithms::JsonWebAlgorithm for rsa::pss::VerifyingKey<$digest> {
             const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::$alg;
         }
+
+        impl signature::RandomizedDigestSigner<$digest, SignatureBytes>
+            for rsa::pss::SigningKey<$digest>
+        where
+            Self: RandomizedDigestSigner<$digest, rsa::pss::Signature>
+                + crate::algorithms::DynJsonWebAlgorithm,
+        {
+            fn try_sign_digest_with_rng(
+                &self,
+                rng: &mut impl rand_core::CryptoRngCore,
+                digest: $digest,
+            ) -> Result<SignatureBytes, signature::Error> {
+                use signature::SignatureEncoding;
+
+                let signature: rsa::pss::Signature = self.try_sign_digest_with_rng(rng, digest)?;
+                Ok(signature.to_bytes().as_ref().into())
+            }
+        }
+
+        impl signature::DigestVerifier<$digest, SignatureBytes> for rsa::pss::VerifyingKey<$digest>
+        where
+            Self: signature::DigestVerifier<$digest, rsa::pss::Signature>
+                + crate::algorithms::DynJsonWebAlgorithm,
+        {
+            fn verify_digest(
+                &self,
+                digest: $digest,
+                signature: &SignatureBytes,
+            ) -> Result<(), signature::Error> {
+                use signature::SignatureEncoding;
+
+                let signature: rsa::pss::Signature = signature
+                    .to_bytes()
+                    .as_ref()
+                    .try_into()
+                    .map_err(signature::Error::from_source)?;
+
+                self.verify_digest(digest, &signature)
+            }
+        }
     };
 }
 
@@ -388,8 +429,9 @@ where
 #[cfg(test)]
 mod test {
 
-    use crate::algorithms::TokenSigner as _;
     use crate::key::DeserializeJWK;
+    use crate::SignatureBytes;
+    use crate::TokenSigner;
 
     use base64ct::Encoding as _;
     use serde_json::json;
@@ -470,10 +512,12 @@ mod test {
         );
     }
 
-    #[test]
-    fn rsa_pkcs1v15_algorithm() {
-        let pkey = rsa(jwk());
-
+    fn algorithm_roundtrip<S>(
+        sign: &impl crate::algorithms::TokenSigner<S>,
+        verify: &impl crate::algorithms::TokenVerifier<S>,
+    ) where
+        S: SignatureEncoding,
+    {
         let payload = json! {
             {
                 "iss": "joe",
@@ -483,45 +527,87 @@ mod test {
         };
 
         let token = crate::Token::compact((), payload);
-        let algorithm: rsa::pkcs1v15::SigningKey<Sha256> = rsa::pkcs1v15::SigningKey::new(pkey);
 
-        let signed = token
-            .sign::<_, rsa::pkcs1v15::Signature>(&algorithm)
-            .unwrap();
+        let signed = token.sign::<_, S>(sign).expect("signing");
 
         let unverified = signed.unverify();
-        let verifying_key = algorithm.verifying_key();
-        unverified
-            .verify::<_, rsa::pkcs1v15::Signature>(&verifying_key)
-            .unwrap();
+        unverified.verify::<_, S>(verify).expect("verifying");
     }
 
-    #[cfg(feature = "rand")]
-    #[test]
-    fn rsa_pss_algorithm() {
-        use rand_core::OsRng;
+    macro_rules! rsa_pkcs1v15_algorithm_test {
+        ($name:ident, $digest:ty) => {
+            #[test]
+            fn $name() {
+                let pkey = rsa(jwk());
 
-        let pkey = rsa(jwk());
+                let algorithm: rsa::pkcs1v15::SigningKey<$digest> =
+                    rsa::pkcs1v15::SigningKey::new(pkey);
 
-        let payload = json! {
-            {
-                "iss": "joe",
-                "exp": 1300819380,
-                "http://example.com/is_root": true
+                algorithm_roundtrip::<rsa::pkcs1v15::Signature>(
+                    &algorithm,
+                    &algorithm.verifying_key(),
+                );
+                algorithm_roundtrip::<SignatureBytes>(&algorithm, &algorithm.verifying_key());
             }
         };
+    }
 
-        let token = crate::Token::compact((), payload);
-        let algorithm: rsa::pss::SigningKey<Sha256> = rsa::pss::SigningKey::new(pkey);
+    rsa_pkcs1v15_algorithm_test!(rs256_algorithm, sha2::Sha256);
+    rsa_pkcs1v15_algorithm_test!(rs384_algorithm, sha2::Sha384);
+    rsa_pkcs1v15_algorithm_test!(rs512_algorithm, sha2::Sha512);
 
-        let signed = token
-            .sign_randomized::<_, rsa::pss::Signature>(&algorithm, &mut OsRng)
-            .unwrap();
+    #[cfg(feature = "rand")]
+    mod pss {
+        use rand_core::OsRng;
+        use serde_json::json;
+        use signature::Keypair;
+        use signature::SignatureEncoding;
 
-        let unverified = signed.unverify();
-        let verifying_key = algorithm.verifying_key();
-        unverified
-            .verify::<_, rsa::pss::Signature>(&verifying_key)
-            .unwrap();
+        use crate::SignatureBytes;
+
+        fn algorithm_roundtrip<S>(
+            sign: &impl crate::algorithms::RandomizedTokenSigner<S>,
+            verify: &impl crate::algorithms::TokenVerifier<S>,
+        ) where
+            S: SignatureEncoding,
+        {
+            let payload = json! {
+                {
+                    "iss": "joe",
+                    "exp": 1300819380,
+                    "http://example.com/is_root": true
+                }
+            };
+
+            let token = crate::Token::compact((), payload);
+
+            let signed = token
+                .sign_randomized::<_, S>(sign, &mut OsRng)
+                .expect("signing");
+
+            let unverified = signed.unverify();
+            unverified.verify::<_, S>(verify).expect("verifying");
+        }
+
+        macro_rules! rsa_pss_algorithm_test {
+            ($name:ident, $digest:ty) => {
+                #[test]
+                fn $name() {
+                    let pkey = super::rsa(super::jwk());
+
+                    let algorithm: rsa::pss::SigningKey<$digest> = rsa::pss::SigningKey::new(pkey);
+
+                    algorithm_roundtrip::<rsa::pss::Signature>(
+                        &algorithm,
+                        &algorithm.verifying_key(),
+                    );
+                    algorithm_roundtrip::<SignatureBytes>(&algorithm, &algorithm.verifying_key());
+                }
+            };
+        }
+
+        rsa_pss_algorithm_test!(ps256_algorithm, sha2::Sha256);
+        rsa_pss_algorithm_test!(ps384_algorithm, sha2::Sha384);
+        rsa_pss_algorithm_test!(ps512_algorithm, sha2::Sha512);
     }
 }

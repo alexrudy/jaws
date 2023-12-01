@@ -30,6 +30,7 @@
 //! - RS512: RSASSA-PKCS1-v1_5 using SHA-512 via [`rsa::pkcs1v15::SigningKey<Sha512>`][rsa::pkcs1v15::SigningKey] / [`rsa::pkcs1v15::VerifyingKey<Sha512>`][rsa::pkcs1v15::VerifyingKey]
 //! - PS256: RSASSA-PSS using SHA-256 and MGF1 with SHA-256 via [`rsa::pss::SigningKey<Sha256>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha256>`][rsa::pss::VerifyingKey]
 //! - PS384: RSASSA-PSS using SHA-384 and MGF1 with SHA-384 via [`rsa::pss::SigningKey<Sha384>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha384>`][rsa::pss::VerifyingKey]
+//! - PS512: RSASSA-PSS using SHA-512 and MGF1 with SHA-384 via [`rsa::pss::SigningKey<Sha512>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha512>`][rsa::pss::VerifyingKey]
 //!
 //! ## ECDSA
 //!

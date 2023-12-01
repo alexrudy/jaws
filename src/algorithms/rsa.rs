@@ -20,6 +20,8 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
+#[cfg(feature = "rand")]
+use signature::RandomizedDigestSigner;
 
 pub use rsa::pkcs1v15;
 pub use rsa::pss;
@@ -276,21 +278,112 @@ where
     }
 }
 
-// macro_rules! jose_rsa_pss_algorithm {
-//     ($alg:ident, $digest:ty) => {
-//         $crate::jose_algorithm!(
-//             $alg,
-//             rsa::pss::SigningKey<$digest>,
-//             rsa::pss::VerifyingKey<$digest>,
-//             $digest,
-//             rsa::pss::Signature
-//         );
-//     };
-// }
+#[cfg(feature = "rand")]
+impl<D> crate::key::JWKeyType for rsa::pss::SigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    const KEY_TYPE: &'static str = "RSA";
+}
 
-// jose_rsa_pss_algorithm!(PS256, sha2::Sha256);
-// jose_rsa_pss_algorithm!(PS384, sha2::Sha384);
-// jose_rsa_pss_algorithm!(PS512, sha2::Sha512);
+#[cfg(feature = "rand")]
+macro_rules! rsa_pss_algorithm {
+    ($alg:ident, $digest:ty) => {
+        impl $crate::algorithms::JsonWebAlgorithm for rsa::pss::SigningKey<$digest> {
+            const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::$alg;
+        }
+
+        impl $crate::algorithms::JsonWebAlgorithm for rsa::pss::VerifyingKey<$digest> {
+            const IDENTIFIER: super::AlgorithmIdentifier = super::AlgorithmIdentifier::$alg;
+        }
+    };
+}
+
+#[cfg(feature = "rand")]
+rsa_pss_algorithm!(PS256, sha2::Sha256);
+#[cfg(feature = "rand")]
+rsa_pss_algorithm!(PS384, sha2::Sha384);
+#[cfg(feature = "rand")]
+rsa_pss_algorithm!(PS512, sha2::Sha512);
+
+#[cfg(feature = "rand")]
+impl<D> crate::key::SerializeJWK for rsa::pss::SigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.as_ref().to_public_key().parameters()
+    }
+}
+
+#[cfg(feature = "rand")]
+impl<D> crate::key::DeserializeJWK for rsa::pss::SigningKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError>
+    where
+        Self: Sized,
+    {
+        let key = rsa::RsaPrivateKey::build(parameters)?;
+
+        Ok(rsa::pss::SigningKey::new(key))
+    }
+}
+
+#[cfg(feature = "rand")]
+impl<S, D> crate::algorithms::RandomizedTokenSigner<S> for rsa::pss::SigningKey<D>
+where
+    D: signature::digest::Digest,
+    S: signature::SignatureEncoding,
+    Self: RandomizedDigestSigner<D, S> + crate::algorithms::DynJsonWebAlgorithm,
+{
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+        rng: &mut impl rand_core::CryptoRngCore,
+    ) -> Result<S, signature::Error> {
+        let mut digest = D::new();
+        digest.update(header.as_bytes());
+        digest.update(b".");
+        digest.update(payload.as_bytes());
+
+        self.try_sign_digest_with_rng(rng, digest)
+    }
+}
+
+#[cfg(feature = "rand")]
+impl<S, D> crate::algorithms::TokenVerifier<S> for rsa::pss::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+    S: signature::SignatureEncoding,
+    for<'a> <S as TryFrom<&'a [u8]>>::Error: std::error::Error + Send + Sync + 'static,
+    Self: signature::DigestVerifier<D, S> + crate::algorithms::DynJsonWebAlgorithm,
+{
+    fn verify_token(
+        &self,
+        header: &[u8],
+        payload: &[u8],
+        signature: &[u8],
+    ) -> Result<S, signature::Error> {
+        use signature::DigestVerifier;
+
+        let mut digest = D::new();
+        digest.update(header);
+        digest.update(b".");
+        digest.update(payload);
+
+        let signature = signature
+            .try_into()
+            .map_err(signature::Error::from_source)?;
+
+        self.verify_digest(digest, &signature)?;
+        Ok(signature)
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -400,6 +493,35 @@ mod test {
         let verifying_key = algorithm.verifying_key();
         unverified
             .verify::<_, rsa::pkcs1v15::Signature>(&verifying_key)
+            .unwrap();
+    }
+
+    #[cfg(feature = "rand")]
+    #[test]
+    fn rsa_pss_algorithm() {
+        use rand_core::OsRng;
+
+        let pkey = rsa(jwk());
+
+        let payload = json! {
+            {
+                "iss": "joe",
+                "exp": 1300819380,
+                "http://example.com/is_root": true
+            }
+        };
+
+        let token = crate::Token::compact((), payload);
+        let algorithm: rsa::pss::SigningKey<Sha256> = rsa::pss::SigningKey::new(pkey);
+
+        let signed = token
+            .sign_randomized::<_, rsa::pss::Signature>(&algorithm, &mut OsRng)
+            .unwrap();
+
+        let unverified = signed.unverify();
+        let verifying_key = algorithm.verifying_key();
+        unverified
+            .verify::<_, rsa::pss::Signature>(&verifying_key)
             .unwrap();
     }
 }

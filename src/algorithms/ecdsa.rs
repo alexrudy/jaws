@@ -454,4 +454,44 @@ mod test {
         )
         .expect("signature verification for RFC7515a3 example failed");
     }
+
+    macro_rules! ecdsa_algorithm_test {
+        ($name:ident, $curve:ty) => {
+            #[cfg(feature = "rand")]
+            #[test]
+            fn $name() {
+                let key = SigningKey::<$curve>::random(&mut rand_core::OsRng);
+                let verify = *key.verifying_key();
+
+                let payload = json! {
+                    {
+                        "iss": "joe",
+                        "exp": 1300819380,
+                        "http://example.com/is_root": true
+                    }
+                };
+
+                let token = crate::Token::compact((), payload);
+
+                let signed = token
+                    .clone()
+                    .sign::<_, ecdsa::Signature<$curve>>(&key)
+                    .unwrap();
+                let unverified = signed.unverify();
+                unverified
+                    .verify::<_, ecdsa::Signature<$curve>>(&verify)
+                    .unwrap();
+
+                let signed = token.clone().sign::<_, SignatureBytes>(&key).unwrap();
+                let unverified = signed.unverify();
+                unverified.verify::<_, SignatureBytes>(&verify).unwrap();
+            }
+        };
+    }
+
+    #[cfg(feature = "p256")]
+    ecdsa_algorithm_test!(p256_roundtrip, NistP256);
+
+    #[cfg(feature = "p384")]
+    ecdsa_algorithm_test!(p384_roundtrip, NistP384);
 }

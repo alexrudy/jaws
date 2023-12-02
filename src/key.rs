@@ -174,6 +174,14 @@ impl JsonWebKey {
         }
     }
 
+    /// Build a JWK from a public key.
+    pub fn build_public<K: SerializePublicJWK + ?Sized>(key: &K) -> Self {
+        JsonWebKey {
+            key_type: key.key_type().into(),
+            parameters: key.public_parameters().into_iter().collect(),
+        }
+    }
+
     /// Build a JWK from a key.
     pub fn build<K: SerializeJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
@@ -342,7 +350,7 @@ where
 
 impl<Digest> std::fmt::Display for Thumbprint<Digest> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.thumbprint)
+        f.write_str(&self.thumbprint)
     }
 }
 
@@ -363,13 +371,12 @@ mod test {
 
     sa::assert_obj_safe!(SerializeJWK);
 
-    #[cfg(all(test, feature = "rsa"))]
+    #[cfg(feature = "rsa")]
     mod rsa {
         use super::super::*;
 
         use serde_json::json;
 
-        #[cfg(feature = "rsa")]
         #[test]
         fn rfc7639_example() {
             let key = rsa::RsaPublicKey::from_value(json!({

@@ -91,7 +91,7 @@ impl<H> MaybeSigned for Unsigned<H> {
 /// signature is both consistent and valid.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
-pub struct Signed<H, Alg, Sig>
+pub struct Signed<H, Alg, Sig = SignatureBytes>
 where
     Alg: DynJsonWebAlgorithm + ?Sized,
 {
@@ -146,7 +146,7 @@ where
 /// consistent with the signature.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
-pub struct Verified<H, Alg, Sig>
+pub struct Verified<H, Alg, Sig = SignatureBytes>
 where
     Alg: DynJsonWebAlgorithm + ?Sized,
 {

@@ -30,6 +30,7 @@
 //! - RS512: RSASSA-PKCS1-v1_5 using SHA-512 via [`rsa::pkcs1v15::SigningKey<Sha512>`][rsa::pkcs1v15::SigningKey] / [`rsa::pkcs1v15::VerifyingKey<Sha512>`][rsa::pkcs1v15::VerifyingKey]
 //! - PS256: RSASSA-PSS using SHA-256 and MGF1 with SHA-256 via [`rsa::pss::SigningKey<Sha256>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha256>`][rsa::pss::VerifyingKey]
 //! - PS384: RSASSA-PSS using SHA-384 and MGF1 with SHA-384 via [`rsa::pss::SigningKey<Sha384>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha384>`][rsa::pss::VerifyingKey]
+//! - PS512: RSASSA-PSS using SHA-512 and MGF1 with SHA-384 via [`rsa::pss::SigningKey<Sha512>`][rsa::pss::SigningKey] / [`rsa::pss::VerifyingKey<Sha512>`][rsa::pss::VerifyingKey]
 //!
 //! ## ECDSA
 //!
@@ -159,7 +160,7 @@ pub trait JsonWebAlgorithm {
     const IDENTIFIER: AlgorithmIdentifier;
 }
 
-/// A trait to associate an alogritm identifier with an algorithm.
+/// An object-safe trait to associate an alogritm identifier with an algorithm.
 ///
 /// This is a dynamic version of [`JsonWebAlgorithm`], which allows for
 /// dynamic dispatch of the algorithm, and object-safety for the trait.
@@ -189,7 +190,7 @@ pub trait JsonWebAlgorithmDigest: JsonWebAlgorithm {
 /// A trait to represent an algorithm which can sign a JWT.
 ///
 /// This trait should apply to signing keys.
-pub trait TokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK
+pub trait TokenSigner<S = SignatureBytes>: DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
@@ -229,7 +230,8 @@ where
 #[cfg(feature = "rand")]
 /// A trait to represent an algorithm which can sign a JWT, with a source of
 /// randomness.
-pub trait RandomizedTokenSigner<S>: DynJsonWebAlgorithm + SerializePublicJWK
+pub trait RandomizedTokenSigner<S = SignatureBytes>:
+    DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
@@ -259,7 +261,7 @@ where
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
 /// to verify a JWT signature, but not necessarily to sing it.
-pub trait TokenVerifier<S>: DynJsonWebAlgorithm
+pub trait TokenVerifier<S = SignatureBytes>: DynJsonWebAlgorithm
 where
     S: SignatureEncoding,
 {
@@ -434,4 +436,5 @@ mod test {
     // a concrete `Signature` type, or an object-safe trait.
     sa::assert_obj_safe!(TokenSigner<SignatureBytes>);
     sa::assert_obj_safe!(TokenVerifier<SignatureBytes>);
+    sa::assert_obj_safe!(DynJsonWebAlgorithm);
 }

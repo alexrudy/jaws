@@ -26,7 +26,10 @@ use digest::{Digest, Mac};
 use hmac::SimpleHmac;
 use signature::{Keypair, SignatureEncoding};
 
-use crate::key::{JWKeyType, SerializeJWK};
+use crate::{
+    key::{JWKeyType, SerializeJWK},
+    SignatureBytes,
+};
 
 use super::JsonWebAlgorithm;
 
@@ -204,6 +207,23 @@ where
     }
 }
 
+impl<D> super::TokenSigner<SignatureBytes> for Hmac<D>
+where
+    Hmac<D>: JsonWebAlgorithm,
+    D: Digest + digest::core_api::BlockSizeUser + Clone,
+{
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+    ) -> Result<SignatureBytes, signature::Error> {
+        let signature = <Self as super::TokenSigner<DigestSignature<D>>>::try_sign_token(
+            self, header, payload,
+        )?;
+        Ok(signature.to_bytes().as_ref().into())
+    }
+}
+
 impl<D> super::TokenVerifier<DigestSignature<D>> for Hmac<D>
 where
     Hmac<D>: JsonWebAlgorithm,
@@ -269,7 +289,7 @@ mod test {
 
         let algorithm: Hmac<Sha256> = Hmac::new(key);
 
-        let signature = algorithm.sign_token(&header, &payload);
+        let signature: DigestSignature<_> = algorithm.sign_token(&header, &payload);
 
         let sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
 

@@ -27,6 +27,7 @@ pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
 use crate::key::DeserializeJWK;
+#[cfg(feature = "rand")]
 use crate::SignatureBytes;
 
 impl crate::key::JWKeyType for rsa::RsaPublicKey {

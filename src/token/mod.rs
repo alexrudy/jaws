@@ -969,7 +969,10 @@ mod test_hmac {
 
         let signed = token.sign::<_, DigestSignature<_>>(&algorithm).unwrap();
 
-        let verified = signed.unverify().verify(&algorithm).unwrap();
+        let verified = signed
+            .unverify()
+            .verify::<_, DigestSignature<_>>(&algorithm)
+            .unwrap();
 
         assert_eq!(verified.payload(), Some(&"This is an HMAC'd message"));
     }

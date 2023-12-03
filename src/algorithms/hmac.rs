@@ -19,7 +19,7 @@
 //! which is a wrapper around the [`digest::Output`] type from the [`digest`](https://crates.io/crates/digest)
 //! crate, but which provides the appropriate signature encoding behavior.
 
-use std::{marker::PhantomData, ops::Deref};
+use std::{collections::BTreeMap, marker::PhantomData, ops::Deref};
 
 use base64ct::Encoding;
 use digest::{Digest, Mac};
@@ -27,7 +27,7 @@ use hmac::SimpleHmac;
 use signature::{Keypair, SignatureEncoding};
 
 use crate::{
-    key::{JWKeyType, SerializeJWK},
+    key::{DeserializeJWK, JWKeyType, SerializeJWK},
     SignatureBytes,
 };
 
@@ -127,6 +127,30 @@ impl<D> SerializeJWK for Hmac<D> {
             "k".to_string(),
             serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key.key)),
         )]
+    }
+}
+
+impl<D> DeserializeJWK for Hmac<D> {
+    fn build(
+        parameters: BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        let key_data = parameters
+            .get("k")
+            .ok_or(crate::key::JsonWebKeyError::MissingParameter("k"))?
+            .as_str()
+            .ok_or(crate::key::JsonWebKeyError::InvalidKey(
+                "k",
+                "k must be a str".into(),
+            ))?;
+        let decoded_len = 3 * key_data.len() / 4;
+
+        let mut key = HmacKey::with_capacity(decoded_len);
+        key.resize(decoded_len, 0);
+
+        base64ct::Base64UrlUnpadded::decode(key_data, key.as_mut())
+            .map_err(|err| crate::key::JsonWebKeyError::InvalidKey("k", err.into()))?;
+
+        Ok(Self::new(key))
     }
 }
 
@@ -248,11 +272,30 @@ where
     }
 }
 
+impl<D> super::TokenVerifier<SignatureBytes> for Hmac<D>
+where
+    Hmac<D>: JsonWebAlgorithm,
+    D: Digest + digest::core_api::BlockSizeUser + Clone,
+{
+    fn verify_token(
+        &self,
+        header: &[u8],
+        payload: &[u8],
+        signature: &[u8],
+    ) -> Result<SignatureBytes, signature::Error> {
+        let signature = <Self as super::TokenVerifier<DigestSignature<D>>>::verify_token(
+            self, header, payload, signature,
+        )?;
+        Ok(signature.to_bytes().as_ref().into())
+    }
+}
+
 #[cfg(test)]
 mod test {
 
     use super::*;
     use crate::algorithms::TokenSigner;
+    use crate::algorithms::TokenVerifier;
 
     use base64ct::Encoding;
     use serde_json::json;
@@ -262,14 +305,18 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
+    fn jwk() -> serde_json::Value {
+        json!({
+            "kty":"oct",
+            "k":strip_whitespace("AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75
+                aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow")
+        }
+        )
+    }
+
     #[test]
     fn rfc7515_example_a1_signature() {
-        let pkey = &json!({
-            "kty":"oct",
-            "k":"AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75
-                aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow"
-        }
-        );
+        let pkey = &jwk();
 
         let key_data = strip_whitespace(pkey["k"].as_str().unwrap());
 
@@ -297,5 +344,91 @@ mod test {
             sig,
             strip_whitespace("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
         );
+
+        let _: SignatureBytes = algorithm
+            .verify_token(
+                &header.as_bytes(),
+                &payload.as_bytes(),
+                &signature.to_bytes(),
+            )
+            .unwrap();
     }
+
+    #[test]
+    fn rfc7515_example_a1_signature_bytes() {
+        let pkey = &jwk();
+
+        let key_data = strip_whitespace(pkey["k"].as_str().unwrap());
+
+        let decoded_len = 3 * key_data.len() / 4;
+
+        let mut key = HmacKey::with_capacity(decoded_len);
+        key.resize(decoded_len, 0);
+
+        base64ct::Base64UrlUnpadded::decode(&key_data, key.as_mut()).unwrap();
+
+        let payload = strip_whitespace(
+            "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFt
+        cGxlLmNvbS9pc19yb290Ijp0cnVlfQ",
+        );
+
+        let header = strip_whitespace("eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9");
+
+        let algorithm: Hmac<Sha256> = Hmac::new(key);
+
+        let signature: SignatureBytes = algorithm.sign_token(&header, &payload);
+
+        let sig = base64ct::Base64UrlUnpadded::encode_string(signature.to_bytes().as_ref());
+
+        assert_eq!(
+            sig,
+            strip_whitespace("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        );
+
+        let _: SignatureBytes = algorithm
+            .verify_token(
+                &header.as_bytes(),
+                &payload.as_bytes(),
+                &signature.to_bytes(),
+            )
+            .unwrap();
+    }
+
+    fn hmac_roundtrip<D, S>(algorithm: &Hmac<D>)
+    where
+        D: Digest,
+        S: SignatureEncoding,
+        Hmac<D>: TokenSigner<S> + TokenVerifier<S>,
+    {
+        let payload = json! {
+            {
+                "iss": "joe",
+                "exp": 1300819380,
+                "http://example.com/is_root": true
+            }
+        };
+
+        let token = crate::Token::compact((), payload);
+
+        let signed = token.sign::<_, S>(algorithm).expect("signing");
+
+        let unverified = signed.unverify();
+        unverified.verify::<_, S>(algorithm).expect("verifying");
+    }
+
+    macro_rules! hmac_algorithm_test {
+        ($name:ident, $digest:ty) => {
+            #[test]
+            fn $name() {
+                let algorithm = Hmac::from_value(jwk()).unwrap();
+
+                hmac_roundtrip::<$digest, DigestSignature<$digest>>(&algorithm);
+                hmac_roundtrip::<$digest, SignatureBytes>(&algorithm);
+            }
+        };
+    }
+
+    hmac_algorithm_test!(hs256, sha2::Sha256);
+    hmac_algorithm_test!(hs384, sha2::Sha384);
+    hmac_algorithm_test!(hs512, sha2::Sha512);
 }

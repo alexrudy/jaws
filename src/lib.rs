@@ -57,3 +57,25 @@ pub use claims::{Claims, RegisteredClaims};
 pub use fmt::JWTFormat;
 pub use token::Token;
 pub use token::{Compact, Flat, FlatUnprotected};
+
+/// Module for re-exports of related crates
+///
+/// Use these aliases to access related traits and types.
+pub mod crypto {
+    pub use digest;
+    #[cfg(feature = "ecdsa")]
+    pub use ecdsa;
+    #[cfg(feature = "p256")]
+    pub use p256;
+    #[cfg(feature = "p384")]
+    pub use p384;
+    #[cfg(feature = "p521")]
+    pub use p521;
+    pub use pkcs8;
+    #[cfg(feature = "rand")]
+    pub use rand_core;
+    #[cfg(feature = "rsa")]
+    pub use rsa;
+    pub use sha2;
+    pub use signature;
+}

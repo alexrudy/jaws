@@ -19,10 +19,10 @@ ecosystem.
 //! Most of the traits are designed to be object-safe when used with the [`Token`] type,
 //! so that they can be used with a single type-erased key type.
 //!
-//! Since RustCrypto [signature](https://docs.rs/signature/latest/signature/) signing and
+//! RustCrypto [signature](https://docs.rs/signature/latest/signature/) signing and
 //! verifying traits are generic over the signature type, to allow for optimizations
-//! from specific signature algorithms to be applied. When using a type-erased keys,
-//! this is not possible, so the [`TokenSigner`] and [`TokenVerifier`] traits are
+//! from specific signature algorithms to be used when desired. When using a type-erased
+//! keys, this is not possible, so the [`TokenSigner`] and [`TokenVerifier`] traits are
 //! also designed to work with the [`SignatureBytes`] type, which is a type-erased
 //! signature type.
 //!

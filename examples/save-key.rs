@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use jaws::key::DeserializeJWK as _;
 use rsa::{pkcs1::EncodeRsaPublicKey, pkcs8::EncodePrivateKey};
 use serde_json::json;
@@ -40,14 +38,10 @@ fn main() {
 
     let pemdata = pkey.to_pkcs8_pem(Default::default()).unwrap();
 
-    std::io::BufWriter::new(
-        std::fs::File::create(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/examples/rfc7515a2.pem"
-        ))
-        .unwrap(),
+    std::fs::write(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/examples/rfc7515a2.pem"),
+        pemdata,
     )
-    .write_all(pemdata.as_bytes())
     .unwrap();
 
     let pemdata = pkey
@@ -55,13 +49,9 @@ fn main() {
         .to_pkcs1_pem(Default::default())
         .unwrap();
 
-    std::io::BufWriter::new(
-        std::fs::File::create(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/examples/rfc7515a2.pub"
-        ))
-        .unwrap(),
+    std::fs::write(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/examples/rfc7515a2.pub"),
+        pemdata,
     )
-    .write_all(pemdata.as_bytes())
     .unwrap();
 }

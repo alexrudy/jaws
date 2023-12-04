@@ -44,9 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .unwrap();
 
     // We will sign the JWT with the RS256 algorithm: RSA with SHA-256.
-    // RsaPkcs1v15 is really an alias to the digital signature algorithm
-    // implementation in the `rsa` crate, but provided in JAWS to make
-    // it clear which types are compatible with JWTs.
     let alg = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
 
     // Claims can combine registered and custom fields. The claims object
@@ -67,6 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // but a custom type could be passed if we wanted to have custom header
     // fields.
     let mut token = Token::compact((), claims);
+
     // We can modify the headers freely before signing the JWT. In this case,
     // we provide the `typ` header, which is optional in the JWT spec.
     *token.header_mut().r#type() = Some("JWT".to_string());
@@ -76,7 +74,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     token.header_mut().key().derived();
 
     println!("=== Initial JWT ===");
-
     // Initially the JWT has no defined signature:
     println!("{}", token.formatted());
 
@@ -115,12 +112,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(&key, alg.verifying_key().as_ref());
     println!("=== Verification === ");
-
-    // let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::new(key);
     let alg: rsa::pkcs1v15::VerifyingKey<Sha256> = alg.verifying_key();
 
     // We can't access the claims until we verify the token.
-    // let verified = token.verify::<_, rsa::pkcs1v15::Signature>(&alg).unwrap();
     let verified = token
         .verify::<_, jaws::algorithms::SignatureBytes>(&alg)
         .unwrap();

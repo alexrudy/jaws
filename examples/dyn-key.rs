@@ -31,9 +31,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .unwrap();
     let verify_key: rsa::pkcs1v15::VerifyingKey<Sha256> =
         rsa::pkcs1v15::VerifyingKey::new(key.to_public_key());
-    let verify_alg: Box<dyn TokenVerifier<SignatureBytes>> = Box::new(verify_key.clone());
+
+    // We will sign the JWT with a type-erased algorithm, and use a type-erased
+    // verifier to verify it. This allows you to use a set of verifiers which
+    // are not known at compile time.
     let alg: Box<dyn TokenSigningKey> =
         Box::new(rsa::pkcs1v15::SigningKey::<Sha256>::new(key.clone()));
+    let verify_alg: Box<dyn TokenVerifier<SignatureBytes>> = Box::new(verify_key.clone());
 
     // Claims can combine registered and custom fields. The claims object
     // can be any type which implements [serde::Serialize].
@@ -94,10 +98,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .verify::<_, rsa::pkcs1v15::Signature>(&verify_key)
         .unwrap();
-    println!("Verified with dyn verify key (typed)");
+    println!("Verified with verify key (typed)");
 
     // Check it against the verified key
-    token
+    let verified = token
         .clone()
         .verify::<_, SignatureBytes>(verify_alg.as_ref())
         .unwrap();
@@ -108,13 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .verify::<_, rsa::pkcs1v15::Signature>(&key)
         .unwrap();
-    println!("Verified with JWT");
-
-    // We can't access the claims until we verify the token.
-    let verified = token
-        .verify::<_, SignatureBytes>(verify_alg.as_ref())
-        .unwrap();
-    println!("Verified with original key");
+    println!("Verified with JWK");
 
     println!("=== Verified JWT ===");
     println!("JWT:");

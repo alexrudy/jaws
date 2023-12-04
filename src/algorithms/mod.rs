@@ -54,15 +54,12 @@
 //!
 //! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
-use std::fmt;
+use ::signature::SignatureEncoding;
 
-use base64ct::Encoding;
-use bytes::Bytes;
 use digest::Digest;
 #[cfg(feature = "rand")]
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use signature::SignatureEncoding;
 
 #[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
 pub use sha2::Sha256;
@@ -74,6 +71,10 @@ pub use sha2::Sha384;
 pub use sha2::Sha512;
 
 use crate::key::SerializePublicJWK;
+
+mod sig;
+
+pub use sig::SignatureBytes;
 
 #[cfg(feature = "ecdsa")]
 pub mod ecdsa;
@@ -197,7 +198,7 @@ where
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
     /// and appended to the compact representation of the JWT.
-    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error>;
+    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, sig::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
@@ -214,10 +215,10 @@ where
 impl<K, S> TokenSigner<S> for K
 where
     K: JsonWebAlgorithmDigest + SerializePublicJWK,
-    K: signature::DigestSigner<K::Digest, S>,
+    K: sig::DigestSigner<K::Digest, S>,
     S: SignatureEncoding,
 {
-    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error> {
+    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, sig::Error> {
         let mut digest = <Self as JsonWebAlgorithmDigest>::Digest::new();
         digest.update(header.as_bytes());
         digest.update(b".");
@@ -243,7 +244,7 @@ where
         header: &str,
         payload: &str,
         rng: &mut impl CryptoRngCore,
-    ) -> Result<S, signature::Error>;
+    ) -> Result<S, sig::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. This is the JWS Signature value, and will be base64url-encoded
@@ -272,13 +273,13 @@ where
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<S, signature::Error>;
+    ) -> Result<S, sig::Error>;
 }
 
 impl<K, S> TokenVerifier<S> for K
 where
     K: JsonWebAlgorithmDigest + std::fmt::Debug,
-    K: signature::DigestVerifier<K::Digest, S>,
+    K: sig::DigestVerifier<K::Digest, S>,
     K::Digest: Clone + std::fmt::Debug,
     S: SignatureEncoding + std::fmt::Debug,
     for<'a> <S as TryFrom<&'a [u8]>>::Error: std::error::Error + Send + Sync + 'static,
@@ -288,78 +289,17 @@ where
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<S, signature::Error> {
+    ) -> Result<S, sig::Error> {
         let mut digest = <Self as JsonWebAlgorithmDigest>::Digest::new();
         digest.update(header);
         digest.update(b".");
         digest.update(payload);
 
-        let signature = signature
-            .try_into()
-            .map_err(signature::Error::from_source)?;
+        let signature = signature.try_into().map_err(sig::Error::from_source)?;
 
         self.verify_digest(digest, &signature)?;
         Ok(signature)
     }
-}
-
-/// A signature which has not been matched to an algorithm or key.
-///
-/// This is a basic signature `struct` which can be used to store any signature
-/// on the heap. It is used to store the signature of a JWT before it is verified,
-/// or if a signature has a variable length.
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct SignatureBytes(Bytes);
-
-impl SignatureBytes {
-    /// Create a new signature from a base64url-encoded string.
-    pub fn from_b64url(data: &str) -> Result<Self, base64ct::Error> {
-        Ok(Self(Bytes::from(base64ct::Base64UrlUnpadded::decode_vec(
-            data,
-        )?)))
-    }
-}
-
-impl fmt::Debug for SignatureBytes {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("SignatureBytes")
-            .field(&base64ct::Base64UrlUnpadded::encode_string(self.0.as_ref()))
-            .finish()
-    }
-}
-
-impl AsRef<[u8]> for SignatureBytes {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl From<&[u8]> for SignatureBytes {
-    fn from(bytes: &[u8]) -> Self {
-        SignatureBytes(bytes.to_owned().into())
-    }
-}
-
-impl From<Bytes> for SignatureBytes {
-    fn from(bytes: Bytes) -> Self {
-        SignatureBytes(bytes)
-    }
-}
-
-impl From<SignatureBytes> for Bytes {
-    fn from(bytes: SignatureBytes) -> Self {
-        bytes.0.clone()
-    }
-}
-
-impl From<Vec<u8>> for SignatureBytes {
-    fn from(bytes: Vec<u8>) -> Self {
-        SignatureBytes(bytes.into())
-    }
-}
-
-impl signature::SignatureEncoding for SignatureBytes {
-    type Repr = Bytes;
 }
 
 /// A macro to implement the required traits for common JWS alogorithms.

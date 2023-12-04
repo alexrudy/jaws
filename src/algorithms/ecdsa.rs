@@ -113,7 +113,7 @@ where
     ::ecdsa::Signature<C>: SignatureEncoding,
 {
     fn from(sig: ::ecdsa::Signature<C>) -> Self {
-        Self(Bytes::copy_from_slice(sig.to_bytes().as_ref()))
+        Self::from(Bytes::copy_from_slice(sig.to_bytes().as_ref()))
     }
 }
 

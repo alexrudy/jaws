@@ -18,6 +18,7 @@ categories = [
 base64ct = { version = "1.6", features = ["std"] }
 bytes = { version = "1.5" }
 chrono = { version = "0.4", features = ["serde"] }
+der = { version = "0.7.8", optional = true }
 digest = { version = "0.10" }
 ecdsa = { version = "0.16", features = ["signing", "der"], optional = true }
 hmac = { version = "0.12", optional = true }
@@ -32,6 +33,7 @@ serde_json = "1"
 sha1 = "0.10"
 sha2 = "0.10"
 signature = { version = "2.2", features = ["digest", "std"] }
+spki = { version = "0.7", optional = true }
 thiserror = "1"
 url = { version = "2.5", features = ["serde"] }
 zeroize = { version = "1.7", features = ["serde", "derive"] }
@@ -54,6 +56,8 @@ ecdsa = ["dep:ecdsa", "dep:elliptic-curve"]
 p256 = ["dep:p256", "ecdsa"]
 p384 = ["dep:p384", "ecdsa"]
 p521 = ["dep:p521", "ecdsa"]
+spki = ["dep:spki"]
+der = ["dep:der"]
 
 [[example]]
 name = "acme-new-account"

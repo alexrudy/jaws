@@ -70,3 +70,40 @@ impl spki::SignatureBitStringEncoding for SignatureBytes {
         spki::der::asn1::BitString::from_bytes(self.0.as_ref())
     }
 }
+
+#[cfg(feature = "der")]
+impl<'c> der::Decode<'c> for SignatureBytes {
+    fn decode<R: der::Reader<'c>>(reader: &mut R) -> der::Result<Self> {
+        use der::Encode;
+
+        let header = reader.peek_header()?;
+        header.tag.assert_eq(der::Tag::Sequence)?;
+
+        let len = (header.encoded_len()? + header.length)?;
+        let mut buf = Vec::with_capacity(usize::try_from(len)?);
+        let slice = buf
+            .get_mut(..usize::try_from(len)?)
+            .ok_or_else(|| reader.error(der::Tag::Sequence.length_error().kind()))?;
+
+        reader.read_into(slice)?;
+        Ok(Self::from(buf))
+    }
+}
+
+#[cfg(feature = "der")]
+impl der::Tagged for SignatureBytes {
+    fn tag(&self) -> der::Tag {
+        der::Tag::Sequence
+    }
+}
+
+#[cfg(feature = "der")]
+impl der::Encode for SignatureBytes {
+    fn encoded_len(&self) -> der::Result<der::Length> {
+        der::Length::try_from(self.0.len())
+    }
+
+    fn encode(&self, writer: &mut impl der::Writer) -> der::Result<()> {
+        writer.write(self.0.as_ref())
+    }
+}

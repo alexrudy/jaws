@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(all(feature = "rsa", feature = "fmt"), doc = include_str!("../README.md"))]
 #![cfg_attr(
     not(all(feature = "rsa", feature = "fmt")),
@@ -38,6 +39,8 @@ ecosystem.
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
+#![deny(clippy::self_named_module_files)]
+#![deny(clippy::dbg_macro)]
 
 pub mod algorithms;
 pub mod base64data;

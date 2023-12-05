@@ -90,6 +90,7 @@ pub mod rsa;
 /// This is the list of standard identifiers defined in [RFC 7518](https://tools.ietf.org/html/rfc7518#section-3.1).
 /// Not all of them are implemented herin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[non_exhaustive]
 pub enum AlgorithmIdentifier {
     /// Hash-based Message Authentication Code using SHA-256
     HS256,

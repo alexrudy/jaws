@@ -4,6 +4,7 @@ version = "1.0.0-alpha.2"
 edition = "2021"
 authors = ["Alex Rudy <opensource@alexrudy.net>"]
 license = "MIT"
+license-file = "LICENSE"
 repository = "https://github.com/alexrudy/jaws"
 description = "JSON Algorithms and Web Signing"
 keywords = ["https", "networking", "tls"]
@@ -12,7 +13,12 @@ categories = [
     "network-programming",
     "web-programming::http-server",
 ]
+readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
 
 [dependencies]
 base64ct = { version = "1.6", features = ["std"] }
@@ -68,12 +74,13 @@ required-features = ["fmt", "rsa"]
 name = "rfc7515-a2"
 path = "examples/rfc7515a2.rs"
 required-features = ["fmt", "rsa"]
+doc-scrape-examples = true
 
 [[example]]
 name = "dyn-key"
 path = "examples/dyn-key.rs"
 required-features = ["fmt", "rsa"]
-
+doc-scrape-examples = true
 
 [[example]]
 name = "save-key"
@@ -84,3 +91,4 @@ required-features = ["fmt", "rsa"]
 name = "dyn-rsa-key"
 path = "tests/dyn-rsa-key.rs"
 required-features = ["fmt", "rsa"]
+doc-scrape-examples = true

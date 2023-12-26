@@ -336,6 +336,12 @@ where
         map.extend(parameters);
         Ok(map.into())
     }
+
+    /// The JOSE header value, serialized into compact form, used for signing.
+
+    pub(crate) fn message(&self) -> Result<String, serde_json::Error> {
+        Base64JSON(&self).serialized_value()
+    }
 }
 
 #[cfg(feature = "fmt")]

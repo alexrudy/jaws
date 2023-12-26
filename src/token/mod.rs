@@ -433,10 +433,9 @@ where
         S: SignatureEncoding,
     {
         let header = self.state.header.into_signed_header(algorithm)?;
-        let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
-            .try_sign_token(&headers, &payload)
+            .try_sign_token(&header.message()?, &payload)
             .map_err(TokenSigningError::Signing)?;
         Ok(Token {
             payload: self.payload,
@@ -462,10 +461,9 @@ where
         S: SignatureEncoding,
     {
         let header = self.state.header.into_signed_header(algorithm)?;
-        let headers = Base64JSON(&header).serialized_value()?;
         let payload = self.payload.serialized_value()?;
         let signature = algorithm
-            .try_sign_token(&headers, &payload, rng)
+            .try_sign_token(&header.message()?, &payload, rng)
             .map_err(TokenSigningError::Signing)?;
         Ok(Token {
             payload: self.payload,

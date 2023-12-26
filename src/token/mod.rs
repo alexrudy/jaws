@@ -760,7 +760,7 @@ pub enum TokenVerifyingError {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.
     #[error("verifying: {0}")]
-    Verify(signature::Error),
+    Verify(#[source] signature::Error),
 
     /// An error occured while re-serailizing the header or payload for
     /// signature verification. This indicates that something is probably

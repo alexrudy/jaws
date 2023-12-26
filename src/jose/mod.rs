@@ -135,6 +135,10 @@ pub struct Header<H, State> {
     pub custom: H,
 }
 
+// The access pattern used here is to unify the registered, state and custom fields
+// so that they appear to be a single struct. Different header states store some fields
+// differently (e.g. Algorithm, derived fields), but we want to present a single
+// unified type for access and manipulation.
 impl<H, State> Header<H, State> {
     /// Access fields on the header
     pub fn access(&self) -> HeaderAccess<'_, H, State> {
@@ -187,15 +191,6 @@ impl<H> Header<H, UnsignedHeader> {
             state: self.state,
             registered: self.registered,
             custom,
-        }
-    }
-
-    /// Reset all the non-custom header values to their defaults.
-    pub(crate) fn clear_registered_header(self) -> Header<H, UnsignedHeader> {
-        Header {
-            state: Default::default(),
-            registered: Default::default(),
-            custom: self.custom,
         }
     }
 
@@ -579,50 +574,6 @@ impl<'h, H> HeaderAccessMut<'h, H, UnsignedHeader> {
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
     pub fn thumbprint_sha256(&mut self) -> &mut DeriveFromKey<Thumbprint<Sha256>> {
-        &mut self.header.state.thumbprint_sha256
-    }
-}
-
-impl<'h, H> HeaderAccessMut<'h, H, SignedHeader> {
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
-    pub fn algorithm(&self) -> &AlgorithmIdentifier {
-        self.header.algorithm()
-    }
-
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> Option<&JsonWebKey> {
-        self.header.state.json_web_key.as_ref()
-    }
-
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> Option<&Thumbprint<Sha1>> {
-        self.header.state.thumbprint.as_ref()
-    }
-
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> Option<&Thumbprint<Sha256>> {
-        self.header.state.thumbprint_sha256.as_ref()
-    }
-}
-
-impl<'h, H> HeaderAccessMut<'h, H, RenderedHeader> {
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
-    pub fn algorithm(&mut self) -> &mut AlgorithmIdentifier {
-        &mut self.header.state.algorithm
-    }
-
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&mut self) -> &mut Option<JsonWebKey> {
-        &mut self.header.state.key
-    }
-
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&mut self) -> &mut Option<Thumbprint<Sha1>> {
-        &mut self.header.state.thumbprint
-    }
-
-    #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&mut self) -> &mut Option<Thumbprint<Sha256>> {
         &mut self.header.state.thumbprint_sha256
     }
 }

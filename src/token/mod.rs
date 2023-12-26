@@ -265,35 +265,6 @@ pub struct Token<P, State: MaybeSigned = Unsigned<()>, Fmt: TokenFormat = Compac
     fmt: Fmt,
 }
 
-impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
-    /// Access to Token header values.
-    ///
-    /// All access is read-only, and the header cannot be modified here,
-    /// see [`Token::header_mut`] for mutable access.
-    ///
-    /// Header fields are accessed as methods on [`HeaderAccess`], and
-    /// their types will depend on the state of the token. Additionally,
-    /// the `alg` field will not be availalbe for unsigned token types.
-    ///
-    /// # Example: No custom headers, only registered headers.
-    ///
-    /// ```
-    /// use jaws::token::Token;
-    ///
-    /// let token = Token::compact((), ());
-    /// let header = token.header();
-    /// assert_eq!(&header.r#type(), &None);
-    /// ```
-    pub fn header(&self) -> HeaderAccess<'_, State::Header, State::HeaderState> {
-        HeaderAccess::new(self.state.header())
-    }
-
-    /// Mutable access to Token header values
-    pub fn header_mut(&mut self) -> HeaderAccessMut<State::Header, State::HeaderState> {
-        HeaderAccessMut::new(self.state.header_mut())
-    }
-}
-
 impl<P, H, Fmt> Token<P, Unsigned<H>, Fmt>
 where
     Fmt: TokenFormat,
@@ -346,6 +317,37 @@ impl<P, H> Token<P, Unsigned<H>, Flat> {
     /// headers, which are not signed and cannot be verified.
     pub fn flat(header: H, payload: P) -> Token<P, Unsigned<H>, Flat> {
         Token::new(header, payload, Flat)
+    }
+}
+
+impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
+    /// Access to Token header values.
+    ///
+    /// All access is read-only, and the header cannot be modified here,
+    /// see [`Token::header_mut`] for mutable access.
+    ///
+    /// Header fields are accessed as methods on [`HeaderAccess`], and
+    /// their types will depend on the state of the token. Additionally,
+    /// the `alg` field will not be availalbe for unsigned token types.
+    ///
+    /// # Example: No custom headers, only registered headers.
+    ///
+    /// ```
+    /// use jaws::token::Token;
+    ///
+    /// let token = Token::compact((), ());
+    /// let header = token.header();
+    /// assert_eq!(&header.r#type(), &None);
+    /// ```
+    pub fn header(&self) -> HeaderAccess<'_, State::Header, State::HeaderState> {
+        HeaderAccess::new(self.state.header())
+    }
+}
+
+impl<P, H, Fmt: TokenFormat> Token<P, Unsigned<H>, Fmt> {
+    /// Mutable access to Token header values
+    pub fn header_mut(&mut self) -> HeaderAccessMut<H, crate::jose::UnsignedHeader> {
+        HeaderAccessMut::new(self.state.header_mut())
     }
 }
 

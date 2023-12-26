@@ -181,6 +181,24 @@ impl<H> Header<H, UnsignedHeader> {
         }
     }
 
+    /// Replace the custom header with a new value, preserving other values.
+    pub(crate) fn with_custom_header<H2>(self, custom: H2) -> Header<H2, UnsignedHeader> {
+        Header {
+            state: self.state,
+            registered: self.registered,
+            custom,
+        }
+    }
+
+    /// Reset all the non-custom header values to their defaults.
+    pub(crate) fn clear_registered_header(self) -> Header<H, UnsignedHeader> {
+        Header {
+            state: Default::default(),
+            registered: Default::default(),
+            custom: self.custom,
+        }
+    }
+
     /// Construct the JOSE header from the builder and signing key.
     pub(crate) fn into_signed_header<A>(
         self,
@@ -543,6 +561,12 @@ impl<'h, H, State> HeaderAccessMut<'h, H, State> {
 }
 
 impl<'h, H> HeaderAccessMut<'h, H, UnsignedHeader> {
+    /// Reset all the non-custom header values to their defaults.
+    pub fn reset_registered_headers(&mut self) {
+        self.header.registered = Default::default();
+        self.header.state = Default::default();
+    }
+
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
     pub fn key(&mut self) -> &mut DeriveFromKey<JsonWebKey> {
         &mut self.header.state.key

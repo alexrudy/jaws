@@ -294,6 +294,33 @@ where
     }
 }
 
+impl<P, Fmt> Token<P, Unsigned<()>, Fmt>
+where
+    Fmt: TokenFormat,
+{
+    /// Create an empty token with no custom header values.
+    pub fn blank(fmt: Fmt) -> Self {
+        Token {
+            payload: Payload::Empty,
+            state: Unsigned {
+                header: Header::new(()),
+            },
+            fmt,
+        }
+    }
+
+    /// Create a token with a given payload and format, but no custom header values.
+    pub fn new_with_payload(payload: P, fmt: Fmt) -> Self {
+        Token {
+            payload: Payload::Json(payload.into()),
+            state: Unsigned {
+                header: Header::new(()),
+            },
+            fmt,
+        }
+    }
+}
+
 impl<P, H> Token<P, Unsigned<H>, Compact> {
     /// Create a new token with the given header and payload, in the compact format.
     ///
@@ -410,6 +437,17 @@ where
         match &self.payload {
             Payload::Json(data) => Some(data.as_ref()),
             Payload::Empty => None,
+        }
+    }
+
+    /// Replace the custom header fields of the token.
+    pub fn with_custom_header<H2>(self, header: H2) -> Token<P, Unsigned<H2>, Fmt> {
+        Token {
+            payload: self.payload,
+            state: Unsigned {
+                header: self.state.header.with_custom_header(header),
+            },
+            fmt: self.fmt,
         }
     }
 }

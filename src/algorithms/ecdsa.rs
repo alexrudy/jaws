@@ -340,7 +340,7 @@ where
 
 macro_rules! jose_ecdsa_algorithm {
     ($alg:ident, $curve:ty) => {
-        $crate::jose_algorithm!(
+        $crate::algorithms::jose_algorithm!(
             $alg,
             ecdsa::SigningKey<$curve>,
             ecdsa::VerifyingKey<$curve>,

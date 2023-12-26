@@ -2,8 +2,6 @@ use jaws::algorithms::SignatureBytes;
 use jaws::algorithms::TokenSigner;
 use jaws::algorithms::TokenVerifier;
 use jaws::key::DeserializeJWK;
-use jaws::key::SerializeJWK;
-use jaws::key::SerializePublicJWK;
 use jaws::token::Unverified;
 use jaws::Compact;
 use jaws::JWTFormat;
@@ -13,31 +11,29 @@ use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;
 use sha2::Sha256;
 
-trait TokenSigningKey: TokenSigner<SignatureBytes> + SerializePublicJWK {}
-
-impl<T> TokenSigningKey for T where
-    T: TokenSigner<SignatureBytes> + SerializeJWK + SerializePublicJWK
-{
+fn type_name_of_val<T>(_: &T) -> &'static str {
+    std::any::type_name::<T>()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
     // The key here is stored as a PKCS#8 PEM file, but you can leverage
     // RustCrypto to load a variety of other formats.
-    let key = rsa::RsaPrivateKey::from_pkcs8_pem(include_str!(concat!(
+    let signing_key = rsa::RsaPrivateKey::from_pkcs8_pem(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/examples/rfc7515a2.pem"
     )))
     .unwrap();
     let verify_key: rsa::pkcs1v15::VerifyingKey<Sha256> =
-        rsa::pkcs1v15::VerifyingKey::new(key.to_public_key());
+        rsa::pkcs1v15::VerifyingKey::new(signing_key.to_public_key());
 
     // We will sign the JWT with a type-erased algorithm, and use a type-erased
     // verifier to verify it. This allows you to use a set of verifiers which
     // are not known at compile time.
-    let alg: Box<dyn TokenSigningKey> =
-        Box::new(rsa::pkcs1v15::SigningKey::<Sha256>::new(key.clone()));
-    let verify_alg: Box<dyn TokenVerifier<SignatureBytes>> = Box::new(verify_key.clone());
+    let dyn_signing_key: Box<dyn TokenSigner<SignatureBytes>> = Box::new(
+        rsa::pkcs1v15::SigningKey::<Sha256>::new(signing_key.clone()),
+    );
+    let dyn_verify_key: Box<dyn TokenVerifier<SignatureBytes>> = Box::new(verify_key.clone());
 
     // Claims can combine registered and custom fields. The claims object
     // can be any type which implements [serde::Serialize].
@@ -71,7 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", token.formatted());
 
     // Sign the token with the algorithm, and print the result.
-    let signed = token.sign::<_, SignatureBytes>(alg.as_ref()).unwrap();
+    let signed = token
+        .sign::<_, SignatureBytes>(dyn_signing_key.as_ref())
+        .unwrap();
 
     let rendered = signed.rendered().unwrap();
 
@@ -98,14 +96,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .verify::<_, rsa::pkcs1v15::Signature>(&verify_key)
         .unwrap();
-    println!("Verified with verify key (typed)");
+    println!(
+        "Verified with verify key (typed): {}",
+        type_name_of_val(&verify_key)
+    );
 
     // Check it against the verified key
     let verified = token
         .clone()
-        .verify::<_, SignatureBytes>(verify_alg.as_ref())
+        .verify::<_, SignatureBytes>(dyn_verify_key.as_ref())
         .unwrap();
-    println!("Verified with dyn verify key");
+    println!(
+        "Verified with dyn verify key: {}",
+        type_name_of_val(&dyn_verify_key)
+    );
 
     // Check it against its own JWT
     token

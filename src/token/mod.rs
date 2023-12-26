@@ -423,6 +423,36 @@ where
     /// This method consumes the token and returns a new one with the signature attached.
     /// Once the signature is attached, the internal fields are no longer mutable (as that
     /// would invalidate the signature), but they are still recoverable.
+    ///
+    /// When using this method, you will need to specify the signature encoding type along
+    /// with the algorithm (i.e. both parameters A and S). The algorithm does not uniquely
+    /// identify the signature kind, and so it is not possible to infer the signature type
+    /// from just the algorithm type. For example, all included algorithms also implement
+    /// signing for the [`crate::algorithms::SignatureBytes`] type, which is a raw byte array,
+    /// suitable for use with any signature (and appropriate for use when you don't want to
+    /// statically specify the signature type, see the dyn-key example).
+    ///
+    #[cfg_attr(
+        feature = "rsa",
+        doc = r#"
+# Example: Signing with a key
+
+```rust
+# use jaws::token::Token;
+# use signature::rand_core as rand;
+let key = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
+let token = Token::compact((), ());
+
+// The only way to get a signed token is to sign an Unsigned token!
+let signed = token.sign::<rsa::pkcs1v15::SigningKey<sha2::Sha256>, rsa::pkcs1v15::Signature>(&key).unwrap();
+println!("Token: {}", signed.rendered().unwrap());
+```
+
+Signing often requires specifying the algorithm to use. In the example above, we use
+`RS256`, which is the RSA-PKCS1-v1-5 signature algorithm with SHA-256. The algorithm is
+specified by constraining the type of `key` when calling [`Token::sign`].
+    "#
+    )]
     #[allow(clippy::type_complexity)]
     pub fn sign<A, S>(
         self,

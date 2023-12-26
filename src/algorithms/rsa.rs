@@ -234,7 +234,7 @@ where
 
 macro_rules! jose_rsa_pkcs1v15_algorithm {
     ($alg:ident, $digest:ty) => {
-        $crate::jose_algorithm!(
+        $crate::algorithms::jose_algorithm!(
             $alg,
             rsa::pkcs1v15::SigningKey<$digest>,
             rsa::pkcs1v15::VerifyingKey<$digest>,

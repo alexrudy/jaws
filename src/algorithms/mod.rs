@@ -191,19 +191,30 @@ pub trait JsonWebAlgorithmDigest: JsonWebAlgorithm {
 
 /// A trait to represent an algorithm which can sign a JWT.
 ///
-/// This trait should apply to signing keys.
+/// This trait should be implemented by signing keys. It is not designed for direct
+/// use by end-users of the JAWS library, rather it is designed to be easily implemented
+/// by other [RustCrypto](https://github.com/RustCrypto) crates, such as [`rsa`] or [`ecdsa`].
 pub trait TokenSigner<S = SignatureBytes>: DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
-    /// and payload. This is the JWS Signature value, and will be base64url-encoded
-    /// and appended to the compact representation of the JWT.
+    /// and payload. The header and payload are already serialized to JSON and then
+    /// base64url-encoded, so this function should not perform any additional encoding.
+    ///
+    /// The signature must implement [`SignatureEncoding`], and will be base64url-encoded
+    /// and appended to the compact representation of the JWT. Signatures should not be
+    /// pre-encoded, rather they should be in a format appropriate for verification.
+    ///
+    /// This method is not intended to be called directly, rather it is designed to be
+    /// easily implemented within the [RustCrypto](https://github.com/RustCrypto) ecosystem.
+    ///
+    /// To sign a token, use the [`Token::sign`](crate::token::Token::sign) method, which provides the correct wrapping
+    /// and format to produce a signed JWT.
     fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, sig::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
-    /// and payload. This is the JWS Signature value, and will be base64url-encoded
-    /// and appended to the compact representation of the JWT.
+    /// and payload. See [`TokenSigner::try_sign_token`] for more details.
     ///
     /// # Panics
     ///
@@ -232,14 +243,29 @@ where
 #[cfg(feature = "rand")]
 /// A trait to represent an algorithm which can sign a JWT, with a source of
 /// randomness.
+///
+/// This trait should be implemented by signing keys. It is not designed for direct
+/// use by end-users of the JAWS library, rather it is designed to be easily implemented
+/// by other [RustCrypto](https://github.com/RustCrypto) crates, such as [`rsa`] or [`ecdsa`].
 pub trait RandomizedTokenSigner<S = SignatureBytes>:
     DynJsonWebAlgorithm + SerializePublicJWK
 where
     S: SignatureEncoding,
 {
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
-    /// and payload. This is the JWS Signature value, and will be base64url-encoded
-    /// and appended to the compact representation of the JWT.
+    /// and payload, and a source of randomness. The header and payload are already
+    /// serialized to JSON and then base64url-encoded, so this function should not perform
+    /// any additional encoding.
+    ///
+    /// The signature must implement [`SignatureEncoding`], and will be base64url-encoded
+    /// and appended to the compact representation of the JWT. Signatures should not be
+    /// pre-encoded, rather they should be in a format appropriate for verification.
+    ///
+    /// This method is not intended to be called directly, rather it is designed to be
+    /// easily implemented within the [RustCrypto](https://github.com/RustCrypto) ecosystem.
+    ///
+    /// To sign a token, use the [`Token::sign_randomized`](crate::token::Token::sign_randomized) method, which provides the correct
+    /// wrapping and format to produce a signed JWT.
     fn try_sign_token(
         &self,
         header: &str,
@@ -248,8 +274,7 @@ where
     ) -> Result<S, sig::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
-    /// and payload. This is the JWS Signature value, and will be base64url-encoded
-    /// and appended to the compact representation of the JWT.
+    /// and payload. See [`RandomizedTokenSigner::try_sign_token`] for more details.
     ///
     /// # Panics
     ///
@@ -262,13 +287,21 @@ where
 /// A trait to represent an algorithm which can verify a JWT.
 ///
 /// This trait should apply to the equivalent of public keys, which have enough information
-/// to verify a JWT signature, but not necessarily to sing it.
+/// to verify a JWT signature, but not necessarily to sign it. It is designed to be easily
+/// implemented by other [RustCrypto](https://github.com/RustCrypto) crates, such as [`rsa`]
+/// or [`ecdsa`].
 pub trait TokenVerifier<S = SignatureBytes>: DynJsonWebAlgorithm
 where
     S: SignatureEncoding,
 {
     /// Verify the signature of the JWT, when provided with the base64url-encoded header
-    /// and payload.
+    /// and payload, along side the signature. The header and payload are already encoded,
+    /// so this function should not perform any additional encoding.
+    ///
+    /// The signature must implement [`SignatureEncoding`], and will be base64url-encoded
+    /// and appended to the compact representation of the JWT. JAWS retains the signature
+    /// in the typed form returned by this method to preserve the ability to render the
+    /// JWS token.
     fn verify_token(
         &self,
         header: &[u8],
@@ -304,7 +337,6 @@ where
 }
 
 /// A macro to implement the required traits for common JWS alogorithms.
-#[macro_export]
 macro_rules! jose_algorithm {
     ($alg:ident, $signer:ty, $verifier:ty, $digest:ty, $signature:ty) => {
         impl $crate::algorithms::JsonWebAlgorithm for $signer {
@@ -364,6 +396,8 @@ macro_rules! jose_algorithm {
         }
     };
 }
+
+pub(crate) use jose_algorithm;
 
 #[cfg(test)]
 mod test {

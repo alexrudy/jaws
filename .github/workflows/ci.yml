@@ -56,7 +56,10 @@ jobs:
       - name: rust cache
         uses: Swatinem/rust-cache@v2.0.0
 
-      - name: Run cargo test
+      - name: Build cargo tests
+        run: cargo test --no-run ${{ matrix.features }}
+
+      - name: Run cargo tests
         run: cargo test ${{ matrix.features }}
 
   lints:

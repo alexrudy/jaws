@@ -337,6 +337,8 @@ where
 }
 
 /// A macro to implement the required traits for common JWS alogorithms.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! jose_algorithm {
     ($alg:ident, $signer:ty, $verifier:ty, $digest:ty, $signature:ty) => {
         impl $crate::algorithms::JsonWebAlgorithm for $signer {

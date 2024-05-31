@@ -21,9 +21,9 @@ default-target = "x86_64-unknown-linux-gnu"
 
 [dependencies]
 base64ct = { version = "1.6", features = ["std"] }
-bytes = { version = "1.5" }
+bytes = { version = "1.6" }
 chrono = { version = "0.4", features = ["serde"] }
-der = { version = "0.7.8", optional = true }
+der = { version = "0.7.9", optional = true }
 digest = { version = "0.10" }
 ecdsa = { version = "0.16", features = ["signing", "der"], optional = true }
 hmac = { version = "0.12", optional = true }
@@ -41,7 +41,7 @@ signature = { version = "2.2", features = ["digest", "std"] }
 spki = { version = "0.7", optional = true }
 thiserror = "1"
 url = { version = "2.5", features = ["serde"] }
-zeroize = { version = "1.7", features = ["serde", "derive"] }
+zeroize = { version = "1.8", features = ["serde", "derive"] }
 
 [dependencies.elliptic-curve]
 version = "0.13"

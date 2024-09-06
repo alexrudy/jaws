@@ -64,7 +64,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
 pub use sha2::Sha256;
 
-#[cfg(any(feature = "p348", feature = "hmac", feature = "rsa"))]
+#[cfg(any(feature = "p384", feature = "hmac", feature = "rsa"))]
 pub use sha2::Sha384;
 
 #[cfg(any(feature = "hmac", feature = "rsa"))]
@@ -145,7 +145,7 @@ impl AlgorithmIdentifier {
             Self::HS256 | Self::HS384 | Self::HS512 => cfg!(feature = "hmac"),
             Self::RS256 | Self::RS384 | Self::RS512 => cfg!(feature = "rsa"),
             Self::ES256 | Self::ES384 | Self::ES512 => cfg!(feature = "ecdsa"),
-            Self::EdDSA => cfg!(feature = "ed25519"),
+            Self::EdDSA => false, //TODO: implement cfg!(feature = "ed25519"),
             Self::PS256 | Self::PS384 | Self::PS512 => cfg!(feature = "rsa"),
         }
     }

@@ -351,7 +351,6 @@ where
     }
 
     /// The JOSE header value, serialized into compact form, used for signing.
-
     pub(crate) fn message(&self) -> Result<String, serde_json::Error> {
         Base64JSON(&self).serialized_value()
     }
@@ -427,7 +426,7 @@ impl<'h, H, State> HeaderAccess<'h, H, State> {
     }
 }
 
-impl<'h, H> HeaderAccess<'h, H, UnsignedHeader> {
+impl<H> HeaderAccess<'_, H, UnsignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
     pub fn key(&self) -> &DeriveFromKey<JsonWebKey> {
         &self.header.state.key
@@ -444,7 +443,7 @@ impl<'h, H> HeaderAccess<'h, H, UnsignedHeader> {
     }
 }
 
-impl<'h, H> HeaderAccess<'h, H, SignedHeader> {
+impl<H> HeaderAccess<'_, H, SignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
         self.header.algorithm()
@@ -466,7 +465,7 @@ impl<'h, H> HeaderAccess<'h, H, SignedHeader> {
     }
 }
 
-impl<'h, H> HeaderAccess<'h, H, RenderedHeader> {
+impl<H> HeaderAccess<'_, H, RenderedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
     pub fn algorithm(&self) -> &AlgorithmIdentifier {
         self.header.algorithm()
@@ -489,7 +488,7 @@ impl<'h, H> HeaderAccess<'h, H, RenderedHeader> {
 }
 
 #[cfg(feature = "fmt")]
-impl<'h, H, State> fmt::JWTFormat for HeaderAccess<'h, H, State>
+impl<H, State> fmt::JWTFormat for HeaderAccess<'_, H, State>
 where
     H: Serialize,
     State: HeaderState,
@@ -555,7 +554,7 @@ impl<'h, H, State> HeaderAccessMut<'h, H, State> {
     }
 }
 
-impl<'h, H> HeaderAccessMut<'h, H, UnsignedHeader> {
+impl<H> HeaderAccessMut<'_, H, UnsignedHeader> {
     /// Reset all the non-custom header values to their defaults.
     pub fn reset_registered_headers(&mut self) {
         self.header.registered = Default::default();

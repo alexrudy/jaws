@@ -20,8 +20,8 @@ all-features = true
 default-target = "x86_64-unknown-linux-gnu"
 
 [dependencies]
-base64ct = { version = "1.6", features = ["std"] }
-bytes = { version = "1.6" }
+base64ct = { version = "1.7", features = ["std"] }
+bytes = { version = "1.10" }
 chrono = { version = "0.4", features = ["serde"], default-features = false }
 der = { version = "0.7.9", optional = true }
 digest = { version = "0.10" }

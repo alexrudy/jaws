@@ -18,7 +18,7 @@ pub struct IndentWriter<'i, W> {
     need_indent: bool,
 }
 
-impl<'i, W> fmt::Debug for IndentWriter<'i, W> {
+impl<W> fmt::Debug for IndentWriter<'_, W> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result {
         f.debug_struct("IndentWriter")
             .field("writer", &"W")
@@ -29,7 +29,7 @@ impl<'i, W> fmt::Debug for IndentWriter<'i, W> {
     }
 }
 
-impl<'i, W> IndentWriter<'i, W>
+impl<W> IndentWriter<'_, W>
 where
     W: fmt::Write,
 {
@@ -110,7 +110,7 @@ impl<'i, W: fmt::Write> IndentWriter<'i, W> {
     }
 }
 
-impl<'i, W> fmt::Write for IndentWriter<'i, W>
+impl<W> fmt::Write for IndentWriter<'_, W>
 where
     W: fmt::Write,
 {
@@ -203,7 +203,7 @@ pub trait JWTFormat {
 /// Formatting proxy to cause [`fmt::Display`] to print in the [`JWTFormat`] style.
 pub struct JWTFormatted<'a, T: JWTFormat + ?Sized>(&'a T);
 
-impl<'a, T> fmt::Display for JWTFormatted<'a, T>
+impl<T> fmt::Display for JWTFormatted<'_, T>
 where
     T: JWTFormat,
 {

@@ -1,6 +1,6 @@
 [package]
 name = "jaws"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Alex Rudy <opensource@alexrudy.net>"]
 license = "MIT"
@@ -38,7 +38,7 @@ serde_json = "1"
 sha1 = "0.10"
 sha2 = "0.10"
 signature = { version = "2.2", features = ["digest", "std"] }
-spki = { version = "0.7", optional = true, features = ["alloc"]}
+spki = { version = "0.7", optional = true, features = ["alloc"] }
 thiserror = "2"
 url = { version = "2.5", features = ["serde"] }
 zeroize = { version = "1.8", features = ["serde", "derive"] }

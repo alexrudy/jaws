@@ -399,6 +399,8 @@ macro_rules! jose_algorithm {
     };
 }
 
+// Make this macro importable
+#[cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "rsa"))]
 pub(crate) use jose_algorithm;
 
 #[cfg(test)]

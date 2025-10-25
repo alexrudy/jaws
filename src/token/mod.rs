@@ -376,7 +376,7 @@ impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
 
 impl<P, H, Fmt: TokenFormat> Token<P, Unsigned<H>, Fmt> {
     /// Mutable access to Token header values
-    pub fn header_mut(&mut self) -> HeaderAccessMut<H, crate::jose::UnsignedHeader> {
+    pub fn header_mut(&mut self) -> HeaderAccessMut<'_, H, crate::jose::UnsignedHeader> {
         HeaderAccessMut::new(self.state.header_mut())
     }
 }

@@ -87,8 +87,10 @@ impl<H> MaybeSigned for Unsigned<H> {
 
 /// This JWS has been signed.
 ///
-/// This state is used when this program applied the signature, so we know that the
-/// signature is both consistent and valid.
+/// This state is used when this program applied or verified the signature,
+/// so we know that the signature is both consistent and valid.
+///
+/// Since the signature has already been generated, this token cannot be modified.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
 pub struct Signed<H, Alg, Sig = SignatureBytes>
@@ -138,60 +140,9 @@ where
     }
 }
 
-/// This JWS has been verified.
-///
-/// This state is used when this program has verified the signature, so we know that the
-/// signature is valid and consistent with the header values. However, we also know that
-/// we did not create the token, and modifying it may result in headers which are not
-/// consistent with the signature.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(bound(serialize = "H: Serialize, Sig: Serialize",))]
-pub struct Verified<H, Alg, Sig = SignatureBytes>
-where
-    Alg: DynJsonWebAlgorithm + ?Sized,
-{
-    pub(super) header: jose::Header<H, jose::SignedHeader>,
-    pub(super) signature: Sig,
-
-    #[serde(skip)]
-    pub(super) _phantom_key: PhantomData<Alg>,
-}
-
-impl<H, Alg, Sig> MaybeSigned for Verified<H, Alg, Sig>
-where
-    Alg: DynJsonWebAlgorithm + ?Sized,
-{
-    type HeaderState = jose::SignedHeader;
-    type Header = H;
-
-    fn header_mut(&mut self) -> &mut jose::Header<Self::Header, Self::HeaderState> {
-        &mut self.header
-    }
-
-    fn header(&self) -> &jose::Header<H, Self::HeaderState> {
-        &self.header
-    }
-
-    fn is_signed(&self) -> bool {
-        true
-    }
-
-    fn is_verified(&self) -> bool {
-        true
-    }
-}
-
-impl<H, Alg, Sig> HasSignature for Verified<H, Alg, Sig>
-where
-    Alg: DynJsonWebAlgorithm + ?Sized,
-    Sig: SignatureEncoding,
-{
-    type Signature = Sig;
-
-    fn signature(&self) -> &Self::Signature {
-        &self.signature
-    }
-}
+/// Alias for Signed.
+#[deprecated(since = "1.1.0", note = "Verified is now an alias for Signed")]
+pub type Verified<H, Alg, Sig> = Signed<H, Alg, Sig>;
 
 /// This JWS has not been verified. It has a signature, but we have not checked it.
 ///

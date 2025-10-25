@@ -32,7 +32,10 @@ mod state;
 
 use self::formats::TokenParseError;
 pub use self::formats::{Compact, Flat, FlatUnprotected, TokenFormat, TokenFormattingError};
-pub use self::state::{HasSignature, MaybeSigned, Signed, Unsigned, Unverified, Verified};
+pub use self::state::{HasSignature, MaybeSigned, Signed, Unsigned, Unverified};
+
+#[allow(deprecated)]
+pub use self::state::Verified;
 
 /// A JWT Playload. Most payloads are JSON objects, which are serialized, and then converted
 /// to a base64url string. However, some payloads are empty, and are represented as an empty
@@ -373,7 +376,7 @@ impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
 
 impl<P, H, Fmt: TokenFormat> Token<P, Unsigned<H>, Fmt> {
     /// Mutable access to Token header values
-    pub fn header_mut(&mut self) -> HeaderAccessMut<H, crate::jose::UnsignedHeader> {
+    pub fn header_mut(&mut self) -> HeaderAccessMut<'_, H, crate::jose::UnsignedHeader> {
         HeaderAccessMut::new(self.state.header_mut())
     }
 }
@@ -563,7 +566,7 @@ where
     pub fn verify<A, S>(
         self,
         algorithm: &A,
-    ) -> Result<Token<P, Verified<H, A, S>, Fmt>, TokenVerifyingError>
+    ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenVerifyingError>
     where
         A: crate::algorithms::TokenVerifier<S> + ?Sized,
         S: SignatureEncoding,
@@ -590,7 +593,7 @@ where
 
         Ok(Token {
             payload: self.payload,
-            state: Verified {
+            state: Signed {
                 header,
                 signature,
                 _phantom_key: PhantomData,
@@ -643,49 +646,6 @@ where
 }
 
 impl<H, Fmt, P, Alg, Sig> Token<P, Signed<H, Alg, Sig>, Fmt>
-where
-    Fmt: TokenFormat,
-    Alg: DynJsonWebAlgorithm + ?Sized,
-{
-    /// Get the payload of the token.
-    pub fn payload(&self) -> Option<&P> {
-        match &self.payload {
-            Payload::Json(data) => Some(data.as_ref()),
-            Payload::Empty => None,
-        }
-    }
-}
-
-impl<P, H, Alg, Sig, Fmt> Token<P, Verified<H, Alg, Sig>, Fmt>
-where
-    Fmt: TokenFormat,
-    Alg: DynJsonWebAlgorithm + ?Sized,
-    Sig: SignatureEncoding,
-    H: Serialize,
-    P: Serialize,
-{
-    /// Transition the token back into an unverified state.
-    ///
-    /// This method consumes the token and returns a new one, which still includes the signature
-    /// but which is no longer considered verified.
-    pub fn unverify(self) -> Token<P, Unverified<H>, Fmt> {
-        let payload = self
-            .payload
-            .serialized_bytes()
-            .expect("valid payload bytes");
-        Token {
-            payload: self.payload,
-            state: Unverified {
-                payload,
-                header: self.state.header.into_rendered_header(),
-                signature: Base64Signature(self.state.signature.to_bytes().as_ref().into()),
-            },
-            fmt: self.fmt,
-        }
-    }
-}
-
-impl<H, Fmt, P, Alg, Sig> Token<P, Verified<H, Alg, Sig>, Fmt>
 where
     Fmt: TokenFormat,
     Alg: DynJsonWebAlgorithm + ?Sized,

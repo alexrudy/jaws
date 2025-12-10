@@ -26,7 +26,7 @@ chrono = { version = "0.4", features = ["serde"], default-features = false }
 der = { version = "0.7.10", optional = true }
 digest = { version = "0.10" }
 ecdsa = { version = "0.16", features = ["signing", "der"], optional = true }
-generic-array = "=0.14.7" # 0.14.9 deprecates everything.
+generic-array = "=1.3.5" # 0.14.9 deprecates everything.
 hmac = { version = "0.12", optional = true }
 p256 = { version = "0.13", features = ["ecdsa", "jwk"], optional = true }
 p384 = { version = "0.13", features = ["ecdsa", "jwk"], optional = true }

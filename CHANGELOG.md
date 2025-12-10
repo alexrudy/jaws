@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.3](https://github.com/alexrudy/jaws/compare/v1.0.2...v1.0.3) - 2025-12-10
+
+### Other
+
+- fix crate icon in README.md
+
 ## [1.0.2](https://github.com/alexrudy/jaws/compare/v1.0.1...v1.0.2) - 2025-12-10
 
 ### Other

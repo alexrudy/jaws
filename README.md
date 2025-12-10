@@ -239,7 +239,7 @@ However, the `fmt` feature is not required for most functionality, and rather is
 
 [//]: # (badges)
 
-[crate-image]: https://buildstats.info/crate/jaws
+[crate-image]: https://img.shields.io/crates/v/jaws
 [crate-link]: https://crates.io/crates/jaws
 [docs-image]: https://docs.rs/jaws/badge.svg
 [docs-link]: https://docs.rs/jaws/

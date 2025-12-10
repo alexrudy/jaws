@@ -20,27 +20,54 @@ jobs:
     steps:
       # Generating a GitHub token, so that PRs and tags created by
       # the release-plz-action can trigger actions workflows.
-      - name: Generate GitHub token
-        uses: actions/create-github-app-token@v1
-        id: generate-token
+      - &github-token
+        name: Generate GitHub token
+        uses: actions/create-github-app-token@v2
+        id: app-token
         with:
           # GitHub App ID secret name
           app-id: ${{ secrets.APP_ID }}
           # GitHub App private key secret name
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Checkout
+      - &checkout
+        name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ steps.generate-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
-      - name: Install rust toolchain
+      - &install-rust
+        name: Install rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
 
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
+        with:
+          command: release
         env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  release-pr:
+    if: ${{ github.repository_owner == 'alexrudy' }}
+    name: Release-plz PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - *github-token
+      - *checkout
+      - *install-rust
+      - name: Run release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/alexrudy/jaws/compare/v1.0.2...v1.0.3) - 2026-01-25
+
+### Other
+
+- Merge pull request #51 from alexrudy/chore/docsrs-doc-cfg
+- Fix moved doc_cfg feateur
+
 ## [1.0.2](https://github.com/alexrudy/jaws/compare/v1.0.1...v1.0.2) - 2025-12-10
 
 ### Other

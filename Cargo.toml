@@ -24,7 +24,7 @@ base64ct = { version = "1.8", features = ["std"] }
 bytes = { version = "1.11" }
 chrono = { version = "0.4", features = ["serde"], default-features = false }
 der = { version = "0.7.10", optional = true }
-digest = { version = "0.10" }
+digest = { version = "0.11" }
 ecdsa = { version = "0.16", features = ["signing", "der"], optional = true }
 generic-array = "=0.14.7" # 0.14.9 deprecates everything.
 hmac = { version = "0.12", optional = true }

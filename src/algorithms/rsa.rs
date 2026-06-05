@@ -135,7 +135,7 @@ impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
         }
 
         #[allow(unused)]
-        for (prime, crt) in primes.zip(self.crt_values().into_iter()) {
+        for (prime, crt) in primes.zip(self.crt_values()) {
             todo!("Support for multiple primes is not yet implemented");
         }
 

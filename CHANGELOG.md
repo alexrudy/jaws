@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/alexrudy/jaws/compare/v1.0.3...v1.0.4) - 2026-06-05
+
+### Other
+
+- [chore] Add a crypto dependabot group
+- [chore] Clippy fixes
+
 ## [1.0.3](https://github.com/alexrudy/jaws/compare/v1.0.2...v1.0.3) - 2026-01-25
 
 ### Other

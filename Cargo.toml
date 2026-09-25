@@ -21,42 +21,44 @@ default-target = "x86_64-unknown-linux-gnu"
 
 [dependencies]
 base64ct = { version = "1.8", features = ["std"] }
-bytes = { version = "1.11" }
+bytes = { version = "1.12" }
 chrono = { version = "0.4", features = ["serde"], default-features = false }
-der = { version = "0.7.10", optional = true }
-digest = { version = "0.10" }
-ecdsa = { version = "0.16", features = ["signing", "der"], optional = true }
+crypto-bigint = { version = "0.7.0-rc.28", features = ["alloc"], optional = true }
+der = { version = "0.8.2", optional = true }
+digest = { version = "0.11" }
+ecdsa = { version = "0.17", features = ["der"], optional = true }
 generic-array = "=0.14.7" # 0.14.9 deprecates everything.
-hmac = { version = "0.12", optional = true }
-p256 = { version = "0.13", features = ["ecdsa", "jwk"], optional = true }
-p384 = { version = "0.13", features = ["ecdsa", "jwk"], optional = true }
-p521 = { version = "0.13", features = ["ecdsa", "jwk"], optional = true }
-pkcs8 = "0.10"
-rand_core = { version = "0.6.4", optional = true, default-features = false }
-rsa = { version = "0.9", features = ["sha2"], optional = true }
+hmac = { version = "0.13", optional = true }
+p256 = { version = "0.14", features = ["ecdsa"], optional = true }
+p384 = { version = "0.14", features = ["ecdsa"], optional = true }
+p521 = { version = "0.14", features = ["ecdsa"], optional = true }
+pkcs8 = "0.11"
+rand_core = { version = "0.10.1", optional = true, default-features = false }
+rsa = { version = "0.10.0-rc.18", features = ["sha2"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha1 = "0.10"
-sha2 = "0.10"
-signature = { version = "2.2", features = ["digest", "std"] }
-spki = { version = "0.7", optional = true, features = ["alloc"] }
+sha1 = "0.11"
+sha2 = "0.11"
+signature = { version = "3.0", features = ["digest", "alloc"] }
+spki = { version = "0.8", optional = true, features = ["alloc"] }
 thiserror = "2"
 url = { version = "2.5", features = ["serde"] }
-zeroize = { version = "1.8", features = ["serde", "derive"] }
+zeroize = { version = "1.9", features = ["serde", "derive"] }
 
 [dependencies.elliptic-curve]
-version = "0.13"
-features = ["pkcs8", "jwk", "arithmetic", "sec1", "ecdh"]
+version = "0.14"
+features = ["pkcs8", "arithmetic", "sec1", "ecdh"]
 optional = true
 
 [dev-dependencies]
 static_assertions = "1.1.0"
+rand = "0.10.3"
 
 [features]
 default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac"]
 fmt = []
 rand = ["dep:rand_core"]
-rsa = ["dep:rsa"]
+rsa = ["dep:rsa", "dep:crypto-bigint"]
 hmac = ["dep:hmac"]
 ecdsa = ["dep:ecdsa", "dep:elliptic-curve"]
 p256 = ["dep:p256", "ecdsa"]

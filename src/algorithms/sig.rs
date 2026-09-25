@@ -73,17 +73,19 @@ impl spki::SignatureBitStringEncoding for SignatureBytes {
 
 #[cfg(feature = "der")]
 impl<'c> der::Decode<'c> for SignatureBytes {
+    type Error = der::Error;
+
     fn decode<R: der::Reader<'c>>(reader: &mut R) -> der::Result<Self> {
         use der::Encode;
 
-        let header = reader.peek_header()?;
-        header.tag.assert_eq(der::Tag::Sequence)?;
+        let header = der::Header::peek(reader)?;
+        header.tag().assert_eq(der::Tag::Sequence)?;
 
-        let len = (header.encoded_len()? + header.length)?;
+        let len = (header.encoded_len()? + header.length())?;
         let mut buf = Vec::with_capacity(usize::try_from(len)?);
         let slice = buf
             .get_mut(..usize::try_from(len)?)
-            .ok_or_else(|| reader.error(der::Tag::Sequence.length_error().kind()))?;
+            .ok_or_else(|| reader.error(der::Tag::Sequence.length_error()))?;
 
         reader.read_into(slice)?;
         Ok(Self::from(buf))

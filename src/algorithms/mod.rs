@@ -58,7 +58,7 @@ use ::signature::SignatureEncoding;
 
 use digest::Digest;
 #[cfg(feature = "rand")]
-use rand_core::CryptoRngCore;
+use rand_core::{CryptoRng, TryCryptoRng};
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "p256", feature = "hmac", feature = "rsa"))]
@@ -186,7 +186,7 @@ where
 /// A trait to associate an algorithm with a digest for signing.
 pub trait JsonWebAlgorithmDigest: JsonWebAlgorithm {
     /// The digest algorithm used by this signature.
-    type Digest: Digest;
+    type Digest: digest::Digest;
 }
 
 /// A trait to represent an algorithm which can sign a JWT.
@@ -228,15 +228,16 @@ impl<K, S> TokenSigner<S> for K
 where
     K: JsonWebAlgorithmDigest + SerializePublicJWK,
     K: sig::DigestSigner<K::Digest, S>,
+    K::Digest: digest::Update,
     S: SignatureEncoding,
 {
     fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, sig::Error> {
-        let mut digest = <Self as JsonWebAlgorithmDigest>::Digest::new();
-        digest.update(header.as_bytes());
-        digest.update(b".");
-        digest.update(payload.as_bytes());
-
-        self.try_sign_digest(digest)
+        self.try_sign_digest(|digest| {
+            digest.update(header.as_bytes());
+            digest.update(b".");
+            digest.update(payload.as_bytes());
+            Ok(())
+        })
     }
 }
 
@@ -270,7 +271,7 @@ where
         &self,
         header: &str,
         payload: &str,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl TryCryptoRng,
     ) -> Result<S, sig::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
@@ -279,7 +280,7 @@ where
     /// # Panics
     ///
     /// This function will panic if the signature cannot be computed.
-    fn sign_token(&self, header: &str, payload: &str, rng: &mut impl CryptoRngCore) -> S {
+    fn sign_token(&self, header: &str, payload: &str, rng: &mut impl CryptoRng) -> S {
         self.try_sign_token(header, payload, rng).unwrap()
     }
 }
@@ -314,7 +315,7 @@ impl<K, S> TokenVerifier<S> for K
 where
     K: JsonWebAlgorithmDigest + std::fmt::Debug,
     K: sig::DigestVerifier<K::Digest, S>,
-    K::Digest: Clone + std::fmt::Debug,
+    K::Digest: digest::Update + Digest + Clone + std::fmt::Debug,
     S: SignatureEncoding + std::fmt::Debug,
     for<'a> <S as TryFrom<&'a [u8]>>::Error: std::error::Error + Send + Sync + 'static,
 {
@@ -324,14 +325,17 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<S, sig::Error> {
-        let mut digest = <Self as JsonWebAlgorithmDigest>::Digest::new();
-        digest.update(header);
-        digest.update(b".");
-        digest.update(payload);
-
         let signature = signature.try_into().map_err(sig::Error::from_source)?;
 
-        self.verify_digest(digest, &signature)?;
+        self.verify_digest(
+            |digest| {
+                digest.update(header);
+                digest.update(b".");
+                digest.update(payload);
+                Ok(())
+            },
+            &signature,
+        )?;
         Ok(signature)
     }
 }
@@ -351,16 +355,16 @@ macro_rules! jose_algorithm {
         }
 
         impl signature::DigestSigner<$digest, $crate::algorithms::SignatureBytes> for $signer {
-            fn try_sign_digest(
+            fn try_sign_digest<F: Fn(&mut $digest) -> Result<(), ::signature::Error>>(
                 &self,
-                digest: $digest,
+                f: F,
             ) -> Result<$crate::algorithms::SignatureBytes, signature::Error> {
                 #[allow(unused_imports)]
                 use signature::SignatureEncoding as _;
 
-                let sig = <Self as signature::DigestSigner<$digest, $signature>>::sign_digest(
-                    self, digest,
-                );
+                let sig = <Self as signature::DigestSigner<$digest, $signature>>::try_sign_digest(
+                    self, f,
+                )?;
                 Ok($crate::algorithms::SignatureBytes::from(
                     sig.to_bytes().as_ref(),
                 ))
@@ -377,9 +381,9 @@ macro_rules! jose_algorithm {
         }
 
         impl signature::DigestVerifier<$digest, $crate::algorithms::SignatureBytes> for $verifier {
-            fn verify_digest(
+            fn verify_digest<F: Fn(&mut $digest) -> Result<(), ::signature::Error>>(
                 &self,
-                digest: $digest,
+                f: F,
                 signature: &$crate::algorithms::SignatureBytes,
             ) -> Result<(), signature::Error> {
                 #[allow(unused_imports)]
@@ -392,7 +396,7 @@ macro_rules! jose_algorithm {
                     .map_err(|error| signature::Error::from_source(error))?;
 
                 <Self as signature::DigestVerifier<$digest, $signature>>::verify_digest(
-                    self, digest, &sig,
+                    self, f, &sig,
                 )
             }
         }

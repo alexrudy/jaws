@@ -209,8 +209,9 @@ To transition a token from the [`Unsigned`] state to the [`Signed`] state, use t
 
 ```rust
 # use jaws::token::Token;
-# use signature::rand_core as rand;
-let key = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
+# use rand::rand_core::UnwrapErr;
+# let mut rng = UnwrapErr(rand::rngs::SysRng);
+let key = rsa::pkcs1v15::SigningKey::random(&mut rng, 2048).unwrap();
 let token = Token::compact((), ());
 
 // The only way to get a signed token is to sign an Unsigned token!
@@ -226,8 +227,9 @@ them. This is done with the [`Token::unverify`] method:
 
 ```rust
 # use jaws::token::Token;
-# use signature::rand_core as rand;
-# let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
+# use rand::rand_core::UnwrapErr;
+# let mut rng = UnwrapErr(rand::rngs::SysRng);
+# let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rng, 2048).unwrap();
 # let token = Token::compact((), ());
 # let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&key).unwrap();
 // We can unverify the token, which discard the memory of the key used to sign it.
@@ -243,8 +245,9 @@ by checking the signature. This is done with the [`Token::verify`] method:
 ```rust
 # use jaws::token::Token;
 # use signature::Keypair;
-# use signature::rand_core as rand;
-# let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
+# use rand::rand_core::UnwrapErr;
+# let mut rng = UnwrapErr(rand::rngs::SysRng);
+# let key: rsa::pkcs1v15::SigningKey<sha2::Sha256> = rsa::pkcs1v15::SigningKey::random(&mut rng, 2048).unwrap();
 # let verifying_key = key.verifying_key();
 # let token = Token::compact((), ());
 # let signed = token.sign::<_, rsa::pkcs1v15::Signature>(&key).unwrap();
@@ -479,8 +482,9 @@ where
 
 ```rust
 # use jaws::token::Token;
-# use signature::rand_core as rand;
-let key = rsa::pkcs1v15::SigningKey::random(&mut rand::OsRng, 2048).unwrap();
+# use rand::rand_core::UnwrapErr;
+# let mut rng = UnwrapErr(rand::rngs::SysRng);
+let key = rsa::pkcs1v15::SigningKey::random(&mut rng, 2048).unwrap();
 let token = Token::compact((), ());
 
 // The only way to get a signed token is to sign an Unsigned token!
@@ -524,7 +528,7 @@ specified by constraining the type of `key` when calling [`Token::sign`].
     pub fn sign_randomized<A, S>(
         self,
         algorithm: &A,
-        rng: &mut impl rand_core::CryptoRngCore,
+        rng: &mut impl rand_core::TryCryptoRng,
     ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenSigningError>
     where
         A: crate::algorithms::RandomizedTokenSigner<S> + ?Sized,
@@ -982,10 +986,7 @@ mod test_ecdsa {
         let token = Token::compact((), "This is a signed message");
 
         let signed = token
-            .sign_randomized::<_, ::ecdsa::Signature<_>>(
-                &key,
-                &mut elliptic_curve::rand_core::OsRng,
-            )
+            .sign_randomized::<_, ::ecdsa::Signature<_>>(&key, &mut rand::rngs::SysRng)
             .unwrap();
 
         let verifying_key = key.verifying_key();

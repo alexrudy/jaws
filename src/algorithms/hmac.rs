@@ -23,7 +23,7 @@ use std::{collections::BTreeMap, marker::PhantomData, ops::Deref};
 
 use base64ct::Encoding;
 use digest::{Digest, Mac};
-use hmac::SimpleHmac;
+use hmac::{KeyInit as _, SimpleHmac};
 use signature::{Keypair, SignatureEncoding};
 
 use crate::{
@@ -166,24 +166,24 @@ impl<D> Keypair for Hmac<D> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DigestSignature<D>(digest::Output<SimpleHmac<D>>)
 where
-    D: Digest + digest::core_api::BlockSizeUser;
+    D: Digest + digest::block_api::BlockSizeUser;
 
 impl<D> TryFrom<&[u8]> for DigestSignature<D>
 where
-    D: Digest + digest::core_api::BlockSizeUser,
+    D: Digest + digest::block_api::BlockSizeUser,
 {
-    type Error = signature::Error;
+    type Error = std::array::TryFromSliceError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(
-            digest::Output::<SimpleHmac<D>>::from_slice(value).clone(),
+            digest::Output::<SimpleHmac<D>>::try_from(value)?.clone(),
         ))
     }
 }
 
 impl<D> TryFrom<DigestSignature<D>> for Box<[u8]>
 where
-    D: Digest + digest::core_api::BlockSizeUser,
+    D: Digest + digest::block_api::BlockSizeUser,
 {
     type Error = signature::Error;
 
@@ -194,7 +194,7 @@ where
 
 impl<D> SignatureEncoding for DigestSignature<D>
 where
-    D: Digest + digest::core_api::BlockSizeUser + Clone,
+    D: Digest + digest::block_api::BlockSizeUser + Clone,
 {
     type Repr = Box<[u8]>;
 }
@@ -215,7 +215,7 @@ hmac_algorithm!(HS512, sha2::Sha512);
 impl<D> super::TokenSigner<DigestSignature<D>> for Hmac<D>
 where
     Hmac<D>: JsonWebAlgorithm,
-    D: Digest + digest::core_api::BlockSizeUser + Clone,
+    D: Digest + digest::block_api::BlockSizeUser + Clone,
 {
     fn try_sign_token(
         &self,
@@ -234,7 +234,7 @@ where
 impl<D> super::TokenSigner<SignatureBytes> for Hmac<D>
 where
     Hmac<D>: JsonWebAlgorithm,
-    D: Digest + digest::core_api::BlockSizeUser + Clone,
+    D: Digest + digest::block_api::BlockSizeUser + Clone,
 {
     fn try_sign_token(
         &self,
@@ -251,7 +251,7 @@ where
 impl<D> super::TokenVerifier<DigestSignature<D>> for Hmac<D>
 where
     Hmac<D>: JsonWebAlgorithm,
-    D: Digest + digest::core_api::BlockSizeUser + Clone,
+    D: Digest + digest::block_api::BlockSizeUser + Clone,
 {
     fn verify_token(
         &self,
@@ -275,7 +275,7 @@ where
 impl<D> super::TokenVerifier<SignatureBytes> for Hmac<D>
 where
     Hmac<D>: JsonWebAlgorithm,
-    D: Digest + digest::core_api::BlockSizeUser + Clone,
+    D: Digest + digest::block_api::BlockSizeUser + Clone,
 {
     fn verify_token(
         &self,

@@ -394,6 +394,11 @@ mod test {
             ))
             .unwrap();
 
+            eprintln!(
+                "{}",
+                serde_json::to_string_pretty(&JsonWebKey::build(&key)).unwrap()
+            );
+
             let thumb: Thumbprint<sha2::Sha256> =
                 Thumbprint::from_jwk(&JsonWebKey::build(&key)).unwrap();
 

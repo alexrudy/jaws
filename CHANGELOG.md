@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## [2.0.0](https://github.com/alexrudy/jaws/compare/v1.0.5...v2.0.0) - 2026-09-26
+
+### Added
+
+- *(token)* Unify the Verified and Signed types
+
+### Other
+
+- Update the readme to reflect the merger between verified and signed
+
 - Unified the `Verified` and `Signed` token header types, since they represent the same state – a known, validated signature and related parameters are present.
 
 

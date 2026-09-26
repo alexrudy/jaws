@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Unified the `Verified` and `Signed` token header types, since they represent the same state – a known, validated signature and related parameters are present.
+
+
 ## [1.0.5](https://github.com/alexrudy/jaws/compare/v1.0.4...v1.0.5) - 2026-09-25
 
 ### Other

@@ -51,21 +51,17 @@ protected header and the payload, both base64url encoded, and separated with a p
 ## Strongly Typed JWTs
 
 JAWS provides a strongly typed interface for creating and validating JWTs. Tokens in JAWS
-must be in one of 4 states:
+must be in one of 3 states:
 
 1. [`Unsigned`][crate::token::Unsigned]: A token which has not been signed, and has no signature.
 2. [`Signed`][crate::token::Signed]: A token which has been signed. Signed tokens can't be modified,
     as that could invalidate the signature.
-3. [`Verified`][crate::token::Verified]: A token which has been verified. Verified tokens can't be
-    modified, as that could invalidate the signature. Verified tokens can't know the
-    relationship between fields (i.e. the `jwk` header may represent some key not related
-    to the token at all).
-4. [`Unverified`][crate::token::Unverified]: A token which has been deserialized, and not verified.
+3. [`Unverified`][crate::token::Unverified]: A token which has been deserialized, and not verified.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Unverified : from JSON
-    Unverified --> Verified : Verify
+    Unverified --> Signed : Verify
     Unsigned --> Signed : Sign
     Signed --> Unverified: Unverify
     Signed --> [*] : to JSON

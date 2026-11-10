@@ -379,7 +379,7 @@ mod test {
 
         #[test]
         fn rfc7639_example() {
-            let key = rsa::RsaPublicKey::from_value(json!({
+            let key = rsa::PublicKey::from_value(json!({
                   "kty": "RSA",
                   "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
                   VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6

@@ -20,7 +20,7 @@ use base64ct::{Base64UrlUnpadded, Encoding};
 use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::BoxedUint;
-use rsa::RsaPrivateKey;
+use rsa::PrivateKey;
 #[cfg(feature = "rand")]
 use signature::RandomizedDigestSigner;
 
@@ -31,11 +31,11 @@ use crate::key::DeserializeJWK;
 #[cfg(feature = "rand")]
 use crate::SignatureBytes;
 
-impl crate::key::JWKeyType for rsa::RsaPublicKey {
+impl crate::key::JWKeyType for rsa::PublicKey {
     const KEY_TYPE: &'static str = "RSA";
 }
 
-impl crate::key::SerializeJWK for rsa::RsaPublicKey {
+impl crate::key::SerializeJWK for rsa::PublicKey {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         let mut params = Vec::with_capacity(2);
 
@@ -71,7 +71,7 @@ fn rsa_key_parameter(
     to_biguint(val).ok_or(crate::key::JsonWebKeyError::MissingParameter(name))
 }
 
-impl crate::key::DeserializeJWK for rsa::RsaPublicKey {
+impl crate::key::DeserializeJWK for rsa::PublicKey {
     fn build(
         parameters: std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<Self, crate::key::JsonWebKeyError>
@@ -81,16 +81,16 @@ impl crate::key::DeserializeJWK for rsa::RsaPublicKey {
         let n = rsa_key_parameter(&parameters, "n")?;
         let e = rsa_key_parameter(&parameters, "e")?;
 
-        rsa::RsaPublicKey::new(n, e)
+        rsa::PublicKey::new(n, e)
             .map_err(|error| crate::key::JsonWebKeyError::InvalidKey("RSA", error.into()))
     }
 }
 
-impl crate::key::JWKeyType for rsa::RsaPrivateKey {
+impl crate::key::JWKeyType for rsa::PrivateKey {
     const KEY_TYPE: &'static str = "RSA";
 }
 
-impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
+impl crate::key::SerializeJWK for rsa::PrivateKey {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         fn from_biguint(n: &BoxedUint) -> String {
             let bytes = n.to_be_bytes_trimmed_vartime();
@@ -143,7 +143,7 @@ impl crate::key::SerializeJWK for rsa::RsaPrivateKey {
     }
 }
 
-impl DeserializeJWK for RsaPrivateKey {
+impl DeserializeJWK for PrivateKey {
     fn build(
         parameters: std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<Self, crate::key::JsonWebKeyError>
@@ -180,7 +180,7 @@ impl DeserializeJWK for RsaPrivateKey {
         let e = rsa_key_parameter(&parameters, "e")?;
         let d = rsa_key_parameter(&parameters, "d")?;
 
-        let key = RsaPrivateKey::from_components(n, e, d, primes)
+        let key = PrivateKey::from_components(n, e, d, primes)
             .map_err(|error| crate::key::JsonWebKeyError::InvalidKey("RSA", error.into()))?;
 
         key.validate()
@@ -245,22 +245,6 @@ macro_rules! jose_rsa_pkcs1v15_algorithm {
 jose_rsa_pkcs1v15_algorithm!(RS256, sha2::Sha256);
 jose_rsa_pkcs1v15_algorithm!(RS384, sha2::Sha384);
 jose_rsa_pkcs1v15_algorithm!(RS512, sha2::Sha512);
-
-impl<D> crate::key::JWKeyType for rsa::pss::BlindedSigningKey<D>
-where
-    D: signature::digest::Digest,
-{
-    const KEY_TYPE: &'static str = "RSA";
-}
-
-impl<D> crate::key::SerializeJWK for rsa::pss::BlindedSigningKey<D>
-where
-    D: signature::digest::Digest,
-{
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.as_ref().to_public_key().parameters()
-    }
-}
 
 impl<D> crate::key::JWKeyType for rsa::pss::VerifyingKey<D>
 where
@@ -370,7 +354,7 @@ where
     where
         Self: Sized,
     {
-        let key = rsa::RsaPrivateKey::build(parameters)?;
+        let key = rsa::PrivateKey::build(parameters)?;
 
         Ok(rsa::pss::SigningKey::new(key))
     }
@@ -450,8 +434,8 @@ mod test {
         s.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
-    fn rsa(jwk: serde_json::Value) -> rsa::RsaPrivateKey {
-        rsa::RsaPrivateKey::from_value(jwk).unwrap()
+    fn rsa(jwk: serde_json::Value) -> rsa::PrivateKey {
+        rsa::PrivateKey::from_value(jwk).unwrap()
     }
 
     fn jwk() -> serde_json::Value {

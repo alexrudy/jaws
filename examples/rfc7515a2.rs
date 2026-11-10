@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
     // The key here is stored as a PKCS#8 PEM file, but you can leverage
     // RustCrypto to load a variety of other formats.
-    let key = rsa::RsaPrivateKey::from_pkcs8_pem(include_str!(concat!(
+    let key = rsa::PrivateKey::from_pkcs8_pem(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/examples/rfc7515a2.pem"
     )))
@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We can use the JWK to verify that the token is signed with the correct key.
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
-    let key = rsa::RsaPublicKey::from_jwk(jwk).unwrap();
+    let key = rsa::PublicKey::from_jwk(jwk).unwrap();
 
     assert_eq!(&key, alg.verifying_key().as_ref());
     println!("=== Verification === ");

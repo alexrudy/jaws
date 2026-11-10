@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
     // The key here is stored as a PKCS#8 PEM file, but you can leverage
     // RustCrypto to load a variety of other formats.
-    let signing_key = rsa::RsaPrivateKey::from_pkcs8_pem(include_str!(concat!(
+    let signing_key = rsa::PrivateKey::from_pkcs8_pem(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/examples/rfc7515a2.pem"
     )))
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hdr = token.header();
     let jwk = hdr.key().unwrap();
     let key: rsa::pkcs1v15::VerifyingKey<Sha256> =
-        rsa::pkcs1v15::VerifyingKey::new(rsa::RsaPublicKey::from_jwk(jwk).unwrap());
+        rsa::pkcs1v15::VerifyingKey::new(rsa::PublicKey::from_jwk(jwk).unwrap());
 
     println!("=== Verification === ");
     // Check it against the verified key

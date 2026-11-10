@@ -3,7 +3,7 @@ use rsa::{pkcs1::EncodeRsaPublicKey, pkcs8::EncodePrivateKey};
 use serde_json::json;
 
 fn main() {
-    let pkey = rsa::RsaPrivateKey::from_value(json!( {"kty":"RSA",
+    let pkey = rsa::PrivateKey::from_value(json!( {"kty":"RSA",
         "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
    HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
    D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH

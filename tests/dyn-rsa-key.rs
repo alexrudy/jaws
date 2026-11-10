@@ -11,18 +11,18 @@ use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;
 use sha2::Sha256;
 
-fn rsa_private() -> rsa::RsaPrivateKey {
+fn rsa_private() -> rsa::PrivateKey {
     // This key is from RFC 7515, Appendix A.2. Provide your own key instead!
     // The key here is stored as a PKCS#8 PEM file, but you can leverage
     // RustCrypto to load a variety of other formats.
-    rsa::RsaPrivateKey::from_pkcs8_pem(include_str!(concat!(
+    rsa::PrivateKey::from_pkcs8_pem(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/examples/rfc7515a2.pem"
     )))
     .unwrap()
 }
 
-fn rsa_public() -> rsa::RsaPublicKey {
+fn rsa_public() -> rsa::PublicKey {
     let key = rsa_private();
     key.to_public_key()
 }

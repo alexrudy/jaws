@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [2.0.1](https://github.com/alexrudy/jaws/compare/v2.0.0...v2.0.1) - 2026-11-10
+
+### Other
+
+- Bump RSA to released version 0.10
+
 ## [2.0.0](https://github.com/alexrudy/jaws/compare/v1.0.5...v2.0.0) - 2026-09-26
 
 ### Added

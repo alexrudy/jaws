@@ -80,6 +80,39 @@ impl AsRef<[u8]> for HmacKey {
     }
 }
 
+impl JWKeyType for HmacKey {
+    const KEY_TYPE: &'static str = "oct";
+}
+
+impl SerializeJWK for HmacKey {
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        vec![("k".to_string(), serde_json::json!(self.key.clone()))]
+    }
+}
+
+impl DeserializeJWK for HmacKey {
+    fn build(
+        parameters: BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        let key_data = parameters
+            .get("k")
+            .ok_or(crate::key::JsonWebKeyError::MissingParameter("k"))?
+            .as_str()
+            .ok_or(crate::key::JsonWebKeyError::InvalidKey(
+                "k",
+                "k must be a str".into(),
+            ))?;
+        let decoded_len = 3 * key_data.len() / 4;
+
+        let mut key = HmacKey::with_capacity(decoded_len);
+        key.resize(decoded_len, 0);
+
+        base64ct::Base64UrlUnpadded::decode(key_data, key.as_mut())
+            .map_err(|err| crate::key::JsonWebKeyError::InvalidKey("k", err.into()))?;
+        Ok(key)
+    }
+}
+
 /// The HMAC algorithm as used when signing a JWS.
 ///
 /// This type exists to associate the original key value with the digest.
@@ -134,22 +167,7 @@ impl<D> DeserializeJWK for Hmac<D> {
     fn build(
         parameters: BTreeMap<String, serde_json::Value>,
     ) -> Result<Self, crate::key::JsonWebKeyError> {
-        let key_data = parameters
-            .get("k")
-            .ok_or(crate::key::JsonWebKeyError::MissingParameter("k"))?
-            .as_str()
-            .ok_or(crate::key::JsonWebKeyError::InvalidKey(
-                "k",
-                "k must be a str".into(),
-            ))?;
-        let decoded_len = 3 * key_data.len() / 4;
-
-        let mut key = HmacKey::with_capacity(decoded_len);
-        key.resize(decoded_len, 0);
-
-        base64ct::Base64UrlUnpadded::decode(key_data, key.as_mut())
-            .map_err(|err| crate::key::JsonWebKeyError::InvalidKey("k", err.into()))?;
-
+        let key = HmacKey::build(parameters)?;
         Ok(Self::new(key))
     }
 }
@@ -159,6 +177,12 @@ impl<D> Keypair for Hmac<D> {
 
     fn verifying_key(&self) -> Self::VerifyingKey {
         self.clone()
+    }
+}
+
+impl<D> From<Hmac<D>> for HmacKey {
+    fn from(value: Hmac<D>) -> Self {
+        value.key
     }
 }
 

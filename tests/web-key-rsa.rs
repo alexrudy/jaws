@@ -72,7 +72,7 @@ fn roundtrip(token: Token<Unverified<()>>) -> Token<Unverified<()>> {
 }
 
 #[test]
-fn dyn_rsa_verify() {
+fn web_rsa_verify() {
     let token = unsigned_token();
     println!("=== Unsigned Token ===");
     println!("{}", token.formatted());
@@ -105,7 +105,7 @@ fn dyn_rsa_verify() {
 }
 
 #[test]
-fn dyn_rsa_sign() {
+fn web_rsa_sign() {
     let token = unsigned_token();
     println!("=== Unsigned Token ===");
     println!("{}", token.formatted());

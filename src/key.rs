@@ -15,10 +15,12 @@ use serde::{
 };
 use signature::Keypair;
 
+#[cfg(feature = "hmac")]
+use crate::algorithms::hmac::{Hmac, HmacKey};
 #[cfg(feature = "rand")]
 use crate::algorithms::RandomizedTokenSigner;
 use crate::{
-    algorithms::{hmac::Hmac, AlgorithmIdentifier, DynJsonWebAlgorithm},
+    algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     SignatureBytes, TokenSigner, TokenVerifier,
 };
 
@@ -49,6 +51,10 @@ pub enum JsonWebKeyError {
         &'static str,
         #[source] Box<dyn std::error::Error + Send + Sync>,
     ),
+
+    /// Unsupported key type error
+    #[error("unsupported key type: {0}")]
+    UnsupportedKeyType(String),
 }
 
 /// Trait for keys which can be used as a JWK.
@@ -369,6 +375,242 @@ impl<Digest> std::ops::Deref for Thumbprint<Digest> {
     }
 }
 
+/// A concrete key type that can be used to deserialize from a JWK
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[non_exhaustive]
+#[serde(tag = "kty")]
+pub enum PrivateWebKey {
+    #[cfg(feature = "hmac")]
+    #[serde(rename = "oct")]
+    /// Hash-based Message Authentication Code using SHA-256
+    HMac(#[serde(with = "self::serde_keys")] HmacKey),
+
+    #[cfg(feature = "rsa")]
+    #[serde(rename = "RSA")]
+    /// RSA Key
+    Rsa(#[serde(with = "self::serde_keys")] rsa::PrivateKey),
+
+    #[cfg(feature = "ecdsa")]
+    #[serde(rename = "ECDSA")]
+    /// ECDSA Key
+    EcDsa(#[serde(with = "self::serde_keys")] crate::algorithms::ecdsa::JWEcSigningKey),
+
+    #[cfg(feature = "ed25519")]
+    /// EdDSA using Ed25519
+    EdDSA,
+
+    /// No signature is applied.
+    #[serde(rename = "none")]
+    None,
+}
+
+impl From<SigningWebKey> for PrivateWebKey {
+    fn from(value: SigningWebKey) -> Self {
+        match value {
+            #[cfg(feature = "hmac")]
+            SigningWebKey::HS256(hmac) => PrivateWebKey::HMac(hmac.into()),
+            #[cfg(feature = "hmac")]
+            SigningWebKey::HS384(hmac) => PrivateWebKey::HMac(hmac.into()),
+            #[cfg(feature = "hmac")]
+            SigningWebKey::HS512(hmac) => PrivateWebKey::HMac(hmac.into()),
+            #[cfg(feature = "rsa")]
+            SigningWebKey::RS256(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "rsa")]
+            SigningWebKey::RS384(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "rsa")]
+            SigningWebKey::RS512(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
+            #[cfg(all(feature = "ecdsa", feature = "p256"))]
+            SigningWebKey::ES256(verifying_key) => PrivateWebKey::EcDsa(verifying_key.into()),
+            #[cfg(all(feature = "ecdsa", feature = "p384"))]
+            SigningWebKey::ES384(verifying_key) => PrivateWebKey::EcDsa(verifying_key.into()),
+            #[cfg(all(feature = "ecdsa", feature = "p521"))]
+            SigningWebKey::ES512(verifying_key) => PrivateWebKey::EcDsa(verifying_key.into()),
+            #[cfg(feature = "pss")]
+            SigningWebKey::PS256(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "pss")]
+            SigningWebKey::PS384(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "pss")]
+            SigningWebKey::PS512(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "ed25519")]
+            SigningWebKey::EdDSA => PrivateWebKey::EdDSA,
+            SigningWebKey::None => PrivateWebKey::None,
+        }
+    }
+}
+
+impl Keypair for PrivateWebKey {
+    type VerifyingKey = PublicWebKey;
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        match self {
+            #[cfg(feature = "hmac")]
+            Self::HMac(hmac) => PublicWebKey::HMac(hmac.clone()),
+            #[cfg(feature = "rsa")]
+            Self::Rsa(rsa) => PublicWebKey::Rsa(rsa.to_public_key()),
+            #[cfg(feature = "ecdsa")]
+            Self::EcDsa(ecdsa) => PublicWebKey::EcDsa(ecdsa.verifying_key().clone()),
+            #[cfg(feature = "ed25519")]
+            Self::EdDSA => PublicWebKey::EdDSA,
+            Self::None => PublicWebKey::None,
+        }
+    }
+}
+
+impl DynJwkKeyType for PrivateWebKey {
+    fn key_type(&self) -> &'static str {
+        match self {
+            #[cfg(feature = "hmac")]
+            Self::HMac(_) => "oct",
+            #[cfg(feature = "rsa")]
+            Self::Rsa(_) => "RSA",
+            #[cfg(feature = "ecdsa")]
+            Self::EcDsa(_) => "ECDSA",
+            #[cfg(feature = "ed25519")]
+            Self::EdDSA => "EdDSA",
+            Self::None => "none",
+        }
+    }
+}
+
+impl SerializeJWK for PrivateWebKey {
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        let mut params = match self {
+            #[cfg(feature = "hmac")]
+            Self::HMac(hmac) => hmac.parameters(),
+            #[cfg(feature = "rsa")]
+            Self::Rsa(signing_key) => signing_key.parameters(),
+            #[cfg(feature = "ecdsa")]
+            Self::EcDsa(signing_key) => signing_key.parameters(),
+            #[cfg(feature = "ed25519")]
+            Self::EdDSA => vec![],
+            Self::None => vec![],
+        };
+
+        params.push(("kty".to_string(), self.key_type().into()));
+        params
+    }
+}
+
+impl DeserializeJWK for PrivateWebKey {
+    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, JsonWebKeyError> {
+        let kty = parameters.get("kty").cloned();
+        match kty.as_ref().and_then(|k| k.as_str()) {
+            #[cfg(feature = "hmac")]
+            Some("oct") => Ok(Self::HMac(HmacKey::build(parameters)?)),
+            #[cfg(feature = "rsa")]
+            Some("RSA") => Ok(Self::Rsa(rsa::PrivateKey::build(parameters)?)),
+            #[cfg(feature = "ecdsa")]
+            Some("EC") => Ok(Self::EcDsa(
+                crate::algorithms::ecdsa::JWEcSigningKey::build(parameters)?,
+            )),
+            _ => Err(JsonWebKeyError::UnsupportedKeyType(
+                kty.as_ref()
+                    .and_then(|k| k.as_str())
+                    .ok_or_else(|| JsonWebKeyError::MissingParameter("kty"))?
+                    .into(),
+            )),
+        }
+    }
+}
+
+/// A concrete key type that can be used to sign JWTs
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[non_exhaustive]
+#[serde(tag = "kty")]
+pub enum PublicWebKey {
+    #[cfg(feature = "hmac")]
+    /// Hash-based Message Authentication Code using SHA-256
+    HMac(#[serde(with = "self::serde_keys")] HmacKey),
+
+    #[cfg(feature = "rsa")]
+    /// RSA Key
+    Rsa(#[serde(with = "self::serde_keys")] rsa::PublicKey),
+
+    #[cfg(feature = "ecdsa")]
+    /// ECDSA Key
+    EcDsa(#[serde(with = "self::serde_keys")] crate::algorithms::ecdsa::JWEcVerifyingKey),
+
+    #[cfg(feature = "ed25519")]
+    /// EdDSA using Ed25519
+    EdDSA,
+
+    /// No signature is applied.
+    #[serde(rename = "none")]
+    None,
+}
+
+impl From<VerifyingWebKey> for PublicWebKey {
+    fn from(value: VerifyingWebKey) -> Self {
+        match value {
+            #[cfg(feature = "hmac")]
+            VerifyingWebKey::HS256(hmac) => PublicWebKey::HMac(hmac.into()),
+            #[cfg(feature = "hmac")]
+            VerifyingWebKey::HS384(hmac) => PublicWebKey::HMac(hmac.into()),
+            #[cfg(feature = "hmac")]
+            VerifyingWebKey::HS512(hmac) => PublicWebKey::HMac(hmac.into()),
+            #[cfg(feature = "rsa")]
+            VerifyingWebKey::RS256(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "rsa")]
+            VerifyingWebKey::RS384(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "rsa")]
+            VerifyingWebKey::RS512(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
+            #[cfg(all(feature = "ecdsa", feature = "p256"))]
+            VerifyingWebKey::ES256(verifying_key) => PublicWebKey::EcDsa(verifying_key.into()),
+            #[cfg(all(feature = "ecdsa", feature = "p384"))]
+            VerifyingWebKey::ES384(verifying_key) => PublicWebKey::EcDsa(verifying_key.into()),
+            #[cfg(all(feature = "ecdsa", feature = "p521"))]
+            VerifyingWebKey::ES512(verifying_key) => PublicWebKey::EcDsa(verifying_key.into()),
+            #[cfg(feature = "pss")]
+            VerifyingWebKey::PS256(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "pss")]
+            VerifyingWebKey::PS384(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "pss")]
+            VerifyingWebKey::PS512(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
+            #[cfg(feature = "ed25519")]
+            VerifyingWebKey::EdDSA => PublicWebKey::EdDSA,
+            VerifyingWebKey::None => PublicWebKey::None,
+        }
+    }
+}
+
+impl DynJwkKeyType for PublicWebKey {
+    fn key_type(&self) -> &'static str {
+        match self {
+            #[cfg(feature = "hmac")]
+            Self::HMac(_) => "oct",
+            #[cfg(feature = "rsa")]
+            Self::Rsa(_) => "RSA",
+            #[cfg(feature = "ecdsa")]
+            Self::EcDsa(_) => "ECDSA",
+            #[cfg(feature = "ed25519")]
+            Self::EdDSA => "EdDSA",
+            Self::None => "none",
+        }
+    }
+}
+
+impl DeserializeJWK for PublicWebKey {
+    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, JsonWebKeyError> {
+        let kty = parameters.get("kty").cloned();
+        match kty.as_ref().and_then(|k| k.as_str()) {
+            #[cfg(feature = "hmac")]
+            Some("oct") => Ok(Self::HMac(HmacKey::build(parameters)?)),
+            #[cfg(feature = "rsa")]
+            Some("RSA") => Ok(Self::Rsa(rsa::PublicKey::build(parameters)?)),
+            #[cfg(feature = "ecdsa")]
+            Some("EC") => Ok(Self::EcDsa(
+                crate::algorithms::ecdsa::JWEcVerifyingKey::build(parameters)?,
+            )),
+            _ => Err(JsonWebKeyError::UnsupportedKeyType(
+                kty.as_ref()
+                    .and_then(|k| k.as_str())
+                    .ok_or_else(|| JsonWebKeyError::MissingParameter("kty"))?
+                    .into(),
+            )),
+        }
+    }
+}
+
 macro_rules! dispatch {
 
     ($driver:ident.$method:ident($($args:expr),*) eddsa($eddsa:expr) none($none:expr)) => {
@@ -397,6 +639,7 @@ macro_rules! dispatch {
             Self::PS384(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "pss")]
             Self::PS512(signing_key) => signing_key.$method($($args),*),
+            #[cfg(feature = "ed25519")]
             Self::EdDSA => $eddsa,
             Self::None => $none,
         }
@@ -407,9 +650,8 @@ macro_rules! dispatch {
 }
 
 /// A concrete key type that can be used to sign JWTs
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
-#[serde(tag = "kty")]
 pub enum SigningWebKey {
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-256
@@ -459,6 +701,7 @@ pub enum SigningWebKey {
     /// RSASSA-PSS using SHA-512 and MGF1 with SHA-512
     PS512(#[serde(with = "self::serde_keys")] rsa::pss::SigningKey<sha2::Sha512>),
 
+    #[cfg(feature = "ed25519")]
     /// EdDSA using Ed25519
     EdDSA,
 
@@ -551,6 +794,60 @@ impl From<rsa::pss::SigningKey<sha2::Sha512>> for SigningWebKey {
     }
 }
 
+impl Keypair for SigningWebKey {
+    type VerifyingKey = VerifyingWebKey;
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        match self {
+            #[cfg(feature = "hmac")]
+            SigningWebKey::HS256(hmac) => VerifyingWebKey::HS256(hmac.clone()),
+            #[cfg(feature = "hmac")]
+            SigningWebKey::HS384(hmac) => VerifyingWebKey::HS384(hmac.clone()),
+            #[cfg(feature = "hmac")]
+            SigningWebKey::HS512(hmac) => VerifyingWebKey::HS512(hmac.clone()),
+            #[cfg(feature = "rsa")]
+            SigningWebKey::RS256(signing_key) => {
+                VerifyingWebKey::RS256(signing_key.verifying_key())
+            }
+            #[cfg(feature = "rsa")]
+            SigningWebKey::RS384(signing_key) => {
+                VerifyingWebKey::RS384(signing_key.verifying_key())
+            }
+            #[cfg(feature = "rsa")]
+            SigningWebKey::RS512(signing_key) => {
+                VerifyingWebKey::RS512(signing_key.verifying_key())
+            }
+            #[cfg(all(feature = "ecdsa", feature = "p256"))]
+            SigningWebKey::ES256(signing_key) => {
+                VerifyingWebKey::ES256(signing_key.verifying_key().clone())
+            }
+            #[cfg(all(feature = "ecdsa", feature = "p384"))]
+            SigningWebKey::ES384(signing_key) => {
+                VerifyingWebKey::ES384(signing_key.verifying_key().clone())
+            }
+            #[cfg(all(feature = "ecdsa", feature = "p521"))]
+            SigningWebKey::ES512(signing_key) => {
+                VerifyingWebKey::ES512(signing_key.verifying_key().clone())
+            }
+            #[cfg(feature = "pss")]
+            SigningWebKey::PS256(signing_key) => {
+                VerifyingWebKey::PS256(signing_key.verifying_key())
+            }
+            #[cfg(feature = "pss")]
+            SigningWebKey::PS384(signing_key) => {
+                VerifyingWebKey::PS384(signing_key.verifying_key())
+            }
+            #[cfg(feature = "pss")]
+            SigningWebKey::PS512(signing_key) => {
+                VerifyingWebKey::PS512(signing_key.verifying_key())
+            }
+            #[cfg(feature = "ed25519")]
+            SigningWebKey::EdDSA => todo!(),
+            SigningWebKey::None => todo!(),
+        }
+    }
+}
+
 impl DynJsonWebAlgorithm for SigningWebKey {
     fn identifier(&self) -> AlgorithmIdentifier {
         dispatch!(self.identifier() eddsa(AlgorithmIdentifier::EdDSA) none(AlgorithmIdentifier::None))
@@ -569,18 +866,24 @@ impl SerializeJWK for SigningWebKey {
     }
 }
 
-impl SerializePublicJWK for SigningWebKey {
-    fn public_parameters(&self) -> Vec<(String, serde_json::Value)> {
-        dispatch!(self.public_parameters() none(vec![]))
-    }
-}
-
 #[cfg(feature = "rand")]
 impl RandomizedTokenSigner<SignatureBytes> for SigningWebKey {
+    #[cfg_attr(
+        not(any(
+            feature = "hmac",
+            feature = "rsa",
+            feature = "p256",
+            feature = "p384",
+            feature = "p521"
+        )),
+        expect(unused_variables)
+    )]
     fn try_sign_token(
         &self,
         header: &str,
         payload: &str,
+
+        #[cfg_attr(not(feature = "pss"), expect(unused_variables))]
         rng: &mut impl rand_core::TryCryptoRng,
     ) -> Result<SignatureBytes, signature::Error> {
         match self {
@@ -614,6 +917,7 @@ impl RandomizedTokenSigner<SignatureBytes> for SigningWebKey {
             SigningWebKey::PS384(signing_key) => signing_key.try_sign_token(header, payload, rng),
             #[cfg(feature = "pss")]
             SigningWebKey::PS512(signing_key) => signing_key.try_sign_token(header, payload, rng),
+            #[cfg(feature = "ed25519")]
             SigningWebKey::EdDSA => todo!(),
             SigningWebKey::None => todo!(),
         }
@@ -621,6 +925,16 @@ impl RandomizedTokenSigner<SignatureBytes> for SigningWebKey {
 }
 
 impl TokenSigner<SignatureBytes> for SigningWebKey {
+    #[cfg_attr(
+        not(any(
+            feature = "hmac",
+            feature = "rsa",
+            feature = "p256",
+            feature = "p384",
+            feature = "p521"
+        )),
+        expect(unused_variables)
+    )]
     fn try_sign_token(
         &self,
         header: &str,
@@ -663,6 +977,7 @@ impl TokenSigner<SignatureBytes> for SigningWebKey {
             SigningWebKey::PS512(_) => {
                 unimplemented!("RSA PSS requires a randomized signer")
             }
+            #[cfg(feature = "ed25519")]
             SigningWebKey::EdDSA => unimplemented!(),
             SigningWebKey::None => todo!(),
         }
@@ -672,7 +987,7 @@ impl TokenSigner<SignatureBytes> for SigningWebKey {
 /// A concrete key type that can be used to sign JWTs
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[non_exhaustive]
-#[serde(tag = "kty")]
+#[serde(tag = "alg")]
 pub enum VerifyingWebKey {
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-256
@@ -722,6 +1037,7 @@ pub enum VerifyingWebKey {
     /// RSASSA-PSS using SHA-512 and MGF1 with SHA-512
     PS512(#[serde(with = "self::serde_keys")] rsa::pss::VerifyingKey<sha2::Sha512>),
 
+    #[cfg(feature = "ed25519")]
     /// EdDSA using Ed25519
     EdDSA,
 
@@ -833,6 +1149,16 @@ impl SerializeJWK for VerifyingWebKey {
 }
 
 impl TokenVerifier for VerifyingWebKey {
+    #[cfg_attr(
+        not(any(
+            feature = "hmac",
+            feature = "rsa",
+            feature = "p256",
+            feature = "p384",
+            feature = "p521"
+        )),
+        expect(unused_variables)
+    )]
     fn verify_token(
         &self,
         header: &[u8],
@@ -864,19 +1190,19 @@ impl std::fmt::Display for RestrictedAlgorithmError {
 
 impl std::error::Error for RestrictedAlgorithmError {}
 
-/// A [`VerifyingWebKey`] that has been restricted to a set of allowed algorithms.
+/// A Verifying or Signing key that has been restricted to a set of allowed algorithms.
 #[derive(Debug, Clone)]
-pub struct RestrictedVerifyingKey {
-    /// The underlying [`VerifyingWebKey`].
-    pub key: VerifyingWebKey,
+pub struct Restricted<K> {
+    /// The underlying key.
+    pub key: K,
 
     /// The set of allowed algorithms.
     pub allowed_algorithms: Vec<AlgorithmIdentifier>,
 }
 
-impl RestrictedVerifyingKey {
-    /// Creates a [`RestrictedVerifyingKey`] that allows all available algorithms.
-    pub fn all(key: VerifyingWebKey) -> Self {
+impl<K> Restricted<K> {
+    /// Creates a K that allows all available algorithms.
+    pub fn all(key: K) -> Self {
         Self {
             key,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
@@ -886,8 +1212,8 @@ impl RestrictedVerifyingKey {
         }
     }
 
-    /// Creates a [`RestrictedVerifyingKey`] that excludes the `None` algorithm.
-    pub fn except_none(key: VerifyingWebKey) -> Self {
+    /// Creates a K that excludes the `None` algorithm.
+    pub fn except_none(key: K) -> Self {
         Self {
             key,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
@@ -898,8 +1224,8 @@ impl RestrictedVerifyingKey {
         }
     }
 
-    /// Creates a [`RestrictedVerifyingKey`] that only allows asymmetric algorithms.
-    pub fn asymmetric(key: VerifyingWebKey) -> Self {
+    /// Creates a K that only allows asymmetric algorithms.
+    pub fn asymmetric(key: K) -> Self {
         Self {
             key,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
@@ -911,13 +1237,19 @@ impl RestrictedVerifyingKey {
     }
 }
 
-impl DynJsonWebAlgorithm for RestrictedVerifyingKey {
+impl<K> DynJsonWebAlgorithm for Restricted<K>
+where
+    K: DynJsonWebAlgorithm,
+{
     fn identifier(&self) -> AlgorithmIdentifier {
         self.key.identifier()
     }
 }
 
-impl TokenVerifier for RestrictedVerifyingKey {
+impl<K> TokenVerifier for Restricted<K>
+where
+    K: TokenVerifier,
+{
     fn verify_token(
         &self,
         header: &[u8],
@@ -938,6 +1270,57 @@ impl TokenVerifier for RestrictedVerifyingKey {
     }
 }
 
+impl<K> DynJwkKeyType for Restricted<K>
+where
+    K: DynJwkKeyType,
+{
+    fn key_type(&self) -> &'static str {
+        self.key.key_type()
+    }
+}
+
+impl<K> SerializeJWK for Restricted<K>
+where
+    K: SerializeJWK,
+{
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.key.parameters()
+    }
+}
+
+impl<K> SerializePublicJWK for Restricted<K>
+where
+    K: SerializePublicJWK,
+{
+    fn public_parameters(&self) -> Vec<(String, serde_json::Value)> {
+        self.key.public_parameters()
+    }
+}
+
+impl<K> TokenSigner for Restricted<K>
+where
+    K: TokenSigner + DynJwkKeyType,
+{
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+    ) -> Result<SignatureBytes, signature::Error> {
+        if !self
+            .allowed_algorithms
+            .iter()
+            .any(|&a| a == self.identifier())
+        {
+            return Err(signature::Error::from_source(
+                RestrictedAlgorithmError::from(self.identifier()),
+            ));
+        }
+
+        self.key.try_sign_token(header, payload)
+    }
+}
+
+#[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
 mod serde_keys {
     use serde::{de, Serialize as _};
 
@@ -999,7 +1382,6 @@ mod test {
                   1CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINH
                   aQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
                   "e": "AQAB",
-                  "alg": "RS256",
                   "kid": "2011-04-29"
                  }
             ))
@@ -1014,6 +1396,23 @@ mod test {
                 Thumbprint::from_jwk(&JsonWebKey::build(&key)).unwrap();
 
             assert_eq!(&*thumb, "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs");
+        }
+
+        #[test]
+        fn rfc7639_example_web() {
+            let _key = PublicWebKey::from_value(json!({
+                  "kty": "RSA",
+                  "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
+                  VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6
+                  4tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FD
+                  W2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n9
+                  1CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINH
+                  aQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+                  "e": "AQAB",
+                  "kid": "2011-04-29"
+                 }
+            ))
+            .unwrap();
         }
     }
 }

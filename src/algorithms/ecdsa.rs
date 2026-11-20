@@ -75,6 +75,8 @@ println!("{}", signed.formatted());
 "#
 )]
 
+use std::collections::BTreeMap;
+
 pub use ::ecdsa::{SigningKey, VerifyingKey};
 use base64ct::Base64UrlUnpadded as Base64Url;
 use base64ct::Encoding;
@@ -97,6 +99,7 @@ use elliptic_curve::{
 };
 
 use pkcs8::AssociatedOid;
+use signature::Keypair;
 #[cfg(feature = "rand")]
 use signature::RandomizedDigestSigner;
 
@@ -110,7 +113,14 @@ pub use p384::NistP384;
 pub use p521::NistP521;
 use signature::SignatureEncoding;
 
+use crate::key::DeserializeJWK;
+use crate::key::JWKeyType;
 use crate::key::JsonWebKeyError;
+use crate::key::SerializeJWK;
+
+use super::AlgorithmIdentifier;
+use super::DynJsonWebAlgorithm;
+use super::SignatureBytes;
 
 /// Trait to provide the extra parameters required
 /// for JWK serialization of ecdsa-compatible curves.
@@ -399,13 +409,235 @@ jose_ecdsa_algorithm!(ES384, NistP384, "P-384");
 #[cfg(feature = "p521")]
 jose_ecdsa_algorithm!(ES512, NistP521, "P-521");
 
+/// Represents an ECDSA signing key for use with JWE.
+#[derive(Debug, Clone, PartialEq)]
+pub enum JWEcSigningKey {
+    /// A signing key for use with JWE and the NIST P-256 curve.
+    #[cfg(feature = "p256")]
+    P256(ecdsa::SigningKey<NistP256>),
+    /// A signing key for use with JWE and the NIST P-384 curve.
+    #[cfg(feature = "p384")]
+    P384(ecdsa::SigningKey<NistP384>),
+    /// A signing key for use with JWE and the NIST P-521 curve.
+    #[cfg(feature = "p521")]
+    P521(ecdsa::SigningKey<NistP521>),
+}
+
+#[cfg(feature = "p256")]
+impl From<ecdsa::SigningKey<NistP256>> for JWEcSigningKey {
+    fn from(value: ecdsa::SigningKey<NistP256>) -> Self {
+        JWEcSigningKey::P256(value)
+    }
+}
+
+#[cfg(feature = "p384")]
+impl From<ecdsa::SigningKey<NistP384>> for JWEcSigningKey {
+    fn from(value: ecdsa::SigningKey<NistP384>) -> Self {
+        JWEcSigningKey::P384(value)
+    }
+}
+
+#[cfg(feature = "p521")]
+impl From<ecdsa::SigningKey<NistP521>> for JWEcSigningKey {
+    fn from(value: ecdsa::SigningKey<NistP521>) -> Self {
+        JWEcSigningKey::P521(value)
+    }
+}
+
+impl Keypair for JWEcSigningKey {
+    type VerifyingKey = JWEcVerifyingKey;
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        match self {
+            #[cfg(feature = "p256")]
+            JWEcSigningKey::P256(signing_key) => {
+                JWEcVerifyingKey::P256(signing_key.verifying_key().clone())
+            }
+            #[cfg(feature = "p384")]
+            JWEcSigningKey::P384(signing_key) => {
+                JWEcVerifyingKey::P384(signing_key.verifying_key().clone())
+            }
+            #[cfg(feature = "p521")]
+            JWEcSigningKey::P521(signing_key) => {
+                JWEcVerifyingKey::P521(signing_key.verifying_key().clone())
+            }
+        }
+    }
+}
+
+impl DynJsonWebAlgorithm for JWEcSigningKey {
+    fn identifier(&self) -> AlgorithmIdentifier {
+        match self {
+            #[cfg(feature = "p256")]
+            JWEcSigningKey::P256(_) => AlgorithmIdentifier::ES256,
+            #[cfg(feature = "p384")]
+            JWEcSigningKey::P384(_) => AlgorithmIdentifier::ES384,
+            #[cfg(feature = "p521")]
+            JWEcSigningKey::P521(_) => AlgorithmIdentifier::ES512,
+        }
+    }
+}
+
+impl JWKeyType for JWEcSigningKey {
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl SerializeJWK for JWEcSigningKey {
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        match self {
+            #[cfg(feature = "p256")]
+            JWEcSigningKey::P256(signing_key) => signing_key.parameters(),
+            #[cfg(feature = "p384")]
+            JWEcSigningKey::P384(signing_key) => signing_key.parameters(),
+            #[cfg(feature = "p521")]
+            JWEcSigningKey::P521(signing_key) => signing_key.parameters(),
+        }
+    }
+}
+
+impl DeserializeJWK for JWEcSigningKey {
+    fn build(
+        parameters: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, JsonWebKeyError> {
+        let curve = parameters
+            .get("crv")
+            .and_then(|v| v.as_str())
+            .ok_or(JsonWebKeyError::MissingParameter("crv"))?;
+        match curve {
+            #[cfg(feature = "p256")]
+            "P-256" => Ok(JWEcSigningKey::P256(ecdsa::SigningKey::<NistP256>::build(
+                parameters,
+            )?)),
+            #[cfg(feature = "p384")]
+            "P-384" => Ok(JWEcSigningKey::P384(ecdsa::SigningKey::<NistP384>::build(
+                parameters,
+            )?)),
+            #[cfg(feature = "p521")]
+            "P-521" => Ok(JWEcSigningKey::P521(ecdsa::SigningKey::<NistP521>::build(
+                parameters,
+            )?)),
+            _ => Err(JsonWebKeyError::InvalidKey(
+                "EC",
+                "unsupported curve".into(),
+            )),
+        }
+    }
+}
+
+impl crate::algorithms::TokenSigner for JWEcSigningKey {
+    fn try_sign_token(
+        &self,
+        header: &str,
+        payload: &str,
+    ) -> Result<SignatureBytes, signature::Error> {
+        match self {
+            #[cfg(feature = "p256")]
+            JWEcSigningKey::P256(key) => key.try_sign_token(header, payload),
+            #[cfg(feature = "p384")]
+            JWEcSigningKey::P384(key) => key.try_sign_token(header, payload),
+            #[cfg(feature = "p521")]
+            JWEcSigningKey::P521(key) => key.try_sign_token(header, payload),
+        }
+    }
+}
+
+/// Represents an ECDSA verifying key for use with JWE.
+#[derive(Debug, Clone, PartialEq)]
+pub enum JWEcVerifyingKey {
+    /// A verifying key for use with JWE and the NIST P-256 curve.
+    #[cfg(feature = "p256")]
+    P256(ecdsa::VerifyingKey<NistP256>),
+
+    /// A verifying key for use with JWE and the NIST P-384 curve.
+    #[cfg(feature = "p384")]
+    P384(ecdsa::VerifyingKey<NistP384>),
+
+    /// A verifying key for use with JWE and the NIST P-521 curve.
+    #[cfg(feature = "p521")]
+    P521(ecdsa::VerifyingKey<NistP521>),
+}
+
+#[cfg(feature = "p256")]
+impl From<ecdsa::VerifyingKey<NistP256>> for JWEcVerifyingKey {
+    fn from(value: ecdsa::VerifyingKey<NistP256>) -> Self {
+        JWEcVerifyingKey::P256(value)
+    }
+}
+
+#[cfg(feature = "p384")]
+impl From<ecdsa::VerifyingKey<NistP384>> for JWEcVerifyingKey {
+    fn from(value: ecdsa::VerifyingKey<NistP384>) -> Self {
+        JWEcVerifyingKey::P384(value)
+    }
+}
+
+#[cfg(feature = "p521")]
+impl From<ecdsa::VerifyingKey<NistP521>> for JWEcVerifyingKey {
+    fn from(value: ecdsa::VerifyingKey<NistP521>) -> Self {
+        JWEcVerifyingKey::P521(value)
+    }
+}
+
+impl DynJsonWebAlgorithm for JWEcVerifyingKey {
+    fn identifier(&self) -> AlgorithmIdentifier {
+        match self {
+            #[cfg(feature = "p256")]
+            JWEcVerifyingKey::P256(_) => AlgorithmIdentifier::ES256,
+            #[cfg(feature = "p384")]
+            JWEcVerifyingKey::P384(_) => AlgorithmIdentifier::ES384,
+            #[cfg(feature = "p521")]
+            JWEcVerifyingKey::P521(_) => AlgorithmIdentifier::ES512,
+        }
+    }
+}
+
+impl JWKeyType for JWEcVerifyingKey {
+    const KEY_TYPE: &'static str = "EC";
+}
+
+impl SerializeJWK for JWEcVerifyingKey {
+    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+        match self {
+            #[cfg(feature = "p256")]
+            JWEcVerifyingKey::P256(verifying_key) => verifying_key.parameters(),
+            #[cfg(feature = "p384")]
+            JWEcVerifyingKey::P384(verifying_key) => verifying_key.parameters(),
+            #[cfg(feature = "p521")]
+            JWEcVerifyingKey::P521(verifying_key) => verifying_key.parameters(),
+        }
+    }
+}
+
+impl DeserializeJWK for JWEcVerifyingKey {
+    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, JsonWebKeyError> {
+        let curve = parameters.get("crv").and_then(|v| v.as_str());
+        match curve {
+            #[cfg(feature = "p256")]
+            Some("P-256") => Ok(JWEcVerifyingKey::P256(
+                ecdsa::VerifyingKey::<NistP256>::build(parameters)?,
+            )),
+            #[cfg(feature = "p384")]
+            Some("P-384") => Ok(JWEcVerifyingKey::P384(
+                ecdsa::VerifyingKey::<NistP384>::build(parameters)?,
+            )),
+            #[cfg(feature = "p521")]
+            Some("P-521") => Ok(JWEcVerifyingKey::P521(
+                ecdsa::VerifyingKey::<NistP521>::build(parameters)?,
+            )),
+            _ => Err(JsonWebKeyError::UnsupportedKeyType(
+                curve.unwrap_or_default().to_string(),
+            )),
+        }
+    }
+}
+
 #[cfg(all(test, feature = "p256"))]
 mod test {
 
     use super::*;
     use crate::{
         algorithms::{TokenSigner, TokenVerifier},
-        key::{DeserializeJWK as _, SerializeJWK},
+        key::SerializeJWK,
         SignatureBytes,
     };
 

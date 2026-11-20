@@ -96,5 +96,11 @@ path = "tests/dyn-rsa-key.rs"
 required-features = ["fmt", "rsa"]
 doc-scrape-examples = true
 
+[[test]]
+name = "web-key-rsa"
+path = "tests/web-key-rsa.rs"
+required-features = ["fmt", "rsa"]
+doc-scrape-examples = true
+
 [target.'cfg(false)'.dependencies]
 generic-array = { version = "=0.14.7" } # 0.14.9 deprecates everything.

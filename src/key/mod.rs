@@ -5,7 +5,7 @@
 //!
 //! [RFC7517]: https://tools.ietf.org/html/rfc7517
 
-use std::{collections::BTreeMap, hash::Hash, marker::PhantomData};
+use std::{collections::BTreeMap, fmt, hash::Hash, marker::PhantomData, str::FromStr};
 
 use base64ct::Encoding;
 use serde::{
@@ -62,31 +62,131 @@ pub enum JsonWebKeyError {
     UnsupportedAlgorithm(AlgorithmIdentifier),
 }
 
+/// Returns the key type as a string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "&str")]
+#[non_exhaustive]
+pub enum KeyType {
+    /// Octet key type
+    Octet,
+
+    /// RSA key type
+    Rsa,
+
+    /// Elliptic Curve key type
+    EllipticCurve,
+}
+
+impl fmt::Display for KeyType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<KeyType> for String {
+    fn from(kt: KeyType) -> Self {
+        kt.as_str().to_owned()
+    }
+}
+
+/// Represents an unknown key type parsing error
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("unknown key type: {0}")]
+pub struct UnknownKeyType(String);
+
+impl FromStr for KeyType {
+    type Err = UnknownKeyType;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "oct" => Ok(KeyType::Octet),
+            "RSA" => Ok(KeyType::Rsa),
+            "EC" => Ok(KeyType::EllipticCurve),
+            _ => Err(UnknownKeyType(s.to_owned())),
+        }
+    }
+}
+
+impl TryFrom<&str> for KeyType {
+    type Error = UnknownKeyType;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl KeyType {
+    /// Returns `true` if the key type is supported by the current build configuration.
+    pub fn is_supported(&self) -> bool {
+        match self {
+            KeyType::Octet => cfg!(feature = "hmac"),
+            KeyType::Rsa => cfg!(feature = "rsa"),
+            KeyType::EllipticCurve => cfg!(feature = "ecdsa"),
+        }
+    }
+
+    /// Returns the key type as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            KeyType::Octet => "oct",
+            KeyType::Rsa => "RSA",
+            KeyType::EllipticCurve => "EC",
+        }
+    }
+
+    /// Returns `true` if the key type supports the given algorithm.
+    pub fn supports_alg(&self, alg: &AlgorithmIdentifier) -> bool {
+        match self {
+            KeyType::Octet => matches!(
+                alg,
+                AlgorithmIdentifier::HS256
+                    | AlgorithmIdentifier::HS384
+                    | AlgorithmIdentifier::HS512
+            ),
+            KeyType::Rsa => matches!(
+                alg,
+                AlgorithmIdentifier::RS256
+                    | AlgorithmIdentifier::RS384
+                    | AlgorithmIdentifier::RS512
+                    | AlgorithmIdentifier::PS256
+                    | AlgorithmIdentifier::PS384
+                    | AlgorithmIdentifier::PS512
+            ),
+            KeyType::EllipticCurve => matches!(
+                alg,
+                AlgorithmIdentifier::ES256
+                    | AlgorithmIdentifier::ES384
+                    | AlgorithmIdentifier::ES512
+            ),
+        }
+    }
+}
+
 /// Trait for keys which can be used as a JWK.
 pub trait JWKeyType {
     /// The string used to identify the JWK type in the `kty` field.
-    const KEY_TYPE: &'static str;
+    const KEY_TYPE: KeyType;
 }
 
 impl<T> JWKeyType for &T
 where
     T: JWKeyType,
 {
-    const KEY_TYPE: &'static str = T::KEY_TYPE;
+    const KEY_TYPE: KeyType = T::KEY_TYPE;
 }
 
 /// Trait for keys which can be used as a JWK, automatically implemented for
 /// types which implement `JWKeyType`, to make `SerializeJWK` object-safe.
 pub trait DynJwkKeyType {
     /// The string used to identify the JWK type in the `kty` field.
-    fn key_type(&self) -> &'static str;
+    fn key_type(&self) -> KeyType;
 }
 
 impl<T> DynJwkKeyType for T
 where
     T: JWKeyType,
 {
-    fn key_type(&self) -> &'static str {
+    fn key_type(&self) -> KeyType {
         T::KEY_TYPE
     }
 }
@@ -213,11 +313,11 @@ pub trait DeserializeJWK: DynJwkKeyType + Sized {
 
         match Self::build(parameters) {
             Ok(key) => {
-                if key.key_type() == jwk.key_type() {
+                if key.key_type().as_str() == jwk.key_type() {
                     Ok(key)
                 } else {
                     Err(JsonWebKeyError::KeyType {
-                        expected: key.key_type().into(),
+                        expected: key.key_type().as_str().into(),
                         got: jwk.key_type().into(),
                     })
                 }
@@ -285,7 +385,7 @@ impl JsonWebKey {
     /// Build a JWK from a public key.
     pub fn build_public<K: SerializePublicJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
-            key_type: key.key_type().into(),
+            key_type: key.key_type().as_str().into(),
             parameters: key
                 .public_parameters()
                 .into_iter()
@@ -297,7 +397,7 @@ impl JsonWebKey {
     /// Build a JWK from a key.
     pub fn build<K: SerializeJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
-            key_type: key.key_type().into(),
+            key_type: key.key_type().as_str().into(),
             parameters: key
                 .parameters()
                 .into_iter()
@@ -320,12 +420,12 @@ impl JsonWebKey {
     pub fn deserialize_key<K: DeserializeJWK>(&self) -> Result<K, JsonWebKeyError> {
         match K::build(self.parameters.clone()) {
             Ok(key) => {
-                if key.key_type() == self.key_type {
+                if key.key_type().as_str() == self.key_type {
                     Ok(key)
                 } else {
                     Err(JsonWebKeyError::KeyType {
                         expected: self.key_type.clone(),
-                        got: key.key_type().into(),
+                        got: key.key_type().as_str().into(),
                     })
                 }
             }

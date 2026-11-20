@@ -27,7 +27,7 @@ use hmac::{KeyInit as _, SimpleHmac};
 use signature::{Keypair, SignatureEncoding};
 
 use crate::{
-    key::{DeserializeJWK, JWKeyType, Parameters, SerializeJWK},
+    key::{DeserializeJWK, JWKeyType, KeyType, Parameters, SerializeJWK},
     SignatureBytes,
 };
 
@@ -81,7 +81,7 @@ impl AsRef<[u8]> for HmacKey {
 }
 
 impl JWKeyType for HmacKey {
-    const KEY_TYPE: &'static str = "oct";
+    const KEY_TYPE: KeyType = KeyType::Octet;
 }
 
 impl SerializeJWK for HmacKey {
@@ -151,7 +151,7 @@ impl<D> Clone for Hmac<D> {
 }
 
 impl<D> JWKeyType for Hmac<D> {
-    const KEY_TYPE: &'static str = "oct";
+    const KEY_TYPE: KeyType = KeyType::Octet;
 }
 
 impl<D> SerializeJWK for Hmac<D> {

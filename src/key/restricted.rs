@@ -3,7 +3,7 @@ use crate::{
     SignatureBytes, TokenSigner, TokenVerifier,
 };
 
-use super::{DynJwkKeyType, Parameters, SerializeJWK, SerializePublicJWK};
+use super::{DynJwkKeyType, KeyType, Parameters, SerializeJWK, SerializePublicJWK};
 
 /// Error when an algorithm is not allowed by the restricted key.
 #[derive(Debug, Clone)]
@@ -110,7 +110,7 @@ impl<K> DynJwkKeyType for Restricted<K>
 where
     K: DynJwkKeyType,
 {
-    fn key_type(&self) -> &'static str {
+    fn key_type(&self) -> KeyType {
         self.key.key_type()
     }
 }

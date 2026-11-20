@@ -1,12 +1,16 @@
 //! JWK key types for deserializing from a JSON Web Key (JWK)
 
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "rsa")]
+use sha2::Digest;
 use signature::Keypair;
 
 #[cfg(feature = "ecdsa")]
 use crate::algorithms::ecdsa::{JWEcSigningKey, JWEcVerifyingKey};
 #[cfg(feature = "hmac")]
 use crate::algorithms::hmac::{Hmac, HmacKey};
+#[cfg(feature = "none")]
+use crate::algorithms::none::NoneAlgorithm;
 #[cfg(feature = "rand")]
 use crate::algorithms::RandomizedTokenSigner;
 use crate::{
@@ -14,7 +18,7 @@ use crate::{
     SignatureBytes, TokenSigner, TokenVerifier,
 };
 
-use super::{DeserializeJWK, DynJwkKeyType, JsonWebKeyError, Parameters, SerializeJWK};
+use super::{DeserializeJWK, DynJwkKeyType, JsonWebKeyError, KeyType, Parameters, SerializeJWK};
 
 /// A concrete key type that can be used to deserialize from a JWK
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -39,43 +43,74 @@ pub enum PrivateWebKey {
     #[cfg(feature = "ed25519")]
     /// EdDSA using Ed25519
     EdDSA,
-
-    /// No signature is applied.
-    #[serde(rename = "none")]
-    None,
 }
 
-impl From<SigningWebKey> for PrivateWebKey {
-    fn from(value: SigningWebKey) -> Self {
-        match value {
-            #[cfg(feature = "hmac")]
-            SigningWebKey::HS256(hmac) => PrivateWebKey::HMac(hmac.into()),
-            #[cfg(feature = "hmac")]
-            SigningWebKey::HS384(hmac) => PrivateWebKey::HMac(hmac.into()),
-            #[cfg(feature = "hmac")]
-            SigningWebKey::HS512(hmac) => PrivateWebKey::HMac(hmac.into()),
-            #[cfg(feature = "rsa")]
-            SigningWebKey::RS256(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "rsa")]
-            SigningWebKey::RS384(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "rsa")]
-            SigningWebKey::RS512(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
-            #[cfg(all(feature = "ecdsa", feature = "p256"))]
-            SigningWebKey::ES256(verifying_key) => PrivateWebKey::EcDsa(verifying_key.into()),
-            #[cfg(all(feature = "ecdsa", feature = "p384"))]
-            SigningWebKey::ES384(verifying_key) => PrivateWebKey::EcDsa(verifying_key.into()),
-            #[cfg(all(feature = "ecdsa", feature = "p521"))]
-            SigningWebKey::ES512(verifying_key) => PrivateWebKey::EcDsa(verifying_key.into()),
-            #[cfg(feature = "pss")]
-            SigningWebKey::PS256(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "pss")]
-            SigningWebKey::PS384(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "pss")]
-            SigningWebKey::PS512(verifying_key) => PrivateWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "ed25519")]
-            SigningWebKey::EdDSA => PrivateWebKey::EdDSA,
-            SigningWebKey::None => PrivateWebKey::None,
-        }
+#[cfg(feature = "hmac")]
+impl From<HmacKey> for PrivateWebKey {
+    fn from(key: HmacKey) -> Self {
+        PrivateWebKey::HMac(key)
+    }
+}
+
+#[cfg(feature = "hmac")]
+impl<D> From<Hmac<D>> for PrivateWebKey {
+    fn from(key: Hmac<D>) -> Self {
+        PrivateWebKey::HMac(key.into())
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl From<rsa::PrivateKey> for PrivateWebKey {
+    fn from(key: rsa::PrivateKey) -> Self {
+        PrivateWebKey::Rsa(key)
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl<D> From<rsa::pkcs1v15::SigningKey<D>> for PrivateWebKey
+where
+    D: Digest,
+{
+    fn from(key: rsa::pkcs1v15::SigningKey<D>) -> Self {
+        PrivateWebKey::Rsa(rsa::PrivateKey::from(key))
+    }
+}
+
+#[cfg(feature = "pss")]
+impl<D> From<rsa::pss::SigningKey<D>> for PrivateWebKey
+where
+    D: Digest,
+{
+    fn from(key: rsa::pss::SigningKey<D>) -> Self {
+        PrivateWebKey::Rsa(rsa::PrivateKey::from(key))
+    }
+}
+
+#[cfg(feature = "ecdsa")]
+impl From<crate::algorithms::ecdsa::JWEcSigningKey> for PrivateWebKey {
+    fn from(key: crate::algorithms::ecdsa::JWEcSigningKey) -> Self {
+        PrivateWebKey::EcDsa(key)
+    }
+}
+
+#[cfg(all(feature = "ecdsa", feature = "p256"))]
+impl From<ecdsa::SigningKey<p256::NistP256>> for PrivateWebKey {
+    fn from(key: ecdsa::SigningKey<p256::NistP256>) -> Self {
+        PrivateWebKey::EcDsa(key.into())
+    }
+}
+
+#[cfg(all(feature = "ecdsa", feature = "p384"))]
+impl From<ecdsa::SigningKey<p384::NistP384>> for PrivateWebKey {
+    fn from(key: ecdsa::SigningKey<p384::NistP384>) -> Self {
+        PrivateWebKey::EcDsa(key.into())
+    }
+}
+
+#[cfg(all(feature = "ecdsa", feature = "p521"))]
+impl From<ecdsa::SigningKey<p521::NistP521>> for PrivateWebKey {
+    fn from(key: ecdsa::SigningKey<p521::NistP521>) -> Self {
+        PrivateWebKey::EcDsa(key.into())
     }
 }
 
@@ -109,7 +144,6 @@ impl PrivateWebKey {
             (Self::Rsa(_), AlgorithmIdentifier::PS512) => true,
             #[cfg(feature = "ed25519")]
             (Self::EdDSA, AlgorithmIdentifier::EdDSA) => true,
-            (Self::None, AlgorithmIdentifier::None) => true,
             _ => false,
         }
     }
@@ -144,7 +178,8 @@ impl PrivateWebKey {
             (Self::EcDsa(JWEcSigningKey::P521(k)), AlgorithmIdentifier::ES512) => {
                 Ok(SigningWebKey::ES512(k.into()))
             }
-            (Self::None, _) => Ok(SigningWebKey::None),
+            #[cfg(feature = "none")]
+            (_, AlgorithmIdentifier::None) => Ok(SigningWebKey::None),
 
             #[allow(unreachable_patterns)]
             (_, alg) => Err(JsonWebKeyError::UnsupportedAlgorithm(alg)),
@@ -165,45 +200,55 @@ impl Keypair for PrivateWebKey {
             Self::EcDsa(ecdsa) => PublicWebKey::EcDsa(ecdsa.verifying_key().clone()),
             #[cfg(feature = "ed25519")]
             Self::EdDSA => PublicWebKey::EdDSA,
-            Self::None => PublicWebKey::None,
+            #[allow(unreachable_patterns)]
+            _ => unreachable!(),
         }
     }
 }
 
 impl DynJwkKeyType for PrivateWebKey {
-    fn key_type(&self) -> &'static str {
+    fn key_type(&self) -> KeyType {
         match self {
             #[cfg(feature = "hmac")]
-            Self::HMac(_) => "oct",
+            Self::HMac(_) => KeyType::Octet,
             #[cfg(feature = "rsa")]
-            Self::Rsa(_) => "RSA",
+            Self::Rsa(_) => KeyType::Rsa,
             #[cfg(feature = "ecdsa")]
-            Self::EcDsa(_) => "ECDSA",
+            Self::EcDsa(_) => KeyType::EllipticCurve,
             #[cfg(feature = "ed25519")]
-            Self::EdDSA => "EdDSA",
-            Self::None => "none",
+            Self::EdDSA => unimplemented!(),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!(),
         }
     }
 }
 
 impl SerializeJWK for PrivateWebKey {
     fn parameters(&self) -> Parameters {
-        let mut params = match self {
-            #[cfg(feature = "hmac")]
-            Self::HMac(hmac) => hmac.parameters(),
-            #[cfg(feature = "rsa")]
-            Self::Rsa(signing_key) => signing_key.parameters(),
-            #[cfg(feature = "ecdsa")]
-            Self::EcDsa(signing_key) => signing_key.parameters(),
-            #[cfg(feature = "ed25519")]
-            Self::EdDSA => unimplemented!(),
-            Self::None => Parameters::new(),
-        };
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        {
+            let mut params = match self {
+                #[cfg(feature = "hmac")]
+                Self::HMac(hmac) => hmac.parameters(),
+                #[cfg(feature = "rsa")]
+                Self::Rsa(signing_key) => signing_key.parameters(),
+                #[cfg(feature = "ecdsa")]
+                Self::EcDsa(signing_key) => signing_key.parameters(),
+                #[cfg(feature = "ed25519")]
+                Self::EdDSA => unimplemented!(),
+                #[allow(unreachable_patterns)]
+                _ => unimplemented!(),
+            };
 
-        params
-            .insert("kty", self.key_type())
-            .expect("Serialize kty to JSON");
-        params
+            params
+                .insert("kty", self.key_type())
+                .expect("Serialize kty to JSON");
+            params
+        }
+        #[cfg(not(any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
+        {
+            panic!("No JWK parameters for algorithm 'none'")
+        }
     }
 }
 
@@ -252,44 +297,74 @@ pub enum PublicWebKey {
     #[cfg(feature = "ed25519")]
     /// EdDSA using Ed25519
     EdDSA,
-
-    /// No signature is applied.
-    #[serde(rename = "none")]
-    None,
 }
 
-impl From<VerifyingWebKey> for PublicWebKey {
-    fn from(value: VerifyingWebKey) -> Self {
-        match value {
-            #[cfg(feature = "hmac")]
-            VerifyingWebKey::HS256(hmac) => PublicWebKey::HMac(hmac.into()),
-            #[cfg(feature = "hmac")]
-            VerifyingWebKey::HS384(hmac) => PublicWebKey::HMac(hmac.into()),
-            #[cfg(feature = "hmac")]
-            VerifyingWebKey::HS512(hmac) => PublicWebKey::HMac(hmac.into()),
-            #[cfg(feature = "rsa")]
-            VerifyingWebKey::RS256(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "rsa")]
-            VerifyingWebKey::RS384(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "rsa")]
-            VerifyingWebKey::RS512(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
-            #[cfg(all(feature = "ecdsa", feature = "p256"))]
-            VerifyingWebKey::ES256(verifying_key) => PublicWebKey::EcDsa(verifying_key.into()),
-            #[cfg(all(feature = "ecdsa", feature = "p384"))]
-            VerifyingWebKey::ES384(verifying_key) => PublicWebKey::EcDsa(verifying_key.into()),
-            #[cfg(all(feature = "ecdsa", feature = "p521"))]
-            VerifyingWebKey::ES512(verifying_key) => PublicWebKey::EcDsa(verifying_key.into()),
-            #[cfg(feature = "pss")]
-            VerifyingWebKey::PS256(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "pss")]
-            VerifyingWebKey::PS384(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "pss")]
-            VerifyingWebKey::PS512(verifying_key) => PublicWebKey::Rsa(verifying_key.into()),
-            #[cfg(feature = "ed25519")]
-            VerifyingWebKey::EdDSA => PublicWebKey::EdDSA,
-            #[allow(unreachable_patterns)]
-            VerifyingWebKey::None => PublicWebKey::None,
-        }
+#[cfg(feature = "hmac")]
+impl From<HmacKey> for PublicWebKey {
+    fn from(key: HmacKey) -> Self {
+        PublicWebKey::HMac(key)
+    }
+}
+
+#[cfg(feature = "hmac")]
+impl<D> From<Hmac<D>> for PublicWebKey {
+    fn from(key: Hmac<D>) -> Self {
+        PublicWebKey::HMac(key.into())
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl From<rsa::PublicKey> for PublicWebKey {
+    fn from(key: rsa::PublicKey) -> Self {
+        PublicWebKey::Rsa(key)
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl<D> From<rsa::pkcs1v15::VerifyingKey<D>> for PublicWebKey
+where
+    D: Digest,
+{
+    fn from(key: rsa::pkcs1v15::VerifyingKey<D>) -> Self {
+        PublicWebKey::Rsa(rsa::PublicKey::from(key))
+    }
+}
+
+#[cfg(feature = "pss")]
+impl<D> From<rsa::pss::VerifyingKey<D>> for PublicWebKey
+where
+    D: Digest,
+{
+    fn from(key: rsa::pss::VerifyingKey<D>) -> Self {
+        PublicWebKey::Rsa(rsa::PublicKey::from(key))
+    }
+}
+
+#[cfg(feature = "ecdsa")]
+impl From<crate::algorithms::ecdsa::JWEcVerifyingKey> for PublicWebKey {
+    fn from(key: crate::algorithms::ecdsa::JWEcVerifyingKey) -> Self {
+        PublicWebKey::EcDsa(key)
+    }
+}
+
+#[cfg(all(feature = "ecdsa", feature = "p256"))]
+impl From<ecdsa::VerifyingKey<p256::NistP256>> for PublicWebKey {
+    fn from(key: ecdsa::VerifyingKey<p256::NistP256>) -> Self {
+        PublicWebKey::EcDsa(key.into())
+    }
+}
+
+#[cfg(all(feature = "ecdsa", feature = "p384"))]
+impl From<ecdsa::VerifyingKey<p384::NistP384>> for PublicWebKey {
+    fn from(key: ecdsa::VerifyingKey<p384::NistP384>) -> Self {
+        PublicWebKey::EcDsa(key.into())
+    }
+}
+
+#[cfg(all(feature = "ecdsa", feature = "p521"))]
+impl From<ecdsa::VerifyingKey<p521::NistP521>> for PublicWebKey {
+    fn from(key: ecdsa::VerifyingKey<p521::NistP521>) -> Self {
+        PublicWebKey::EcDsa(key.into())
     }
 }
 
@@ -323,8 +398,6 @@ impl PublicWebKey {
             (Self::Rsa(_), AlgorithmIdentifier::PS512) => true,
             #[cfg(feature = "ed25519")]
             (Self::EdDSA, AlgorithmIdentifier::EdDSA) => true,
-            #[allow(unreachable_patterns)]
-            (Self::None, AlgorithmIdentifier::None) => true,
             _ => false,
         }
     }
@@ -359,7 +432,6 @@ impl PublicWebKey {
             (Self::EcDsa(JWEcVerifyingKey::P521(k)), AlgorithmIdentifier::ES512) => {
                 Ok(VerifyingWebKey::ES512(k.into()))
             }
-            (Self::None, _) => Ok(VerifyingWebKey::None),
 
             #[allow(unreachable_patterns)]
             (_, alg) => Err(JsonWebKeyError::UnsupportedAlgorithm(alg)),
@@ -368,17 +440,18 @@ impl PublicWebKey {
 }
 
 impl DynJwkKeyType for PublicWebKey {
-    fn key_type(&self) -> &'static str {
+    fn key_type(&self) -> KeyType {
         match self {
             #[cfg(feature = "hmac")]
-            Self::HMac(_) => "oct",
+            Self::HMac(_) => KeyType::Octet,
             #[cfg(feature = "rsa")]
-            Self::Rsa(_) => "RSA",
+            Self::Rsa(_) => KeyType::Rsa,
             #[cfg(feature = "ecdsa")]
-            Self::EcDsa(_) => "ECDSA",
+            Self::EcDsa(_) => KeyType::EllipticCurve,
             #[cfg(feature = "ed25519")]
-            Self::EdDSA => "EdDSA",
-            Self::None => "none",
+            Self::EdDSA => unimplemented!(),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!(),
         }
     }
 }
@@ -407,60 +480,119 @@ impl DeserializeJWK for PublicWebKey {
 
 impl SerializeJWK for PublicWebKey {
     fn parameters(&self) -> Parameters {
-        let mut parameters = match self {
-            #[cfg(feature = "hmac")]
-            PublicWebKey::HMac(hmac_key) => hmac_key.parameters(),
-            #[cfg(feature = "rsa")]
-            PublicWebKey::Rsa(public_key) => public_key.parameters(),
-            #[cfg(feature = "ecdsa")]
-            PublicWebKey::EcDsa(jwec_verifying_key) => jwec_verifying_key.parameters(),
-            #[cfg(feature = "ed25519")]
-            PublicWebKey::EdDSA => unimplemented!(),
-            PublicWebKey::None => Parameters::new(),
-        };
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        {
+            let mut parameters = match self {
+                #[cfg(feature = "hmac")]
+                PublicWebKey::HMac(hmac_key) => hmac_key.parameters(),
+                #[cfg(feature = "rsa")]
+                PublicWebKey::Rsa(public_key) => public_key.parameters(),
+                #[cfg(feature = "ecdsa")]
+                PublicWebKey::EcDsa(jwec_verifying_key) => jwec_verifying_key.parameters(),
+                #[cfg(feature = "ed25519")]
+                PublicWebKey::EdDSA => unimplemented!(),
+            };
 
-        parameters
-            .insert("kty", self.key_type())
-            .expect("kty is valid JSON");
-        parameters
+            parameters
+                .insert("kty", self.key_type())
+                .expect("kty is valid JSON");
+            parameters
+        }
+        #[cfg(not(any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
+        {
+            panic!("No JWK parameters for algorithm 'none'")
+        }
     }
 }
 
 macro_rules! dispatch {
 
-    ($driver:ident.$method:ident($($args:expr),*) eddsa($eddsa:expr) none($none:expr)) => {
+    ($type:tt: $driver:ident.$method:ident($($args:expr),*) eddsa($eddsa:expr) none($none:expr)) => {
         match $driver {
             #[cfg(feature = "hmac")]
-            Self::HS256(hmac) => hmac.$method($($args),*),
+            $type::HS256(hmac) => hmac.$method($($args),*),
             #[cfg(feature = "hmac")]
-            Self::HS384(hmac) => hmac.$method($($args),*),
+            $type::HS384(hmac) => hmac.$method($($args),*),
             #[cfg(feature = "hmac")]
-            Self::HS512(hmac) => hmac.$method($($args),*),
+            $type::HS512(hmac) => hmac.$method($($args),*),
             #[cfg(feature = "rsa")]
-            Self::RS256(signing_key) => signing_key.$method($($args),*),
+            $type::RS256(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "rsa")]
-            Self::RS384(signing_key) => signing_key.$method($($args),*),
+            $type::RS384(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "rsa")]
-            Self::RS512(signing_key) => signing_key.$method($($args),*),
+            $type::RS512(signing_key) => signing_key.$method($($args),*),
             #[cfg(all(feature = "ecdsa", feature = "p256"))]
-            Self::ES256(signing_key) => signing_key.$method($($args),*),
+            $type::ES256(signing_key) => signing_key.$method($($args),*),
             #[cfg(all(feature = "ecdsa", feature = "p384"))]
-            Self::ES384(signing_key) => signing_key.$method($($args),*),
+            $type::ES384(signing_key) => signing_key.$method($($args),*),
             #[cfg(all(feature = "ecdsa", feature = "p521"))]
-            Self::ES512(signing_key) => signing_key.$method($($args),*),
+            $type::ES512(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "pss")]
-            Self::PS256(signing_key) => signing_key.$method($($args),*),
+            $type::PS256(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "pss")]
-            Self::PS384(signing_key) => signing_key.$method($($args),*),
+            $type::PS384(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "pss")]
-            Self::PS512(signing_key) => signing_key.$method($($args),*),
+            $type::PS512(signing_key) => signing_key.$method($($args),*),
             #[cfg(feature = "ed25519")]
-            Self::EdDSA => $eddsa,
-            Self::None => $none,
+            $type::EdDSA => $eddsa,
+            #[cfg(feature = "none")]
+            $type::None => $none,
+            #[allow(unreachable_patterns)]
+            _ => unimplemented!()
         }
     };
-    ($driver:ident.$method:ident($($args:expr),*) none($none:expr)) => {
-        dispatch!($driver.$method($($args),*) eddsa(unimplemented!("EdDSA is not supported")) none($none))
+    ($type:tt: $driver:ident Ok($method:ident($($args:expr),*)) eddsa($eddsa:expr) none($none:expr)) => {
+        match $driver {
+            #[cfg(feature = "hmac")]
+            $type::HS256(hmac) => Ok(hmac.$method($($args),*)),
+            #[cfg(feature = "hmac")]
+            $type::HS384(hmac) => Ok(hmac.$method($($args),*)),
+            #[cfg(feature = "hmac")]
+            $type::HS512(hmac) => Ok(hmac.$method($($args),*)),
+            #[cfg(feature = "rsa")]
+            $type::RS256(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(feature = "rsa")]
+            $type::RS384(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(feature = "rsa")]
+            $type::RS512(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(all(feature = "ecdsa", feature = "p256"))]
+            $type::ES256(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(all(feature = "ecdsa", feature = "p384"))]
+            $type::ES384(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(all(feature = "ecdsa", feature = "p521"))]
+            $type::ES512(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(feature = "pss")]
+            $type::PS256(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(feature = "pss")]
+            $type::PS384(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(feature = "pss")]
+            $type::PS512(signing_key) => Ok(signing_key.$method($($args),*)),
+            #[cfg(feature = "ed25519")]
+            $type::EdDSA => $eddsa,
+            #[cfg(feature = "none")]
+            $type::None => $none,
+            #[allow(unreachable_patterns)]
+            _ => unimplemented!()
+        }
+    };
+
+    ($type:tt: $driver:ident.$method:ident($($args:expr),*) eddsa($eddsa:expr)) => {
+        dispatch!($type: $driver.$method($($args),*) eddsa($eddsa) none(NoneAlgorithm.$method($($args),*)))
+    };
+    ($type:tt: $driver:ident Ok($method:ident($($args:expr),*)) eddsa($eddsa:expr)) => {
+        dispatch!($type: $driver Ok($method($($args),*)) eddsa($eddsa) none(NoneAlgorithm.$method($($args),*)))
+    };
+
+    ($driver:ident Ok($method:ident($($args:expr),*)) eddsa($eddsa:expr) ) => {
+        dispatch!(Self: $driver Ok($method($($args),*)) eddsa($eddsa))
+    };
+
+    ($driver:ident.$method:ident($($args:expr),*) eddsa($eddsa:expr) ) => {
+        dispatch!(Self: $driver.$method($($args),*) eddsa($eddsa))
+    };
+
+    ($driver:ident.$method:ident($($args:expr),*)) => {
+        dispatch!($driver.$method($($args),*) eddsa(unimplemented!("EdDSA is not supported")))
     }
 }
 
@@ -520,9 +652,17 @@ pub enum SigningWebKey {
     /// EdDSA using Ed25519
     EdDSA,
 
-    /// No signature is applied.
-    #[serde(rename = "none")]
+    #[cfg(feature = "none")]
+    /// No signature
     None,
+}
+
+impl TryFrom<SigningWebKey> for PrivateWebKey {
+    type Error = JsonWebKeyError;
+
+    fn try_from(value: SigningWebKey) -> Result<Self, Self::Error> {
+        dispatch!(SigningWebKey: value Ok(into()) eddsa(Ok(PrivateWebKey::EdDSA)) none(Err(JsonWebKeyError::UnsupportedAlgorithm(AlgorithmIdentifier::None))))
+    }
 }
 
 #[cfg(feature = "hmac")]
@@ -658,34 +798,45 @@ impl Keypair for SigningWebKey {
             }
             #[cfg(feature = "ed25519")]
             SigningWebKey::EdDSA => todo!(),
-            SigningWebKey::None => todo!(),
+
+            #[cfg(feature = "none")]
+            SigningWebKey::None => VerifyingWebKey::None,
+            #[allow(unreachable_patterns)]
+            _ => unreachable!(),
         }
     }
 }
 
 impl DynJsonWebAlgorithm for SigningWebKey {
     fn identifier(&self) -> AlgorithmIdentifier {
-        dispatch!(self.identifier() eddsa(AlgorithmIdentifier::EdDSA) none(AlgorithmIdentifier::None))
+        dispatch!(self.identifier() eddsa(AlgorithmIdentifier::EdDSA))
     }
 }
 
 impl DynJwkKeyType for SigningWebKey {
-    fn key_type(&self) -> &'static str {
-        dispatch!(self.key_type() eddsa("EdDSA") none("none"))
+    fn key_type(&self) -> KeyType {
+        dispatch!(self.key_type() eddsa(unimplemented!("EdDSA is not supported")))
     }
 }
 
 impl SerializeJWK for SigningWebKey {
     fn parameters(&self) -> Parameters {
-        let mut params = dispatch!(self.parameters() none(Parameters::new()));
-        params
-            .insert("alg", self.identifier())
-            .expect("alg is valid JSON");
-        params
-            .insert("kty", self.key_type())
-            .expect("kty is valid JSON");
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        {
+            let mut params: Parameters = dispatch!(self.parameters());
+            params
+                .insert("alg", self.identifier())
+                .expect("alg is valid JSON");
+            params
+                .insert("kty", self.key_type())
+                .expect("kty is valid JSON");
 
-        params
+            params
+        }
+        #[cfg(not(any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
+        {
+            panic!("No JWK parameters for algorithm 'none'")
+        }
     }
 }
 
@@ -741,8 +892,11 @@ impl RandomizedTokenSigner<SignatureBytes> for SigningWebKey {
             #[cfg(feature = "pss")]
             SigningWebKey::PS512(signing_key) => signing_key.try_sign_token(header, payload, rng),
             #[cfg(feature = "ed25519")]
-            SigningWebKey::EdDSA => todo!(),
-            SigningWebKey::None => todo!(),
+            SigningWebKey::EdDSA => unimplemented!("EdDSA is not supported"),
+            #[cfg(feature = "none")]
+            SigningWebKey::None => NoneAlgorithm.try_sign_token(header, payload),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!(),
         }
     }
 }
@@ -756,7 +910,7 @@ impl TokenSigner<SignatureBytes> for SigningWebKey {
             feature = "p384",
             feature = "p521"
         )),
-        expect(unused_variables)
+        allow(unused_variables)
     )]
     fn try_sign_token(
         &self,
@@ -802,7 +956,10 @@ impl TokenSigner<SignatureBytes> for SigningWebKey {
             }
             #[cfg(feature = "ed25519")]
             SigningWebKey::EdDSA => unimplemented!(),
-            SigningWebKey::None => todo!(),
+            #[cfg(feature = "none")]
+            SigningWebKey::None => NoneAlgorithm.try_sign_token(header, payload),
+            #[allow(unreachable_patterns)]
+            _ => unreachable!(),
         }
     }
 }
@@ -864,9 +1021,17 @@ pub enum VerifyingWebKey {
     /// EdDSA using Ed25519
     EdDSA,
 
-    /// No signature is applied.
-    #[serde(rename = "none")]
+    #[cfg(feature = "none")]
+    /// No signature
     None,
+}
+
+impl TryFrom<VerifyingWebKey> for PublicWebKey {
+    type Error = JsonWebKeyError;
+
+    fn try_from(value: VerifyingWebKey) -> Result<Self, Self::Error> {
+        dispatch!(VerifyingWebKey: value Ok(into()) eddsa(Ok(PublicWebKey::EdDSA)) none(Err(JsonWebKeyError::UnsupportedAlgorithm(AlgorithmIdentifier::None))))
+    }
 }
 
 #[cfg(feature = "hmac")]
@@ -955,27 +1120,34 @@ impl From<rsa::pss::VerifyingKey<sha2::Sha512>> for VerifyingWebKey {
 
 impl DynJsonWebAlgorithm for VerifyingWebKey {
     fn identifier(&self) -> AlgorithmIdentifier {
-        dispatch!(self.identifier() eddsa(AlgorithmIdentifier::EdDSA) none(AlgorithmIdentifier::None))
+        dispatch!(self.identifier() eddsa(AlgorithmIdentifier::EdDSA))
     }
 }
 
 impl DynJwkKeyType for VerifyingWebKey {
-    fn key_type(&self) -> &'static str {
-        dispatch!(self.key_type() eddsa("EdDSA") none("none"))
+    fn key_type(&self) -> KeyType {
+        dispatch!(self.key_type())
     }
 }
 
 impl SerializeJWK for VerifyingWebKey {
     fn parameters(&self) -> Parameters {
-        let mut params = dispatch!(self.parameters() none(Parameters::new()));
-        params
-            .insert("alg", self.identifier())
-            .expect("alg is valid JSON");
-        params
-            .insert("kty", self.key_type())
-            .expect("kty is valid JSON");
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        {
+            let mut params = dispatch!(self.parameters());
+            params
+                .insert("alg", self.identifier())
+                .expect("alg is valid JSON");
+            params
+                .insert("kty", self.key_type())
+                .expect("kty is valid JSON");
 
-        params
+            params
+        }
+        #[cfg(not(any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
+        {
+            panic!("No JWK parameters for algorithm 'none'")
+        }
     }
 }
 
@@ -988,7 +1160,7 @@ impl TokenVerifier for VerifyingWebKey {
             feature = "p384",
             feature = "p521"
         )),
-        expect(unused_variables)
+        allow(unused_variables)
     )]
     fn verify_token(
         &self,
@@ -996,7 +1168,7 @@ impl TokenVerifier for VerifyingWebKey {
         payload: &[u8],
         signature: &[u8],
     ) -> Result<SignatureBytes, signature::Error> {
-        dispatch!(self.verify_token(header, payload, signature) none(todo!()))
+        dispatch!(self.verify_token(header, payload, signature))
     }
 }
 

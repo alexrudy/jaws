@@ -85,6 +85,9 @@ pub mod hmac;
 #[cfg(feature = "rsa")]
 pub mod rsa;
 
+#[cfg(feature = "none")]
+pub mod none;
+
 /// The identifiers used in JWA to indicate the digest algorithm used for signing or encryption.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[non_exhaustive]
@@ -152,7 +155,7 @@ impl AlgorithmIdentifier {
     /// Return whether this algorithm is available for signing.
     pub fn available(&self) -> bool {
         match self {
-            Self::None => false,
+            Self::None => cfg!(feature = "none"),
 
             Self::HS256 | Self::HS384 | Self::HS512 => cfg!(feature = "hmac"),
             Self::RS256 | Self::RS384 | Self::RS512 => cfg!(feature = "rsa"),

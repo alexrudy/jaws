@@ -67,6 +67,7 @@ p521 = ["dep:p521", "ecdsa"]
 spki = ["dep:spki"]
 der = ["dep:der"]
 ed25519 = []
+none = []
 
 [[example]]
 name = "acme-new-account"

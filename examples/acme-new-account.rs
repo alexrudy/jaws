@@ -63,7 +63,7 @@ fn main() {
     });
 
     // Create a token with the default headers, and no custom headers.
-    let mut token = Token::new(payload, header, Compact);
+    let mut token = Token::new(header, payload, Compact);
     // Request that the token header include a JWK field.
     token.header_mut().key().derived();
 

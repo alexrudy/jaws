@@ -8,6 +8,8 @@
 //!
 //! [RFC7519]: https://tools.ietf.org/html/rfc7519
 
+#[cfg(feature = "fmt")]
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::{fmt::Write, str::FromStr};
 
@@ -19,13 +21,13 @@ use serde::{
 };
 use signature::SignatureEncoding;
 
-#[cfg(feature = "fmt")]
-use crate::fmt;
 use crate::{
     algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     base64data::{Base64JSON, Base64Signature, DecodeError},
     jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
+#[cfg(feature = "fmt")]
+use crate::{fmt, JWTFormat};
 
 pub mod formats;
 mod state;
@@ -675,26 +677,32 @@ where
 impl<P, S, Fmt> fmt::JWTFormat for Token<P, S, Fmt>
 where
     S: HasSignature,
+    S::Signature: SignatureEncoding,
     <S as MaybeSigned>::Header: Serialize,
     <S as MaybeSigned>::HeaderState: HeaderState,
     P: Serialize,
     Fmt: TokenFormat,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
-        let header = serde_json::to_value(self.state.header()).unwrap();
-        let payload = serde_json::to_value(&self.payload).unwrap();
-        let signature =
-            serde_json::to_value(Base64Signature(self.state.signature().clone())).unwrap();
+        {
+            let mut inner = f.indent_skip_first();
 
-        let token = serde_json::json!({
-            "header": header,
-            "payload": payload,
-            "signature": signature,
-        });
+            inner.write_str("{\n")?;
+            inner.write_str("\"header\": ")?;
+            self.state.header().fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"payload\": ")?;
+            self.payload.fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"signature\": ")?;
+            JWTFormat::fmt(
+                &Base64Signature(self.state.signature().to_bytes().as_ref()),
+                &mut inner,
+            )?;
+        }
+        f.write_str("\n}")?;
 
-        let rendered = serde_json::to_string_pretty(&token).unwrap();
-
-        f.write_str(&rendered)
+        Ok(())
     }
 }
 
@@ -706,23 +714,21 @@ where
     Fmt: TokenFormat,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
-        let header = self
-            .state
-            .header()
-            .value()
-            .expect("header should serialize to json:");
-        let payload =
-            serde_json::to_value(&self.payload).expect("payload should serialize to json:");
+        {
+            let mut inner = f.indent_skip_first();
 
-        let token = serde_json::json!({
-            "header": header,
-            "payload": payload,
-            "signature": "<signature>",
-        });
+            inner.write_str("{\n")?;
+            inner.write_str("\"header\": ")?;
+            self.state.header().fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"payload\": ")?;
+            self.payload.fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"signature\": <signature>")?;
+        }
+        f.write_str("\n}")?;
 
-        let rendered = serde_json::to_string_pretty(&token).unwrap();
-
-        f.write_str(&rendered)
+        Ok(())
     }
 }
 

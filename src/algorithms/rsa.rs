@@ -29,12 +29,13 @@ pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
 use crate::key::DeserializeJWK;
+use crate::key::KeyType;
 use crate::key::Parameters;
 #[cfg(feature = "pss")]
 use crate::SignatureBytes;
 
 impl crate::key::JWKeyType for rsa::PublicKey {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl crate::key::SerializeJWK for rsa::PublicKey {
@@ -87,7 +88,7 @@ impl crate::key::DeserializeJWK for rsa::PublicKey {
 }
 
 impl crate::key::JWKeyType for rsa::PrivateKey {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl crate::key::SerializeJWK for rsa::PrivateKey {
@@ -202,7 +203,7 @@ impl<D> crate::key::JWKeyType for rsa::pkcs1v15::SigningKey<D>
 where
     D: digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::SigningKey<D>
@@ -227,7 +228,7 @@ impl<D> crate::key::JWKeyType for rsa::pkcs1v15::VerifyingKey<D>
 where
     D: digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::VerifyingKey<D>
@@ -268,7 +269,7 @@ impl<D> crate::key::JWKeyType for rsa::pss::VerifyingKey<D>
 where
     D: signature::digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl<D> crate::key::SerializeJWK for rsa::pss::VerifyingKey<D>
@@ -294,7 +295,7 @@ impl<D> crate::key::JWKeyType for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 #[cfg(feature = "pss")]

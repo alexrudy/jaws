@@ -114,6 +114,7 @@ use signature::SignatureEncoding;
 use crate::key::DeserializeJWK;
 use crate::key::JWKeyType;
 use crate::key::JsonWebKeyError;
+use crate::key::KeyType;
 use crate::key::Parameters;
 use crate::key::SerializeJWK;
 
@@ -142,7 +143,7 @@ impl<C> crate::key::JWKeyType for PublicKey<C>
 where
     C: CurveArithmetic,
 {
-    const KEY_TYPE: &'static str = "EC";
+    const KEY_TYPE: KeyType = KeyType::EllipticCurve;
 }
 
 impl<C> crate::key::SerializeJWK for PublicKey<C>
@@ -230,7 +231,7 @@ impl<C> crate::key::JWKeyType for VerifyingKey<C>
 where
     C: EcdsaCurve + CurveArithmetic,
 {
-    const KEY_TYPE: &'static str = "EC";
+    const KEY_TYPE: KeyType = KeyType::EllipticCurve;
 }
 
 impl<C> crate::key::SerializeJWK for VerifyingKey<C>
@@ -278,7 +279,7 @@ impl<C> crate::key::JWKeyType for SecretKey<C>
 where
     C: Curve,
 {
-    const KEY_TYPE: &'static str = "EC";
+    const KEY_TYPE: KeyType = KeyType::EllipticCurve;
 }
 
 impl<C> crate::key::DeserializeJWK for SecretKey<C>
@@ -320,7 +321,7 @@ where
     C: EcdsaCurve + CurveArithmetic,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
 {
-    const KEY_TYPE: &'static str = "EC";
+    const KEY_TYPE: KeyType = KeyType::EllipticCurve;
 }
 
 impl<C> crate::key::SerializeJWK for SigningKey<C>
@@ -470,7 +471,7 @@ impl DynJsonWebAlgorithm for JWEcSigningKey {
 }
 
 impl JWKeyType for JWEcSigningKey {
-    const KEY_TYPE: &'static str = "EC";
+    const KEY_TYPE: KeyType = KeyType::EllipticCurve;
 }
 
 impl SerializeJWK for JWEcSigningKey {
@@ -581,7 +582,7 @@ impl DynJsonWebAlgorithm for JWEcVerifyingKey {
 }
 
 impl JWKeyType for JWEcVerifyingKey {
-    const KEY_TYPE: &'static str = "EC";
+    const KEY_TYPE: KeyType = KeyType::EllipticCurve;
 }
 
 impl SerializeJWK for JWEcVerifyingKey {

@@ -560,6 +560,14 @@ where
     H: Serialize,
     P: Serialize,
 {
+    /// Returns `true` if the token can be verified with the given algorithm.
+    pub fn can_verify<A>(&self, algorithm: &A) -> bool
+    where
+        A: crate::algorithms::TokenVerifier + ?Sized,
+    {
+        algorithm.identifier() == *self.state.header.algorithm()
+    }
+
     /// Verify the signature of the token with the given algorithm.
     ///
     /// This method consumes the token and returns a new one with the signature verified.

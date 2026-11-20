@@ -75,8 +75,6 @@ println!("{}", signed.formatted());
 "#
 )]
 
-use std::collections::BTreeMap;
-
 pub use ::ecdsa::{SigningKey, VerifyingKey};
 use base64ct::Base64UrlUnpadded as Base64Url;
 use base64ct::Encoding;
@@ -116,6 +114,7 @@ use signature::SignatureEncoding;
 use crate::key::DeserializeJWK;
 use crate::key::JWKeyType;
 use crate::key::JsonWebKeyError;
+use crate::key::Parameters;
 use crate::key::SerializeJWK;
 
 use super::AlgorithmIdentifier;
@@ -152,20 +151,21 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        let mut params = Vec::with_capacity(3);
+    fn parameters(&self) -> Parameters {
+        let mut params = Parameters::new();
 
-        params.push((
-            "crv".to_owned(),
-            serde_json::Value::String(C::CRV.to_owned()),
-        ));
+        params.insert("crv", &C::CRV).expect("crv is valid JSON");
         let point = self.to_sec1_point(false);
         let Coordinates::Uncompressed { x, y } = point.coordinates() else {
             panic!("can't extract jwk coordinates from compressed or compact field points")
         };
 
-        params.push(("x".to_owned(), Base64Url::encode_string(x).into()));
-        params.push(("y".to_owned(), Base64Url::encode_string(y).into()));
+        params
+            .insert("x", Base64Url::encode_string(x))
+            .expect("x is valid JSON");
+        params
+            .insert("y", Base64Url::encode_string(y))
+            .expect("y is valid JSON");
         params
     }
 }
@@ -176,9 +176,7 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         let crv = parameters
             .get("crv")
             .and_then(|c| c.as_str())
@@ -192,7 +190,7 @@ where
         }
 
         fn get<C>(
-            parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+            parameters: &Parameters,
             name: &'static str,
         ) -> Result<Array<u8, <C as Curve>::FieldBytesSize>, crate::key::JsonWebKeyError>
         where
@@ -241,7 +239,7 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         PublicKey::from(self).parameters()
     }
 }
@@ -252,9 +250,7 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         PublicKey::build(parameters).map(Self::from)
     }
 }
@@ -267,13 +263,12 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         let mut parameters = self.public_key().parameters();
         let d = self.to_sec1_der().expect("d is valid sec1 der");
-        parameters.push((
-            "d".to_owned(),
-            base64ct::Base64UrlUnpadded::encode_string(d.as_ref()).into(),
-        ));
+        parameters
+            .insert("d", base64ct::Base64UrlUnpadded::encode_string(d.as_ref()))
+            .expect("d is valid JSON");
 
         parameters
     }
@@ -292,9 +287,7 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         let d = parameters
             .get("d")
             .and_then(|c| c.as_str())
@@ -338,7 +331,7 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         SecretKey::from(self).parameters()
     }
 }
@@ -351,9 +344,7 @@ where
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         SecretKey::build(parameters).map(Self::from)
     }
 }
@@ -483,7 +474,7 @@ impl JWKeyType for JWEcSigningKey {
 }
 
 impl SerializeJWK for JWEcSigningKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         match self {
             #[cfg(feature = "p256")]
             JWEcSigningKey::P256(signing_key) => signing_key.parameters(),
@@ -496,9 +487,7 @@ impl SerializeJWK for JWEcSigningKey {
 }
 
 impl DeserializeJWK for JWEcSigningKey {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, JsonWebKeyError> {
         let curve = parameters
             .get("crv")
             .and_then(|v| v.as_str())
@@ -596,7 +585,7 @@ impl JWKeyType for JWEcVerifyingKey {
 }
 
 impl SerializeJWK for JWEcVerifyingKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         match self {
             #[cfg(feature = "p256")]
             JWEcVerifyingKey::P256(verifying_key) => verifying_key.parameters(),
@@ -609,7 +598,7 @@ impl SerializeJWK for JWEcVerifyingKey {
 }
 
 impl DeserializeJWK for JWEcVerifyingKey {
-    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, JsonWebKeyError> {
         let curve = parameters.get("crv").and_then(|v| v.as_str());
         match curve {
             #[cfg(feature = "p256")]

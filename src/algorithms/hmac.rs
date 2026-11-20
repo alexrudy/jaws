@@ -19,7 +19,7 @@
 //! which is a wrapper around the [`digest::Output`] type from the [`digest`](https://crates.io/crates/digest)
 //! crate, but which provides the appropriate signature encoding behavior.
 
-use std::{collections::BTreeMap, marker::PhantomData, ops::Deref};
+use std::{marker::PhantomData, ops::Deref};
 
 use base64ct::Encoding;
 use digest::{Digest, Mac};
@@ -27,7 +27,7 @@ use hmac::{KeyInit as _, SimpleHmac};
 use signature::{Keypair, SignatureEncoding};
 
 use crate::{
-    key::{DeserializeJWK, JWKeyType, SerializeJWK},
+    key::{DeserializeJWK, JWKeyType, Parameters, SerializeJWK},
     SignatureBytes,
 };
 
@@ -85,15 +85,15 @@ impl JWKeyType for HmacKey {
 }
 
 impl SerializeJWK for HmacKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        vec![("k".to_string(), serde_json::json!(self.key.clone()))]
+    fn parameters(&self) -> Parameters {
+        [("k".to_string(), serde_json::json!(self.key.clone()))]
+            .into_iter()
+            .collect()
     }
 }
 
 impl DeserializeJWK for HmacKey {
-    fn build(
-        parameters: BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         let key_data = parameters
             .get("k")
             .ok_or(crate::key::JsonWebKeyError::MissingParameter("k"))?
@@ -155,18 +155,18 @@ impl<D> JWKeyType for Hmac<D> {
 }
 
 impl<D> SerializeJWK for Hmac<D> {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        vec![(
+    fn parameters(&self) -> Parameters {
+        [(
             "k".to_string(),
             serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key.key)),
         )]
+        .into_iter()
+        .collect()
     }
 }
 
 impl<D> DeserializeJWK for Hmac<D> {
-    fn build(
-        parameters: BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         let key = HmacKey::build(parameters)?;
         Ok(Self::new(key))
     }
@@ -183,6 +183,15 @@ impl<D> Keypair for Hmac<D> {
 impl<D> From<Hmac<D>> for HmacKey {
     fn from(value: Hmac<D>) -> Self {
         value.key
+    }
+}
+
+impl<D> From<HmacKey> for Hmac<D> {
+    fn from(value: HmacKey) -> Self {
+        Self {
+            key: value,
+            _digest: PhantomData,
+        }
     }
 }
 

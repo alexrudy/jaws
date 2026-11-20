@@ -16,9 +16,13 @@ use serde::{
 use signature::Keypair;
 
 mod jwk;
+mod jws;
 mod restricted;
 
+use crate::algorithms::AlgorithmIdentifier;
+
 pub use self::jwk::{PrivateWebKey, PublicWebKey, SigningWebKey, VerifyingWebKey};
+pub use self::jws::JwkSet;
 pub use self::restricted::{Restricted, RestrictedAlgorithmError};
 
 /// Error when building or deserializing a JWK.
@@ -52,6 +56,10 @@ pub enum JsonWebKeyError {
     /// Unsupported key type error
     #[error("unsupported key type: {0}")]
     UnsupportedKeyType(String),
+
+    /// Unsupported algorithm error
+    #[error("unsupported algorithm: {0:?}")]
+    UnsupportedAlgorithm(AlgorithmIdentifier),
 }
 
 /// Trait for keys which can be used as a JWK.
@@ -83,16 +91,102 @@ where
     }
 }
 
+/// A map of parameters to be serialized in the JWK.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Parameters(BTreeMap<String, serde_json::Value>);
+
+impl Parameters {
+    /// Returns a new, empty `Parameters` map.
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    /// Returns the number of parameters in the map.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Inserts a parameter into the map.
+    pub fn insert<V: Serialize>(
+        &mut self,
+        key: impl Into<String>,
+        value: V,
+    ) -> Result<(), serde_json::Error> {
+        self.0.insert(key.into(), serde_json::to_value(value)?);
+        Ok(())
+    }
+
+    /// Returns a reference to the value for the given key, if it exists.
+    pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
+        self.0.get(key)
+    }
+
+    /// Removes a parameter from the map, returning the value if it exists.
+    pub fn remove(&mut self, key: &str) -> Option<serde_json::Value> {
+        self.0.remove(key)
+    }
+
+    /// Returns an iterator over the parameters in the map.
+    pub fn iter(&self) -> ParametersIter<'_> {
+        ParametersIter {
+            iter: self.0.iter(),
+        }
+    }
+}
+
+impl FromIterator<(String, serde_json::Value)> for Parameters {
+    fn from_iter<T: IntoIterator<Item = (String, serde_json::Value)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl IntoIterator for Parameters {
+    type Item = (String, serde_json::Value);
+    type IntoIter = std::collections::btree_map::IntoIter<String, serde_json::Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Extend<(String, serde_json::Value)> for Parameters {
+    fn extend<T: IntoIterator<Item = (String, serde_json::Value)>>(&mut self, iter: T) {
+        for (key, value) in iter {
+            self.0.insert(key, value);
+        }
+    }
+}
+
+/// Iterator over the parameters in a [`Parameters`] map.
+#[derive(Debug, Clone)]
+pub struct ParametersIter<'p> {
+    iter: std::collections::btree_map::Iter<'p, String, serde_json::Value>,
+}
+
+impl<'p> Iterator for ParametersIter<'p> {
+    type Item = (&'p str, &'p serde_json::Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(k, v)| (k.as_str(), v))
+    }
+}
+
 /// Trait for keys which can be serialized as a JWK.
 pub trait SerializeJWK: DynJwkKeyType {
     /// Return a list of parameters to be serialized in the JWK.
-    fn parameters(&self) -> Vec<(String, serde_json::Value)>;
+    fn parameters(&self) -> Parameters;
 }
 
 /// Trait for keys which can be serialized as a public JWK.
 pub trait SerializePublicJWK: DynJwkKeyType {
     /// Return a list of parameters to be serialized in the JWK.
-    fn public_parameters(&self) -> Vec<(String, serde_json::Value)>;
+    fn public_parameters(&self) -> Parameters;
 }
 
 impl<K> SerializePublicJWK for K
@@ -100,7 +194,7 @@ where
     K: Keypair + DynJwkKeyType,
     K::VerifyingKey: SerializeJWK,
 {
-    fn public_parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn public_parameters(&self) -> Parameters {
         self.verifying_key().parameters()
     }
 }
@@ -108,12 +202,14 @@ where
 /// Trait for keys which can be deserialized from a JWK.
 pub trait DeserializeJWK: DynJwkKeyType + Sized {
     /// From a set of parameters, build a key.
-    fn build(parameters: BTreeMap<String, serde_json::Value>) -> Result<Self, JsonWebKeyError>;
+    fn build(parameters: Parameters) -> Result<Self, JsonWebKeyError>;
 
     /// Build a concrete key type from [`JsonWebKey`].
     fn from_jwk(jwk: &JsonWebKey) -> Result<Self, JsonWebKeyError> {
         let mut parameters = jwk.parameters().clone();
-        parameters.insert("kty".into(), jwk.key_type().into());
+        parameters
+            .insert("kty", jwk.key_type())
+            .expect("kty is valid JSON");
 
         match Self::build(parameters) {
             Ok(key) => {
@@ -156,10 +252,7 @@ where
     Key: SerializePublicJWK + ?Sized,
 {
     fn derive_from_key(key: &Key) -> Result<Self, JsonWebKeyError> {
-        Ok(JsonWebKey {
-            key_type: key.key_type().into(),
-            parameters: key.public_parameters().into_iter().collect(),
-        })
+        Ok(JsonWebKey::build_public(key))
     }
 }
 
@@ -172,12 +265,17 @@ pub struct JsonWebKey {
     key_type: String,
 
     #[serde(flatten)]
-    parameters: BTreeMap<String, serde_json::Value>,
+    parameters: Parameters,
 }
 
 impl JsonWebKey {
     /// Create a new JWK from a key type and parameters.
-    pub fn new(key_type: String, parameters: BTreeMap<String, serde_json::Value>) -> Self {
+    pub fn new(key_type: String, parameters: Parameters) -> Self {
+        assert!(
+            !parameters.iter().any(|(k, _)| k == "kty"),
+            "parameters must not contain 'kty' key"
+        );
+
         Self {
             key_type,
             parameters,
@@ -188,7 +286,11 @@ impl JsonWebKey {
     pub fn build_public<K: SerializePublicJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
             key_type: key.key_type().into(),
-            parameters: key.public_parameters().into_iter().collect(),
+            parameters: key
+                .public_parameters()
+                .into_iter()
+                .filter(|(k, _)| k != "kty")
+                .collect(),
         }
     }
 
@@ -196,7 +298,11 @@ impl JsonWebKey {
     pub fn build<K: SerializeJWK + ?Sized>(key: &K) -> Self {
         JsonWebKey {
             key_type: key.key_type().into(),
-            parameters: key.parameters().into_iter().collect(),
+            parameters: key
+                .parameters()
+                .into_iter()
+                .filter(|(k, _)| k != "kty")
+                .collect(),
         }
     }
 
@@ -206,7 +312,7 @@ impl JsonWebKey {
     }
 
     /// Get the parameters of this JWK.
-    pub fn parameters(&self) -> &BTreeMap<String, serde_json::Value> {
+    pub fn parameters(&self) -> &Parameters {
         &self.parameters
     }
 
@@ -235,17 +341,13 @@ impl Serialize for JsonWebKey {
     {
         // JWKs must serialize keys in alphabetical order.
 
-        let mut entries = self
-            .parameters
-            .iter()
-            .map(|(key, value)| (key.as_str(), value))
-            .collect::<BTreeMap<_, _>>();
+        let mut entries = self.parameters.clone();
         let kty = serde_json::Value::String(self.key_type.clone());
-        entries.insert("kty", &kty);
+        entries.insert("kty", &kty).expect("kty is valid JSON");
 
         let mut map = serializer.serialize_map(Some(entries.len()))?;
         for (key, value) in entries {
-            map.serialize_entry(key, value)?;
+            map.serialize_entry(&key, &value)?;
         }
         map.end()
     }

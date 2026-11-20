@@ -3,7 +3,7 @@ use crate::{
     SignatureBytes, TokenSigner, TokenVerifier,
 };
 
-use super::{DynJwkKeyType, SerializeJWK, SerializePublicJWK};
+use super::{DynJwkKeyType, Parameters, SerializeJWK, SerializePublicJWK};
 
 /// Error when an algorithm is not allowed by the restricted key.
 #[derive(Debug, Clone)]
@@ -119,7 +119,7 @@ impl<K> SerializeJWK for Restricted<K>
 where
     K: SerializeJWK,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.key.parameters()
     }
 }
@@ -128,7 +128,7 @@ impl<K> SerializePublicJWK for Restricted<K>
 where
     K: SerializePublicJWK,
 {
-    fn public_parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn public_parameters(&self) -> Parameters {
         self.key.public_parameters()
     }
 }

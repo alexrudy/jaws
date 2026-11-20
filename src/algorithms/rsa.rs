@@ -16,8 +16,6 @@
 //!
 //! Use [rsa::pss::BlindedSigningKey] to sign tokens, and [rsa::pss::VerifyingKey] to verify tokens.
 
-use std::collections::BTreeMap;
-
 use base64ct::{Base64UrlUnpadded, Encoding};
 use pkcs8::AssociatedOid;
 use rsa::traits::PrivateKeyParts;
@@ -31,6 +29,7 @@ pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
 use crate::key::DeserializeJWK;
+use crate::key::Parameters;
 #[cfg(feature = "pss")]
 use crate::SignatureBytes;
 
@@ -39,13 +38,13 @@ impl crate::key::JWKeyType for rsa::PublicKey {
 }
 
 impl crate::key::SerializeJWK for rsa::PublicKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        let mut params = Vec::with_capacity(2);
+    fn parameters(&self) -> Parameters {
+        let mut params = Parameters::new();
 
         let n = Base64UrlUnpadded::encode_string(&self.n().to_be_bytes_trimmed_vartime());
-        params.push(("n".to_owned(), n.into()));
+        params.insert("n", n).expect("n is valid JSON");
         let e = Base64UrlUnpadded::encode_string(&self.e().to_be_bytes_trimmed_vartime());
-        params.push(("e".to_owned(), e.into()));
+        params.insert("e", e).expect("e is valid JSON");
 
         params
     }
@@ -65,7 +64,7 @@ fn to_biguint(v: &serde_json::Value) -> Option<BoxedUint> {
 }
 
 fn rsa_key_parameter(
-    parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+    parameters: &Parameters,
     name: &'static str,
 ) -> Result<BoxedUint, crate::key::JsonWebKeyError> {
     let val = parameters
@@ -75,9 +74,7 @@ fn rsa_key_parameter(
 }
 
 impl crate::key::DeserializeJWK for rsa::PublicKey {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError>
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError>
     where
         Self: Sized,
     {
@@ -94,14 +91,16 @@ impl crate::key::JWKeyType for rsa::PrivateKey {
 }
 
 impl crate::key::SerializeJWK for rsa::PrivateKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         fn from_biguint(n: &BoxedUint) -> String {
             let bytes = n.to_be_bytes_trimmed_vartime();
             Base64UrlUnpadded::encode_string(&bytes)
         }
 
         let mut params = self.to_public_key().parameters();
-        params.push(("d".into(), from_biguint(self.d()).into()));
+        params
+            .insert("d", from_biguint(self.d()))
+            .expect("d is valid JSON");
 
         let mut additional_params = Vec::new();
         let mut primes = self.primes().iter();
@@ -147,14 +146,12 @@ impl crate::key::SerializeJWK for rsa::PrivateKey {
 }
 
 impl DeserializeJWK for PrivateKey {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError>
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError>
     where
         Self: Sized,
     {
         fn validate_key_parameter(
-            parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+            parameters: &Parameters,
             name: &'static str,
             precomputed: Option<&BoxedUint>,
         ) -> Result<(), crate::key::JsonWebKeyError> {
@@ -212,7 +209,7 @@ impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::SigningKey<D>
 where
     D: digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.as_ref().parameters()
     }
 }
@@ -221,9 +218,7 @@ impl<D> crate::key::DeserializeJWK for rsa::pkcs1v15::SigningKey<D>
 where
     D: digest::Digest + AssociatedOid,
 {
-    fn build(
-        parameters: BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         rsa::PrivateKey::build(parameters).map(Into::into)
     }
 }
@@ -239,7 +234,7 @@ impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::VerifyingKey<D>
 where
     D: digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.as_ref().parameters()
     }
 }
@@ -248,9 +243,7 @@ impl<D> crate::key::DeserializeJWK for rsa::pkcs1v15::VerifyingKey<D>
 where
     D: digest::Digest + AssociatedOid,
 {
-    fn build(
-        parameters: BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         rsa::PublicKey::build(parameters).map(Into::into)
     }
 }
@@ -282,7 +275,7 @@ impl<D> crate::key::SerializeJWK for rsa::pss::VerifyingKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.as_ref().parameters()
     }
 }
@@ -291,9 +284,7 @@ impl<D> crate::key::DeserializeJWK for rsa::pss::VerifyingKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn build(
-        parameters: BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
         rsa::PublicKey::build(parameters).map(Into::into)
     }
 }
@@ -374,7 +365,7 @@ impl<D> crate::key::SerializeJWK for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.as_ref().to_public_key().parameters()
     }
 }
@@ -384,9 +375,7 @@ impl<D> crate::key::DeserializeJWK for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError>
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError>
     where
         Self: Sized,
     {

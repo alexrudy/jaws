@@ -155,7 +155,7 @@ where
     fn parameters(&self) -> Parameters {
         let mut params = Parameters::new();
 
-        params.insert("crv", &C::CRV).expect("crv is valid JSON");
+        params.insert("crv", C::CRV).expect("crv is valid JSON");
         let point = self.to_sec1_point(false);
         let Coordinates::Uncompressed { x, y } = point.coordinates() else {
             panic!("can't extract jwk coordinates from compressed or compact field points")
@@ -443,15 +443,15 @@ impl Keypair for JWEcSigningKey {
         match self {
             #[cfg(feature = "p256")]
             JWEcSigningKey::P256(signing_key) => {
-                JWEcVerifyingKey::P256(signing_key.verifying_key().clone())
+                JWEcVerifyingKey::P256(*signing_key.verifying_key())
             }
             #[cfg(feature = "p384")]
             JWEcSigningKey::P384(signing_key) => {
-                JWEcVerifyingKey::P384(signing_key.verifying_key().clone())
+                JWEcVerifyingKey::P384(*signing_key.verifying_key())
             }
             #[cfg(feature = "p521")]
             JWEcSigningKey::P521(signing_key) => {
-                JWEcVerifyingKey::P521(signing_key.verifying_key().clone())
+                JWEcVerifyingKey::P521(*signing_key.verifying_key())
             }
         }
     }

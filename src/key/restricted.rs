@@ -41,10 +41,7 @@ impl<K> Restricted<K> {
     pub fn all(key: K) -> Self {
         Self {
             key,
-            allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
-                .iter()
-                .copied()
-                .collect(),
+            allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS.to_vec(),
         }
     }
 

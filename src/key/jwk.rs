@@ -168,15 +168,15 @@ impl PrivateWebKey {
             (Self::Rsa(k), AlgorithmIdentifier::RS512) => Ok(SigningWebKey::RS512(k.into())),
             #[cfg(all(feature = "ecdsa", feature = "p256"))]
             (Self::EcDsa(JWEcSigningKey::P256(k)), AlgorithmIdentifier::ES256) => {
-                Ok(SigningWebKey::ES256(k.into()))
+                Ok(SigningWebKey::ES256(k))
             }
             #[cfg(all(feature = "ecdsa", feature = "p384"))]
             (Self::EcDsa(JWEcSigningKey::P384(k)), AlgorithmIdentifier::ES384) => {
-                Ok(SigningWebKey::ES384(k.into()))
+                Ok(SigningWebKey::ES384(k))
             }
             #[cfg(all(feature = "ecdsa", feature = "p521"))]
             (Self::EcDsa(JWEcSigningKey::P521(k)), AlgorithmIdentifier::ES512) => {
-                Ok(SigningWebKey::ES512(k.into()))
+                Ok(SigningWebKey::ES512(k))
             }
             #[cfg(feature = "none")]
             (_, AlgorithmIdentifier::None) => Ok(SigningWebKey::None),
@@ -422,15 +422,15 @@ impl PublicWebKey {
             (Self::Rsa(k), AlgorithmIdentifier::RS512) => Ok(VerifyingWebKey::RS512(k.into())),
             #[cfg(all(feature = "ecdsa", feature = "p256"))]
             (Self::EcDsa(JWEcVerifyingKey::P256(k)), AlgorithmIdentifier::ES256) => {
-                Ok(VerifyingWebKey::ES256(k.into()))
+                Ok(VerifyingWebKey::ES256(k))
             }
             #[cfg(all(feature = "ecdsa", feature = "p384"))]
             (Self::EcDsa(JWEcVerifyingKey::P384(k)), AlgorithmIdentifier::ES384) => {
-                Ok(VerifyingWebKey::ES384(k.into()))
+                Ok(VerifyingWebKey::ES384(k))
             }
             #[cfg(all(feature = "ecdsa", feature = "p521"))]
             (Self::EcDsa(JWEcVerifyingKey::P521(k)), AlgorithmIdentifier::ES512) => {
-                Ok(VerifyingWebKey::ES512(k.into()))
+                Ok(VerifyingWebKey::ES512(k))
             }
 
             #[allow(unreachable_patterns)]
@@ -774,15 +774,15 @@ impl Keypair for SigningWebKey {
             }
             #[cfg(all(feature = "ecdsa", feature = "p256"))]
             SigningWebKey::ES256(signing_key) => {
-                VerifyingWebKey::ES256(signing_key.verifying_key().clone())
+                VerifyingWebKey::ES256(*signing_key.verifying_key())
             }
             #[cfg(all(feature = "ecdsa", feature = "p384"))]
             SigningWebKey::ES384(signing_key) => {
-                VerifyingWebKey::ES384(signing_key.verifying_key().clone())
+                VerifyingWebKey::ES384(*signing_key.verifying_key())
             }
             #[cfg(all(feature = "ecdsa", feature = "p521"))]
             SigningWebKey::ES512(signing_key) => {
-                VerifyingWebKey::ES512(signing_key.verifying_key().clone())
+                VerifyingWebKey::ES512(*signing_key.verifying_key())
             }
             #[cfg(feature = "pss")]
             SigningWebKey::PS256(signing_key) => {
@@ -1192,6 +1192,6 @@ mod serde_keys {
         D: de::Deserializer<'de>,
     {
         let parameters: Parameters = de::Deserialize::deserialize(deserializer)?;
-        Ok(T::build(parameters).map_err(de::Error::custom)?)
+        T::build(parameters).map_err(de::Error::custom)
     }
 }

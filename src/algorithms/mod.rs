@@ -85,6 +85,18 @@ pub mod hmac;
 #[cfg(feature = "rsa")]
 pub mod rsa;
 
+/// The identifiers used in JWA to indicate the digest algorithm used for signing or encryption.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum DigestIdentifier {
+    /// SHA-256
+    Sha256,
+    /// SHA-384
+    Sha384,
+    /// SHA-512
+    Sha512,
+}
+
 /// The identifiers used in JWA to indicate how a JWS or JWE is signed or encrypted.
 ///
 /// This is the list of standard identifiers defined in [RFC 7518](https://tools.ietf.org/html/rfc7518#section-3.1).
@@ -104,7 +116,7 @@ pub enum AlgorithmIdentifier {
     /// RSA PKCS#1 v1.5 signature using SHA-256
     RS256,
 
-    /// RSA PKCS#1 v1.5 signature using SHA-348
+    /// RSA PKCS#1 v1.5 signature using SHA-384
     RS384,
 
     /// RSA PKCS#1 v1.5 signature using SHA-512
@@ -146,10 +158,88 @@ impl AlgorithmIdentifier {
             Self::RS256 | Self::RS384 | Self::RS512 => cfg!(feature = "rsa"),
             Self::ES256 | Self::ES384 | Self::ES512 => cfg!(feature = "ecdsa"),
             Self::EdDSA => false, //TODO: implement cfg!(feature = "ed25519"),
-            Self::PS256 | Self::PS384 | Self::PS512 => cfg!(feature = "rsa"),
+            Self::PS256 | Self::PS384 | Self::PS512 => cfg!(feature = "pss"),
+        }
+    }
+
+    /// Return whether this algorithm is asymmetric
+    pub fn is_asymmetric(&self) -> bool {
+        matches!(
+            self,
+            Self::RS256
+                | Self::RS384
+                | Self::RS512
+                | Self::ES256
+                | Self::ES384
+                | Self::ES512
+                | Self::EdDSA
+        )
+    }
+
+    /// Return whether this algorithm uses a MAC (Hash-based Message Authentication Code)
+    pub fn is_mac(&self) -> bool {
+        matches!(self, Self::HS256 | Self::HS384 | Self::HS512)
+    }
+
+    /// The digest algorithm used for signing or encryption.
+    pub fn digest_algorithm(&self) -> Option<DigestIdentifier> {
+        match self {
+            Self::HS256 | Self::RS256 | Self::ES256 | Self::PS256 => Some(DigestIdentifier::Sha256),
+            Self::HS384 | Self::RS384 | Self::ES384 | Self::PS384 => Some(DigestIdentifier::Sha384),
+            Self::HS512 | Self::RS512 | Self::ES512 | Self::PS512 => Some(DigestIdentifier::Sha512),
+            _ => None,
         }
     }
 }
+
+/// All JWS algorithms.
+pub const ALL_ALGORITHMS: &[AlgorithmIdentifier] = &[
+    AlgorithmIdentifier::HS256,
+    AlgorithmIdentifier::HS384,
+    AlgorithmIdentifier::HS512,
+    AlgorithmIdentifier::RS256,
+    AlgorithmIdentifier::RS384,
+    AlgorithmIdentifier::RS512,
+    AlgorithmIdentifier::ES256,
+    AlgorithmIdentifier::ES384,
+    AlgorithmIdentifier::ES512,
+    AlgorithmIdentifier::EdDSA,
+    AlgorithmIdentifier::PS256,
+    AlgorithmIdentifier::PS384,
+    AlgorithmIdentifier::PS512,
+    AlgorithmIdentifier::None,
+];
+
+/// All JWS algorithms that are available with the enabled features.
+pub const AVAILABLE_ALGORITHMS: &[AlgorithmIdentifier] = &[
+    #[cfg(feature = "hmac")]
+    AlgorithmIdentifier::HS256,
+    #[cfg(feature = "hmac")]
+    AlgorithmIdentifier::HS384,
+    #[cfg(feature = "hmac")]
+    AlgorithmIdentifier::HS512,
+    #[cfg(feature = "rsa")]
+    AlgorithmIdentifier::RS256,
+    #[cfg(feature = "rsa")]
+    AlgorithmIdentifier::RS384,
+    #[cfg(feature = "rsa")]
+    AlgorithmIdentifier::RS512,
+    #[cfg(feature = "ecdsa")]
+    AlgorithmIdentifier::ES256,
+    #[cfg(feature = "ecdsa")]
+    AlgorithmIdentifier::ES384,
+    #[cfg(feature = "ecdsa")]
+    AlgorithmIdentifier::ES512,
+    #[cfg(feature = "ed25519")]
+    AlgorithmIdentifier::EdDSA,
+    #[cfg(feature = "pss")]
+    AlgorithmIdentifier::PS256,
+    #[cfg(feature = "pss")]
+    AlgorithmIdentifier::PS384,
+    #[cfg(feature = "pss")]
+    AlgorithmIdentifier::PS512,
+    AlgorithmIdentifier::None,
+];
 
 /// A trait to associate an alogritm identifier with an algorithm.
 ///
@@ -211,7 +301,7 @@ where
     ///
     /// To sign a token, use the [`Token::sign`](crate::token::Token::sign) method, which provides the correct wrapping
     /// and format to produce a signed JWT.
-    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, sig::Error>;
+    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. See [`TokenSigner::try_sign_token`] for more details.
@@ -227,11 +317,11 @@ where
 impl<K, S> TokenSigner<S> for K
 where
     K: JsonWebAlgorithmDigest + SerializePublicJWK,
-    K: sig::DigestSigner<K::Digest, S>,
+    K: signature::DigestSigner<K::Digest, S>,
     K::Digest: digest::Update,
     S: SignatureEncoding,
 {
-    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, sig::Error> {
+    fn try_sign_token(&self, header: &str, payload: &str) -> Result<S, signature::Error> {
         self.try_sign_digest(|digest| {
             digest.update(header.as_bytes());
             digest.update(b".");
@@ -272,7 +362,7 @@ where
         header: &str,
         payload: &str,
         rng: &mut impl TryCryptoRng,
-    ) -> Result<S, sig::Error>;
+    ) -> Result<S, signature::Error>;
 
     /// Sign the contents of the JWT, when provided with the base64url-encoded header
     /// and payload. See [`RandomizedTokenSigner::try_sign_token`] for more details.
@@ -308,13 +398,13 @@ where
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<S, sig::Error>;
+    ) -> Result<S, signature::Error>;
 }
 
 impl<K, S> TokenVerifier<S> for K
 where
     K: JsonWebAlgorithmDigest + std::fmt::Debug,
-    K: sig::DigestVerifier<K::Digest, S>,
+    K: signature::DigestVerifier<K::Digest, S>,
     K::Digest: digest::Update + Digest + Clone + std::fmt::Debug,
     S: SignatureEncoding + std::fmt::Debug,
     for<'a> <S as TryFrom<&'a [u8]>>::Error: std::error::Error + Send + Sync + 'static,
@@ -324,8 +414,10 @@ where
         header: &[u8],
         payload: &[u8],
         signature: &[u8],
-    ) -> Result<S, sig::Error> {
-        let signature = signature.try_into().map_err(sig::Error::from_source)?;
+    ) -> Result<S, signature::Error> {
+        let signature = signature
+            .try_into()
+            .map_err(signature::Error::from_source)?;
 
         self.verify_digest(
             |digest| {

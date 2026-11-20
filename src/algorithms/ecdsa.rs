@@ -396,6 +396,9 @@ jose_ecdsa_algorithm!(ES256, NistP256, "P-256");
 #[cfg(feature = "p384")]
 jose_ecdsa_algorithm!(ES384, NistP384, "P-384");
 
+#[cfg(feature = "p521")]
+jose_ecdsa_algorithm!(ES512, NistP521, "P-521");
+
 #[cfg(all(test, feature = "p256"))]
 mod test {
 

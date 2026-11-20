@@ -16,19 +16,22 @@
 //!
 //! Use [rsa::pss::BlindedSigningKey] to sign tokens, and [rsa::pss::VerifyingKey] to verify tokens.
 
+use std::collections::BTreeMap;
+
 use base64ct::{Base64UrlUnpadded, Encoding};
+use pkcs8::AssociatedOid;
 use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::BoxedUint;
 use rsa::PrivateKey;
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 use signature::RandomizedDigestSigner;
 
 pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
 use crate::key::DeserializeJWK;
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 use crate::SignatureBytes;
 
 impl crate::key::JWKeyType for rsa::PublicKey {
@@ -210,7 +213,18 @@ where
     D: digest::Digest,
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.as_ref().to_public_key().parameters()
+        self.as_ref().parameters()
+    }
+}
+
+impl<D> crate::key::DeserializeJWK for rsa::pkcs1v15::SigningKey<D>
+where
+    D: digest::Digest + AssociatedOid,
+{
+    fn build(
+        parameters: BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        rsa::PrivateKey::build(parameters).map(Into::into)
     }
 }
 
@@ -227,6 +241,17 @@ where
 {
     fn parameters(&self) -> Vec<(String, serde_json::Value)> {
         self.as_ref().parameters()
+    }
+}
+
+impl<D> crate::key::DeserializeJWK for rsa::pkcs1v15::VerifyingKey<D>
+where
+    D: digest::Digest + AssociatedOid,
+{
+    fn build(
+        parameters: BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        rsa::PublicKey::build(parameters).map(Into::into)
     }
 }
 
@@ -262,7 +287,18 @@ where
     }
 }
 
-#[cfg(feature = "rand")]
+impl<D> crate::key::DeserializeJWK for rsa::pss::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn build(
+        parameters: BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self, crate::key::JsonWebKeyError> {
+        rsa::PublicKey::build(parameters).map(Into::into)
+    }
+}
+
+#[cfg(feature = "pss")]
 impl<D> crate::key::JWKeyType for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
@@ -270,7 +306,7 @@ where
     const KEY_TYPE: &'static str = "RSA";
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 macro_rules! rsa_pss_algorithm {
     ($alg:ident, $digest:ty) => {
         impl $crate::algorithms::JsonWebAlgorithm for rsa::pss::SigningKey<$digest> {
@@ -326,14 +362,14 @@ macro_rules! rsa_pss_algorithm {
     };
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 rsa_pss_algorithm!(PS256, sha2::Sha256);
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 rsa_pss_algorithm!(PS384, sha2::Sha384);
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 rsa_pss_algorithm!(PS512, sha2::Sha512);
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<D> crate::key::SerializeJWK for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
@@ -343,7 +379,7 @@ where
     }
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<D> crate::key::DeserializeJWK for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
@@ -360,7 +396,7 @@ where
     }
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<S, D> crate::algorithms::RandomizedTokenSigner<S> for rsa::pss::SigningKey<D>
 where
     D: digest::Digest + digest::Update,
@@ -383,7 +419,7 @@ where
     }
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<S, D> crate::algorithms::TokenVerifier<S> for rsa::pss::VerifyingKey<D>
 where
     D: digest::Digest + digest::Update,
@@ -547,7 +583,7 @@ mod test {
     rsa_pkcs1v15_algorithm_test!(rs384_algorithm, sha2::Sha384);
     rsa_pkcs1v15_algorithm_test!(rs512_algorithm, sha2::Sha512);
 
-    #[cfg(feature = "rand")]
+    #[cfg(feature = "pss")]
     mod pss {
         use rand::rngs::SysRng;
         use serde_json::json;

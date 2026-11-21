@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## [2.2.0](https://github.com/alexrudy/jaws/compare/v2.1.0...v2.2.0) - 2026-11-21
+
+### Added
+
+- JWK Set skips unknown/invalid keys
+
+### Other
+
+- Merge pull request #72 from alexrudy/feature/skip-jwks-invalid
+- Update JWKSet docs
+
 ## [2.1.0](https://github.com/alexrudy/jaws/compare/v2.0.1...v2.1.0) - 2026-11-21
 
 - Support for JSON Web Key Sets (RFC 7517)

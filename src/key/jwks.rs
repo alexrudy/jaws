@@ -1,14 +1,19 @@
 //! JSON Web Key Set
 
-use std::ops::Deref;
+use std::{borrow::Cow, marker::PhantomData, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
 use super::Identified;
 
 /// A set of JSON Web Keys.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// This type is a wrapper around a [`Vec`] of [`Identified`] keys.
+/// When deserialized, keys that fail to deserialize are skipped,
+/// as specified by RFC 7517.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JwkSet<K> {
+    /// The keys in the set.
     keys: Vec<Identified<K>>,
 }
 
@@ -19,6 +24,102 @@ impl<K> JwkSet<K> {
             .iter()
             .find(|k| k.id.as_deref() == Some(id))
             .map(|k| &k.key)
+    }
+}
+
+impl<K> Default for JwkSet<K> {
+    fn default() -> Self {
+        Self { keys: Vec::new() }
+    }
+}
+
+impl<'de, K> Deserialize<'de> for JwkSet<K>
+where
+    K: for<'k> Deserialize<'k>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        /// Unit type wrapper for deserializing a sequence of keys
+        /// skipping keys that fail to deserialize.
+        struct JWKSKeys<K>(Vec<Identified<K>>);
+
+        impl<'de, K> Deserialize<'de> for JWKSKeys<K>
+        where
+            K: for<'k> Deserialize<'k>,
+        {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                /// Visitor for deserializing a sequence of keys
+                /// skipping keys that fail to deserialize.
+                struct JWKSKeysVisitor<K>(PhantomData<K>);
+
+                impl<'de, K> serde::de::Visitor<'de> for JWKSKeysVisitor<K>
+                where
+                    K: for<'k> Deserialize<'k>,
+                {
+                    type Value = JWKSKeys<K>;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        formatter.write_str("a list of JWK keys")
+                    }
+
+                    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                    where
+                        A: serde::de::SeqAccess<'de>,
+                    {
+                        let mut keys = Vec::new();
+                        loop {
+                            match seq.next_element() {
+                                Ok(Some(key)) => keys.push(key),
+                                Ok(None) => break,
+                                Err(e) => {
+                                    // Ignore unknown/undeserialiable keys according to RFC 7517
+                                    tracing::warn!("Skipping failed key in JWKS: {}", e);
+                                }
+                            }
+                        }
+                        Ok(JWKSKeys(keys))
+                    }
+                }
+
+                deserializer.deserialize_seq(JWKSKeysVisitor(PhantomData))
+            }
+        }
+
+        /// Visit the {'keys':...} structure of a JWKS,
+        /// using a [`JWKSKeysVisitor`] to deserialize the sequence of keys.
+        struct JWKSVisitor<K>(PhantomData<K>);
+
+        impl<'de, K> serde::de::Visitor<'de> for JWKSVisitor<K>
+        where
+            K: for<'k> Deserialize<'k>,
+        {
+            type Value = JwkSet<K>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a JWK set")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<Cow<'de, str>>()? {
+                    if key == "keys" {
+                        let JWKSKeys(keys) = map.next_value()?;
+                        return Ok(JwkSet { keys });
+                    }
+                }
+
+                Err(serde::de::Error::custom("JWKS must contain a 'keys' field"))
+            }
+        }
+
+        deserializer.deserialize_struct("JWKSet", &["keys"], JWKSVisitor(PhantomData))
     }
 }
 
@@ -33,6 +134,12 @@ impl<K> FromIterator<Identified<K>> for JwkSet<K> {
 impl<K> From<Vec<Identified<K>>> for JwkSet<K> {
     fn from(keys: Vec<Identified<K>>) -> Self {
         Self { keys }
+    }
+}
+
+impl<K> From<JwkSet<K>> for Vec<Identified<K>> {
+    fn from(jwk_set: JwkSet<K>) -> Self {
+        jwk_set.keys
     }
 }
 
@@ -216,15 +323,19 @@ mod roundtrip_tests {
     }
 
     #[test]
-    fn key_set_rejects_malformed_keys() {
-        assert!(
+    fn key_set_skips_malformed_keys() {
+        assert_eq!(
             serde_json::from_value::<JwkSet<PublicWebKey>>(json!({"keys": [{"kid": "x"}]}))
-                .is_err()
+                .unwrap(),
+            JwkSet::default()
         );
-        assert!(serde_json::from_value::<JwkSet<PublicWebKey>>(
-            json!({"keys": [{"kty": "banana", "kid": "x"}]})
-        )
-        .is_err());
+        assert_eq!(
+            serde_json::from_value::<JwkSet<PublicWebKey>>(
+                json!({"keys": [{"kty": "banana", "kid": "x"}]})
+            )
+            .unwrap(),
+            JwkSet::default()
+        );
     }
 }
 

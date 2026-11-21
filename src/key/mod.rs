@@ -690,7 +690,7 @@ impl<Digest> std::ops::Deref for Thumbprint<Digest> {
 }
 
 /// An identified key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Identified<Key> {
     /// The key itself.
     #[serde(flatten)]

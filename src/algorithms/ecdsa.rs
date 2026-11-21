@@ -395,7 +395,7 @@ jose_ecdsa_algorithm!(ES384, NistP384, "P-384");
 jose_ecdsa_algorithm!(ES512, NistP521, "P-521");
 
 /// Represents an ECDSA signing key for use with JWE.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SigningKey {
     /// A signing key for use with JWE and the NIST P-256 curve.
@@ -520,7 +520,7 @@ impl crate::algorithms::TokenSigner for SigningKey {
 }
 
 /// Represents an ECDSA verifying key for use with JWE.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum VerifyingKey {
     /// A verifying key for use with JWE and the NIST P-256 curve.

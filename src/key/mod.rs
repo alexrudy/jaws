@@ -33,6 +33,7 @@ pub use self::restricted::{Restricted, RestrictedAlgorithmError};
 
 /// Error when building or deserializing a JWK.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum JsonWebKeyError {
     /// JSON errors which occur while building a JWK
     #[error(transparent)]

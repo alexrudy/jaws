@@ -37,16 +37,8 @@ pub struct Restricted<K> {
 }
 
 impl<K> Restricted<K> {
-    /// Creates a K that allows all available algorithms.
+    /// Creates a K that allows all available algorithms except `None`.
     pub fn all(key: K) -> Self {
-        Self {
-            key,
-            allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS.to_vec(),
-        }
-    }
-
-    /// Creates a K that excludes the `None` algorithm.
-    pub fn except_none(key: K) -> Self {
         Self {
             key,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
@@ -54,6 +46,14 @@ impl<K> Restricted<K> {
                 .copied()
                 .filter(|a| *a != AlgorithmIdentifier::None)
                 .collect(),
+        }
+    }
+
+    /// Creates a K that allows all available algorithms, including `None`.
+    pub fn insecure(key: K) -> Self {
+        Self {
+            key,
+            allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS.to_vec(),
         }
     }
 

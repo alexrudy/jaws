@@ -1034,6 +1034,7 @@ pub enum VerifyingWebKey {
     EdDSA,
 
     #[cfg(feature = "none")]
+    #[serde(rename = "none")]
     /// No signature
     None,
 }

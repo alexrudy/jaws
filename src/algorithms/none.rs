@@ -54,6 +54,10 @@ impl TokenVerifier for NoneAlgorithm {
         payload: &[u8],
         signature: &[u8],
     ) -> Result<SignatureBytes, signature::Error> {
+        if !signature.is_empty() {
+            return Err(signature::Error::new());
+        }
+
         Ok(super::SignatureBytes::from(Bytes::new()))
     }
 }
@@ -97,6 +101,12 @@ mod tests {
         let result = algorithm.try_sign_token(header, payload);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_bytes(), Bytes::new());
+
+        let result = algorithm.verify_token(header.as_bytes(), payload.as_bytes(), &[]);
+        assert!(result.is_ok());
+
+        let non_empty_result = algorithm.verify_token(header.as_bytes(), payload.as_bytes(), &[0]);
+        assert!(non_empty_result.is_err());
     }
 
     #[test]

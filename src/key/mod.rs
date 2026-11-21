@@ -289,12 +289,28 @@ impl<'p> Iterator for ParametersIter<'p> {
 pub trait SerializeJWK: DynJwkKeyType {
     /// Return a list of parameters to be serialized in the JWK.
     fn parameters(&self) -> Parameters;
+
+    /// Serialize this key as a JWK.
+    fn to_jwk(&self) -> Result<JsonWebKey, JsonWebKeyError> {
+        Ok(JsonWebKey {
+            key_type: self.key_type().to_string(),
+            parameters: self.parameters(),
+        })
+    }
 }
 
 /// Trait for keys which can be serialized as a public JWK.
 pub trait SerializePublicJWK: DynJwkKeyType {
     /// Return a list of parameters to be serialized in the JWK.
     fn public_parameters(&self) -> Parameters;
+
+    /// Serialize this key as a public JWK.
+    fn to_public_jwk(&self) -> Result<JsonWebKey, JsonWebKeyError> {
+        Ok(JsonWebKey {
+            key_type: self.key_type().to_string(),
+            parameters: self.public_parameters(),
+        })
+    }
 }
 
 impl<K> SerializePublicJWK for K

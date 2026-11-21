@@ -367,7 +367,7 @@ where
     D: signature::digest::Digest,
 {
     fn parameters(&self) -> Parameters {
-        self.as_ref().to_public_key().parameters()
+        self.as_ref().parameters()
     }
 }
 
@@ -447,6 +447,7 @@ where
 mod test {
 
     use crate::key::DeserializeJWK;
+    use crate::key::SerializeJWK;
     use crate::SignatureBytes;
     use crate::TokenSigner;
 
@@ -565,6 +566,10 @@ mod test {
                     &algorithm.verifying_key(),
                 );
                 algorithm_roundtrip::<SignatureBytes>(&algorithm, &algorithm.verifying_key());
+
+                let key_r = algorithm.to_jwk().unwrap();
+                let key_b = rsa::pkcs1v15::SigningKey::<$digest>::from_jwk(&key_r).unwrap();
+                assert_eq!(key_b, algorithm);
             }
         };
     }
@@ -580,6 +585,8 @@ mod test {
         use signature::Keypair;
         use signature::SignatureEncoding;
 
+        use crate::key::DeserializeJWK;
+        use crate::key::SerializeJWK;
         use crate::SignatureBytes;
 
         fn algorithm_roundtrip<S>(
@@ -619,6 +626,10 @@ mod test {
                         &algorithm.verifying_key(),
                     );
                     algorithm_roundtrip::<SignatureBytes>(&algorithm, &algorithm.verifying_key());
+
+                    let key_r = algorithm.to_jwk().unwrap();
+                    let key_b = rsa::pss::SigningKey::<$digest>::from_jwk(&key_r).unwrap();
+                    assert_eq!(key_b, algorithm);
                 }
             };
         }

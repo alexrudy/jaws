@@ -40,6 +40,7 @@ sha1 = "0.11"
 sha2 = "0.11"
 signature = { version = "3.0", features = ["digest", "alloc"] }
 spki = { version = "0.8", optional = true, features = ["alloc"] }
+tracing = "0.1"
 thiserror = "2"
 url = { version = "2.5", features = ["serde"] }
 zeroize = { version = "1.9", features = ["serde", "derive"] }

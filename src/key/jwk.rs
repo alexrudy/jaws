@@ -277,7 +277,7 @@ impl DeserializeJWK for PrivateWebKey {
 }
 
 /// A concrete key type that can be used to sign JWTs
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[non_exhaustive]
 #[serde(tag = "kty")]
 pub enum PublicWebKey {

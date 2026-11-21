@@ -2,33 +2,19 @@
 
 ## Unreleased
 
-## [3.0.0](https://github.com/alexrudy/jaws/compare/v2.0.1...v3.0.0) - 2026-11-21
+## [2.1.0](https://github.com/alexrudy/jaws/compare/v2.0.1...v2.1.0) - 2026-11-21
 
-### Other
+- Support for JSON Web Key Sets (RFC 7517)
+- PrivateJWKey and PublicJWKey types to represent JWKs
+- SigningJWKey and VerifyingJWKey types to represent JWKs with signature algorithms
+- Better types for algorithms, key types, and SHA algorithms
+- Support for the `none` algorithm for JWS
 
-- Update requirements so they don't pin patch versions
-- Make more enums non-exhaustive
-- Make JWK error non exhaustive
-- [tests] Round trip for all key types
-- [minor] Cleanup fixes
-- [bugfix] Serialize EC `d` parameter correctly
-- [bugfix] Make pss keys roundtrip JWK
-- [bugfix] Include PSS algorithms in `is_asymmetric`
-- [bugfix] Insecure JWS handling
-- [bugfix] JWK deserialize_key needs kty
-- [bugfix] Support deserializing KeyType from String
-- [bugfix] `supports_algorithm` respects EC curve in key.
-- [bugfix] Support PSS algorithms in `into_algorithm()`
-- [bugfix] Duplicate `kty` field
-- [bugfix] HMAC Key parameters format
-- Move off of clippy action
-- Clippy
-- Support for the "none" algorithm
-- Support for JWKey Sets
-- Split key module
-- Make keys into a module
-- Key support via PublicJWKey and PrivateJWKey for algorithm-independent
-- Adds support for enum-dispatch WebKey types
+### Bugfixes
+- EC keys serialize `d` correctly
+- PSS private keys correctly include private parameters
+- HMAC Key serializes octets correctly
+- JWK Error is now `#[non_exhaustive]`
 
 ## [2.0.1](https://github.com/alexrudy/jaws/compare/v2.0.0...v2.0.1) - 2026-11-10
 

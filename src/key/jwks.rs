@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use super::Identified;
 
 /// A set of JSON Web Keys.
+///
+/// This type is a wrapper around a [`Vec`] of [`Identified`] keys.
+/// When deserialized, keys that fail to deserialize are skipped,
+/// as specified by RFC 7517.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JwkSet<K> {
     /// The keys in the set.

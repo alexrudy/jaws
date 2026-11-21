@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## [3.0.0](https://github.com/alexrudy/jaws/compare/v2.0.1...v3.0.0) - 2026-11-21
+
+### Other
+
+- [tests] Round trip for all key types
+- [minor] Cleanup fixes
+- [bugfix] Serialize EC `d` parameter correctly
+- [bugfix] Make pss keys roundtrip JWK
+- [bugfix] Include PSS algorithms in `is_asymmetric`
+- [bugfix] Insecure JWS handling
+- [bugfix] JWK deserialize_key needs kty
+- [bugfix] Support deserializing KeyType from String
+- [bugfix] `supports_algorithm` respects EC curve in key.
+- [bugfix] Support PSS algorithms in `into_algorithm()`
+- [bugfix] Duplicate `kty` field
+- [bugfix] HMAC Key parameters format
+- Move off of clippy action
+- Clippy
+- Support for the "none" algorithm
+- Support for JWKey Sets
+- Split key module
+- Make keys into a module
+- Key support via PublicJWKey and PrivateJWKey for algorithm-independent
+- Adds support for enum-dispatch WebKey types
+
 ## [2.0.1](https://github.com/alexrudy/jaws/compare/v2.0.0...v2.0.1) - 2026-11-10
 
 ### Other

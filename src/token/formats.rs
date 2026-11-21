@@ -62,6 +62,7 @@ pub struct Flat;
 /// This error can occur when serializing the header or payload, or
 /// when writing to the writer.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TokenFormattingError {
     /// An error occured while serailizing the header or payload.
     /// This indicates that something is probably wrong with your
@@ -78,6 +79,7 @@ pub enum TokenFormattingError {
 ///
 /// This error can occur when deserializing the header or payload
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TokenParseError {
     /// Unable to find the header in the raw data.
     #[error("missing header")]

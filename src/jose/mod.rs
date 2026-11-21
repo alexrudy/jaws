@@ -49,6 +49,7 @@ pub trait HeaderState {
 
 /// Error when constructing a JOSE header.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum HeaderError {
     /// A reserved header key was used as a custom header.
     #[error("Key {0} is reserved for registered headers")]

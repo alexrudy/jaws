@@ -622,7 +622,6 @@ mod test {
         SignatureBytes,
     };
 
-    use serde_json::json;
     use static_assertions as sa;
 
     sa::assert_impl_all!(::ecdsa::SigningKey<NistP256>: TokenSigner<ecdsa::Signature<NistP256>>, SerializeJWK);
@@ -634,13 +633,7 @@ mod test {
 
     #[test]
     fn rfc7515_example_a3_signature() {
-        let pkey = json!({
-            "kty":"EC",
-            "crv":"P-256",
-            "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
-            "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-            "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
-        });
+        let pkey = crate::key::fixtures::rfc7515_a3();
 
         let key = ::ecdsa::SigningKey::from_value(pkey).unwrap();
         let ec_jwk = key.to_jwk().unwrap();
@@ -686,6 +679,7 @@ mod test {
             #[test]
             fn $name() {
                 use ecdsa::elliptic_curve::common::Generate;
+                use serde_json::json;
                 let key =
                     ::ecdsa::SigningKey::<$curve>::try_generate_from_rng(&mut rand::rngs::SysRng)
                         .unwrap();
@@ -729,4 +723,329 @@ mod test {
 
     #[cfg(feature = "p521")]
     ecdsa_algorithm_test!(p521_roundtrip, NistP521);
+}
+
+#[cfg(all(test, feature = "ecdsa"))]
+mod jwk_tests {
+    use super::*;
+    use crate::key::fixtures;
+    use serde_json::json;
+
+    /// The number of bytes in the base64url-decoded value of a JWK member.
+    fn decoded_len(value: Option<&serde_json::Value>) -> usize {
+        Base64Url::decode_vec(value.unwrap().as_str().unwrap())
+            .unwrap()
+            .len()
+    }
+
+    /// Tests which run for each curve.
+    macro_rules! curve_tests {
+        ($module:ident, $feature:literal, $curve:ty, $crv:literal, $alg:ident, $variant:ident, $size:literal, $fixture:ident) => {
+            #[cfg(feature = $feature)]
+            mod $module {
+                use super::*;
+
+                fn key() -> ::ecdsa::SigningKey<$curve> {
+                    fixtures::$fixture()
+                }
+
+                #[test]
+                fn signing_key_jwk_roundtrip() {
+                    let key = key();
+                    let jwk = key.to_jwk().unwrap();
+
+                    assert_eq!(jwk.key_type(), "EC");
+                    assert_eq!(jwk.parameters().get("crv"), Some(&json!($crv)));
+
+                    let back = ::ecdsa::SigningKey::<$curve>::from_jwk(&jwk).unwrap();
+                    assert_eq!(back, key);
+                }
+
+                #[test]
+                fn jwk_members_are_full_length() {
+                    // RFC 7518 section 6.2: coordinates and the private scalar are
+                    // fixed-length octet strings, even with leading zeros. Use plenty
+                    // of keys to make a stripped leading zero likely to show up.
+                    for _ in 0..64 {
+                        let jwk = key().to_jwk().unwrap();
+                        for member in ["x", "y", "d"] {
+                            assert_eq!(
+                                decoded_len(jwk.parameters().get(member)),
+                                $size,
+                                "{member} is the wrong length"
+                            );
+                        }
+                    }
+                }
+
+                #[test]
+                fn verifying_key_jwk_roundtrip() {
+                    let key = key();
+                    let verifying = *key.verifying_key();
+
+                    let jwk = verifying.to_jwk().unwrap();
+                    assert_eq!(jwk.key_type(), "EC");
+                    assert!(jwk.parameters().get("d").is_none());
+                    assert_eq!(jwk.parameters().len(), 3, "crv, x and y");
+
+                    let back = ::ecdsa::VerifyingKey::<$curve>::from_jwk(&jwk).unwrap();
+                    assert_eq!(back, verifying);
+
+                    // The public members match those of the signing key.
+                    let private = key.to_jwk().unwrap();
+                    for member in ["crv", "x", "y"] {
+                        assert_eq!(
+                            jwk.parameters().get(member),
+                            private.parameters().get(member)
+                        );
+                    }
+                }
+
+                #[test]
+                fn elliptic_curve_keys_jwk_roundtrip() {
+                    let key = key();
+
+                    let secret = ::elliptic_curve::SecretKey::<$curve>::from(&key);
+                    let back =
+                        ::elliptic_curve::SecretKey::<$curve>::from_jwk(&secret.to_jwk().unwrap())
+                            .unwrap();
+                    assert_eq!(back.parameters(), secret.parameters());
+                    assert_eq!(secret.parameters(), key.parameters());
+
+                    let public = ::elliptic_curve::PublicKey::<$curve>::from(key.verifying_key());
+                    let back =
+                        ::elliptic_curve::PublicKey::<$curve>::from_jwk(&public.to_jwk().unwrap())
+                            .unwrap();
+                    assert_eq!(back, public);
+                    assert_eq!(public.parameters(), key.verifying_key().parameters());
+                }
+
+                #[test]
+                fn enum_signing_key_jwk_roundtrip() {
+                    let key = key();
+                    let signing = SigningKey::from(key.clone());
+
+                    assert_eq!(signing.identifier(), AlgorithmIdentifier::$alg);
+                    assert_eq!(signing.parameters(), key.parameters());
+
+                    let back = SigningKey::from_jwk(&signing.to_jwk().unwrap()).unwrap();
+                    assert!(matches!(back, SigningKey::$variant(_)));
+                    assert_eq!(back, signing);
+                }
+
+                #[test]
+                fn enum_verifying_key_jwk_roundtrip() {
+                    let key = key();
+                    let verifying = SigningKey::from(key.clone()).verifying_key();
+
+                    assert_eq!(verifying.identifier(), AlgorithmIdentifier::$alg);
+                    assert_eq!(verifying, VerifyingKey::from(*key.verifying_key()));
+                    assert_eq!(verifying.parameters(), key.verifying_key().parameters());
+
+                    let back = VerifyingKey::from_jwk(&verifying.to_jwk().unwrap()).unwrap();
+                    assert!(matches!(back, VerifyingKey::$variant(_)));
+                    assert_eq!(back, verifying);
+                }
+
+                #[test]
+                fn enum_keys_reject_other_curves() {
+                    let jwk = key().to_jwk().unwrap();
+
+                    for other in ["P-256", "P-384", "P-521"] {
+                        if other == $crv {
+                            continue;
+                        }
+
+                        let mut parameters = jwk.parameters().clone();
+                        parameters.insert("kty", "EC");
+                        parameters.insert("crv", other);
+                        assert!(
+                            SigningKey::build(parameters.clone()).is_err(),
+                            "{} key accepted as {other}",
+                            $crv
+                        );
+
+                        parameters.remove("d");
+                        assert!(
+                            VerifyingKey::build(parameters).is_err(),
+                            "{} key accepted as {other}",
+                            $crv
+                        );
+                    }
+                }
+            }
+        };
+    }
+
+    curve_tests!(curve_p256, "p256", NistP256, "P-256", ES256, P256, 32, ec_p256);
+    curve_tests!(curve_p384, "p384", NistP384, "P-384", ES384, P384, 48, ec_p384);
+    curve_tests!(curve_p521, "p521", NistP521, "P-521", ES512, P521, 66, ec_p521);
+
+    /// Tests which use the key from RFC 7515, appendix A.3.
+    #[cfg(feature = "p256")]
+    mod rfc7515_a3 {
+        use super::*;
+        use crate::key::JsonWebKeyError;
+
+        fn jwk() -> serde_json::Value {
+            fixtures::rfc7515_a3()
+        }
+
+        fn without(member: &str) -> serde_json::Value {
+            let mut value = jwk();
+            value.as_object_mut().unwrap().remove(member);
+            value
+        }
+
+        fn with(member: &str, replacement: serde_json::Value) -> serde_json::Value {
+            let mut value = jwk();
+            value[member] = replacement;
+            value
+        }
+
+        #[test]
+        fn private_key_serializes_unchanged() {
+            let key = ::ecdsa::SigningKey::<NistP256>::from_value(jwk()).unwrap();
+            let serialized = key.to_jwk().unwrap();
+
+            let mut expected = jwk();
+            expected.as_object_mut().unwrap().remove("kty");
+            assert_eq!(
+                serde_json::to_value(serialized.parameters()).unwrap(),
+                expected
+            );
+        }
+
+        #[test]
+        fn public_key_serializes_unchanged() {
+            let key = ::ecdsa::VerifyingKey::<NistP256>::from_value(jwk()).unwrap();
+            let serialized = key.to_jwk().unwrap();
+
+            let mut expected = jwk();
+            let object = expected.as_object_mut().unwrap();
+            object.remove("kty");
+            object.remove("d");
+            assert_eq!(
+                serde_json::to_value(serialized.parameters()).unwrap(),
+                expected
+            );
+        }
+
+        #[test]
+        fn enum_keys_deserialize() {
+            let signing = SigningKey::from_value(jwk()).unwrap();
+            assert!(matches!(signing, SigningKey::P256(_)));
+
+            let verifying = VerifyingKey::from_value(jwk()).unwrap();
+            assert!(matches!(verifying, VerifyingKey::P256(_)));
+
+            assert_eq!(signing.verifying_key(), verifying);
+        }
+
+        #[test]
+        fn missing_members_are_rejected() {
+            for member in ["crv", "x", "y"] {
+                assert!(
+                    ::ecdsa::VerifyingKey::<NistP256>::from_value(without(member)).is_err(),
+                    "verifying key without {member}"
+                );
+                assert!(
+                    VerifyingKey::from_value(without(member)).is_err(),
+                    "verifying key enum without {member}"
+                );
+            }
+
+            for member in ["crv", "x", "y", "d"] {
+                assert!(
+                    ::ecdsa::SigningKey::<NistP256>::from_value(without(member)).is_err(),
+                    "signing key without {member}"
+                );
+                assert!(
+                    SigningKey::from_value(without(member)).is_err(),
+                    "signing key enum without {member}"
+                );
+            }
+        }
+
+        #[test]
+        fn enum_keys_report_missing_crv() {
+            assert!(matches!(
+                SigningKey::from_value(without("crv")),
+                Err(JsonWebKeyError::MissingParameter("crv"))
+            ));
+            assert!(matches!(
+                VerifyingKey::from_value(without("crv")),
+                Err(JsonWebKeyError::MissingParameter("crv"))
+            ));
+        }
+
+        #[test]
+        fn unknown_curves_are_rejected() {
+            for crv in ["secp256k1", "P-192", "p-256", ""] {
+                assert!(
+                    SigningKey::from_value(with("crv", json!(crv))).is_err(),
+                    "signing key accepted crv {crv:?}"
+                );
+                assert!(
+                    VerifyingKey::from_value(with("crv", json!(crv))).is_err(),
+                    "verifying key accepted crv {crv:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn malformed_members_are_rejected() {
+            for member in ["x", "y", "d"] {
+                for bad in [json!(1), json!(null), json!("!!!"), json!(""), json!("AQ")] {
+                    assert!(
+                        ::ecdsa::SigningKey::<NistP256>::from_value(with(member, bad.clone()))
+                            .is_err(),
+                        "signing key accepted {member}={bad}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn point_off_the_curve_is_rejected() {
+            // Swap the coordinates: still valid base64url of the right length, but
+            // no longer on the curve.
+            let mut swapped = jwk();
+            swapped["x"] = jwk()["y"].clone();
+            swapped["y"] = jwk()["x"].clone();
+
+            assert!(::ecdsa::VerifyingKey::<NistP256>::from_value(swapped.clone()).is_err());
+            assert!(VerifyingKey::from_value(swapped).is_err());
+        }
+
+        #[test]
+        fn zero_private_scalar_is_rejected() {
+            let zero = Base64Url::encode_string(&[0u8; 32]);
+            assert!(::ecdsa::SigningKey::<NistP256>::from_value(with("d", json!(zero))).is_err());
+        }
+
+        #[test]
+        fn other_key_types_are_rejected() {
+            for kty in ["RSA", "oct", "OKP"] {
+                let err = ::ecdsa::SigningKey::<NistP256>::from_value(with("kty", json!(kty)))
+                    .unwrap_err();
+                assert!(
+                    matches!(err, JsonWebKeyError::KeyType { .. }),
+                    "{kty}: {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn unrelated_members_are_ignored() {
+            let mut value = jwk();
+            let object = value.as_object_mut().unwrap();
+            object.insert("kid".into(), json!("abc"));
+            object.insert("use".into(), json!("sig"));
+            object.insert("alg".into(), json!("ES256"));
+
+            assert!(::ecdsa::SigningKey::<NistP256>::from_value(value.clone()).is_ok());
+            assert!(VerifyingKey::from_value(value).is_ok());
+        }
+    }
 }

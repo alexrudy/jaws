@@ -19,6 +19,12 @@ mod jwk;
 mod jwks;
 mod restricted;
 
+#[cfg(test)]
+pub(crate) mod fixtures;
+
+#[cfg(all(test, any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
+mod web_key_tests;
+
 use crate::algorithms::AlgorithmIdentifier;
 
 pub use self::jwk::{PrivateWebKey, PublicWebKey, SigningWebKey, VerifyingWebKey};
@@ -212,10 +218,43 @@ where
     }
 }
 
+/// JWK members which hold secret key material, for any key type.
+///
+/// These are never printed by the [`Debug`](fmt::Debug) implementation of [`Parameters`].
+const SECRET_MEMBERS: &[&str] = &["d", "p", "q", "dp", "dq", "qi", "oth", "k"];
+
 /// A map of parameters to be serialized in the JWK.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Parameters can hold private key material. The [`Debug`](fmt::Debug) implementation
+/// redacts the members which are secret for any key type (`d`, `p`, `q`, `dp`, `dq`,
+/// `qi`, `oth` and `k`).
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Parameters(BTreeMap<String, serde_json::Value>);
+
+impl fmt::Debug for Parameters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct Redacted<'p>(&'p BTreeMap<String, serde_json::Value>);
+
+        impl fmt::Debug for Redacted<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let mut map = f.debug_map();
+                for (name, value) in self.0 {
+                    if SECRET_MEMBERS.contains(&name.as_str()) {
+                        map.entry(name, &format_args!("<redacted>"));
+                    } else {
+                        map.entry(name, value);
+                    }
+                }
+                map.finish()
+            }
+        }
+
+        f.debug_tuple("Parameters")
+            .field(&Redacted(&self.0))
+            .finish()
+    }
+}
 
 impl Parameters {
     /// Returns a new, empty `Parameters` map.
@@ -485,6 +524,19 @@ impl Serialize for JsonWebKey {
     }
 }
 
+/// The members of a JWK, other than `kty`, which are hashed to compute its thumbprint.
+///
+/// See [RFC 7638, section 3.2](https://tools.ietf.org/html/rfc7638#section-3.2).
+fn thumbprint_members(key_type: &str) -> Option<&'static [&'static str]> {
+    match key_type {
+        "oct" => Some(&["k"]),
+        "RSA" => Some(&["e", "n"]),
+        "EC" => Some(&["crv", "x", "y"]),
+        "OKP" => Some(&["crv", "x"]),
+        _ => None,
+    }
+}
+
 /// A computed thumbprint.
 #[derive(Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Thumbprint<Digest> {
@@ -527,9 +579,39 @@ where
         }
     }
 
-    /// Compute the thumbprint of a JWK.
+    /// Compute the thumbprint of a JWK, as defined by [RFC 7638][RFC7638].
+    ///
+    /// Only the members which are required for the key type are hashed (`k` for
+    /// `oct`, `e` and `n` for `RSA`, `crv`, `x` and `y` for `EC`, and `crv` and `x`
+    /// for `OKP`), along with `kty`. Any other member, such as `kid`, `alg` or
+    /// the private members of a private key, does not affect the thumbprint. A
+    /// public key and its private key therefore have the same thumbprint.
+    ///
+    /// [RFC7638]: https://tools.ietf.org/html/rfc7638
     pub fn from_jwk(jwk: &JsonWebKey) -> Result<Self, JsonWebKeyError> {
-        let thumb = serde_json::to_vec(&jwk)?;
+        let members = thumbprint_members(jwk.key_type())
+            .ok_or_else(|| JsonWebKeyError::UnsupportedKeyType(jwk.key_type().to_owned()))?;
+
+        // A `BTreeMap` serializes its members in lexicographic order, with no
+        // whitespace, as the RFC requires.
+        let mut required: BTreeMap<&str, serde_json::Value> = BTreeMap::new();
+        required.insert("kty", jwk.key_type().into());
+        for &name in members {
+            let value = jwk
+                .parameters()
+                .get(name)
+                .ok_or(JsonWebKeyError::MissingParameter(name))?;
+
+            if !value.is_string() {
+                return Err(JsonWebKeyError::InvalidKey(
+                    name,
+                    "thumbprint members must be strings".into(),
+                ));
+            }
+            required.insert(name, value.clone());
+        }
+
+        let thumb = serde_json::to_vec(&required)?;
 
         let mut hasher = Digest::new();
         hasher.update(&thumb);
@@ -626,6 +708,514 @@ mod test {
     use static_assertions as sa;
 
     sa::assert_obj_safe!(SerializeJWK);
+
+    use super::fixtures;
+    use crate::algorithms::ALL_ALGORITHMS;
+    use serde_json::json;
+
+    const KEY_TYPES: [(KeyType, &str); 4] = [
+        (KeyType::Octet, "oct"),
+        (KeyType::Rsa, "RSA"),
+        (KeyType::EllipticCurve, "EC"),
+        (KeyType::OctetPairs, "OKP"),
+    ];
+
+    #[test]
+    fn key_type_string_forms() {
+        for (key_type, name) in KEY_TYPES {
+            assert_eq!(key_type.as_str(), name);
+            assert_eq!(key_type.to_string(), name);
+            assert_eq!(String::from(key_type), name);
+            assert_eq!(serde_json::Value::from(key_type), json!(name));
+
+            assert_eq!(name.parse::<KeyType>().unwrap(), key_type);
+            assert_eq!(KeyType::try_from(name).unwrap(), key_type);
+            assert_eq!(KeyType::try_from(name.to_owned()).unwrap(), key_type);
+        }
+    }
+
+    #[test]
+    fn key_type_serde_roundtrip() {
+        for (key_type, name) in KEY_TYPES {
+            assert_eq!(serde_json::to_value(key_type).unwrap(), json!(name));
+            assert_eq!(
+                serde_json::to_string(&key_type).unwrap(),
+                format!("\"{name}\"")
+            );
+
+            // Borrowed and owned inputs go through different serde paths.
+            let from_str: KeyType = serde_json::from_str(&format!("\"{name}\"")).unwrap();
+            assert_eq!(from_str, key_type);
+            let from_value: KeyType = serde_json::from_value(json!(name)).unwrap();
+            assert_eq!(from_value, key_type);
+        }
+    }
+
+    #[test]
+    fn key_type_rejects_unknown_names() {
+        for name in ["", "rsa", "ec", "OCT", "okp", "banana", "RSA "] {
+            assert!(name.parse::<KeyType>().is_err(), "{name:?}");
+            assert!(
+                serde_json::from_value::<KeyType>(json!(name)).is_err(),
+                "{name:?}"
+            );
+        }
+
+        assert!(serde_json::from_value::<KeyType>(json!(1)).is_err());
+        assert!(serde_json::from_value::<KeyType>(json!(null)).is_err());
+    }
+
+    #[test]
+    fn key_type_is_supported_follows_features() {
+        assert_eq!(KeyType::Octet.is_supported(), cfg!(feature = "hmac"));
+        assert_eq!(KeyType::Rsa.is_supported(), cfg!(feature = "rsa"));
+        assert_eq!(
+            KeyType::EllipticCurve.is_supported(),
+            cfg!(feature = "ecdsa")
+        );
+        assert_eq!(
+            KeyType::OctetPairs.is_supported(),
+            cfg!(feature = "ed25519")
+        );
+    }
+
+    #[test]
+    fn key_type_supports_the_algorithms_of_its_keys() {
+        for f in fixtures::private_keys() {
+            let key_type = f.key.key_type();
+            assert_eq!(key_type.as_str(), f.kty, "{}", f.label);
+
+            for alg in &f.algorithms {
+                assert!(key_type.supports_alg(alg), "{}: {alg:?}", f.label);
+
+                for (other, _) in KEY_TYPES.iter().filter(|(k, _)| *k != key_type) {
+                    assert!(
+                        !other.supports_alg(alg),
+                        "{}: {other:?} should not support {alg:?}",
+                        f.label
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn no_key_type_supports_none() {
+        for (key_type, _) in KEY_TYPES {
+            assert!(!key_type.supports_alg(&AlgorithmIdentifier::None));
+        }
+    }
+
+    #[test]
+    fn each_algorithm_has_one_key_type() {
+        for alg in ALL_ALGORITHMS
+            .iter()
+            .filter(|a| **a != AlgorithmIdentifier::None)
+        {
+            let supporting: Vec<_> = KEY_TYPES
+                .iter()
+                .filter(|(k, _)| k.supports_alg(alg))
+                .collect();
+            assert_eq!(supporting.len(), 1, "{alg:?}: {supporting:?}");
+        }
+    }
+
+    #[test]
+    fn parameters_behave_like_a_map() {
+        let mut parameters = Parameters::new();
+        assert!(parameters.is_empty());
+
+        parameters.insert("b", "two");
+        parameters.insert("a", 1);
+        parameters.insert(String::from("c"), KeyType::Rsa);
+        assert_eq!(parameters.len(), 3);
+        assert_eq!(parameters.get("a"), Some(&json!(1)));
+        assert_eq!(parameters.get("c"), Some(&json!("RSA")));
+        assert_eq!(parameters.get("missing"), None);
+
+        // Inserting replaces.
+        parameters.insert("a", "one");
+        assert_eq!(parameters.len(), 3);
+        assert_eq!(parameters.get("a"), Some(&json!("one")));
+
+        // Iteration is alphabetical.
+        let keys: Vec<_> = parameters.iter().map(|(k, _)| k).collect();
+        assert_eq!(keys, ["a", "b", "c"]);
+
+        assert_eq!(parameters.remove("b"), Some(json!("two")));
+        assert_eq!(parameters.remove("b"), None);
+        assert_eq!(parameters.len(), 2);
+
+        parameters.extend([("z".to_owned(), json!(true))]);
+        let collected: Parameters = parameters.clone().into_iter().collect();
+        assert_eq!(collected, parameters);
+    }
+
+    #[test]
+    fn parameters_serialize_as_a_plain_object() {
+        let mut parameters = Parameters::new();
+        parameters.insert("b", "two");
+        parameters.insert("a", 1);
+
+        let value = serde_json::to_value(&parameters).unwrap();
+        assert_eq!(value, json!({"a": 1, "b": "two"}));
+
+        let back: Parameters = serde_json::from_value(value).unwrap();
+        assert_eq!(back, parameters);
+
+        assert!(serde_json::from_value::<Parameters>(json!([1, 2])).is_err());
+    }
+
+    #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+    #[test]
+    fn json_web_key_serde_roundtrip() {
+        for f in fixtures::private_keys() {
+            for (kind, jwk) in [
+                ("private", JsonWebKey::build(&f.key)),
+                ("public", JsonWebKey::build(&f.public())),
+            ] {
+                let label = format!("{} {kind}", f.label);
+                assert_eq!(jwk.key_type(), f.kty, "{label}");
+                assert!(jwk.parameters().get("kty").is_none(), "{label}");
+
+                let rendered = serde_json::to_string(&jwk).unwrap();
+                assert_eq!(
+                    rendered.matches("\"kty\"").count(),
+                    1,
+                    "{label}: {rendered}"
+                );
+
+                let back: JsonWebKey = serde_json::from_str(&rendered).unwrap();
+                assert_eq!(back.key_type(), f.kty, "{label}");
+                assert_eq!(back.parameters(), jwk.parameters(), "{label}");
+                assert_eq!(serde_json::to_string(&back).unwrap(), rendered, "{label}");
+            }
+        }
+    }
+
+    #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+    #[test]
+    fn json_web_key_build_public_drops_private_members() {
+        for f in fixtures::private_keys()
+            .into_iter()
+            .filter(|f| !f.is_symmetric())
+        {
+            let jwk = JsonWebKey::build_public(&f.key);
+
+            for member in fixtures::PRIVATE_MEMBERS {
+                assert!(
+                    jwk.parameters().get(member).is_none(),
+                    "{}: {member}",
+                    f.label
+                );
+            }
+
+            // Same thing as building from the public key.
+            let from_public = JsonWebKey::build(&f.public());
+            assert_eq!(jwk.parameters(), from_public.parameters(), "{}", f.label);
+        }
+    }
+
+    #[test]
+    fn json_web_key_deserialize_key_checks_key_type() {
+        for f in fixtures::private_keys() {
+            let jwk = JsonWebKey::build(&f.key);
+
+            // The right type works...
+            assert!(
+                jwk.deserialize_key::<PrivateWebKey>().is_ok(),
+                "{}",
+                f.label
+            );
+
+            // ...but a key type that disagrees with the JWK's `kty` does not.
+            #[cfg(feature = "hmac")]
+            if f.kty != "oct" {
+                assert!(
+                    jwk.deserialize_key::<crate::algorithms::hmac::HmacKey>()
+                        .is_err(),
+                    "{}",
+                    f.label
+                );
+            }
+            #[cfg(feature = "rsa")]
+            if f.kty != "RSA" {
+                assert!(
+                    jwk.deserialize_key::<::rsa::PublicKey>().is_err(),
+                    "{}",
+                    f.label
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn json_web_key_parses_arbitrary_members() {
+        let jwk: JsonWebKey = serde_json::from_value(json!({
+            "kty": "oct",
+            "k": "AQID",
+            "kid": "abc",
+            "use": "sig",
+            "custom": {"nested": [1, 2, 3]},
+        }))
+        .unwrap();
+
+        assert_eq!(jwk.key_type(), "oct");
+        assert_eq!(jwk.parameters().len(), 4);
+        assert_eq!(
+            jwk.parameters().get("custom"),
+            Some(&json!({"nested": [1, 2, 3]}))
+        );
+
+        // Unknown members survive a round trip.
+        let back: JsonWebKey = serde_json::from_value(serde_json::to_value(&jwk).unwrap()).unwrap();
+        assert_eq!(back.parameters(), jwk.parameters());
+    }
+
+    #[test]
+    fn json_web_key_requires_kty() {
+        assert!(serde_json::from_value::<JsonWebKey>(json!({"k": "AQID"})).is_err());
+        assert!(serde_json::from_value::<JsonWebKey>(json!({"kty": 1})).is_err());
+    }
+
+    #[test]
+    fn parameters_debug_redacts_secret_members() {
+        let mut parameters = Parameters::new();
+        for member in ["d", "p", "q", "dp", "dq", "qi", "oth", "k"] {
+            parameters.insert(member, "SECRET-VALUE");
+        }
+        parameters.insert("n", "PUBLIC-VALUE");
+        parameters.insert("kty", "RSA");
+
+        for rendered in [format!("{parameters:?}"), format!("{parameters:#?}")] {
+            assert!(!rendered.contains("SECRET-VALUE"), "{rendered}");
+            assert_eq!(rendered.matches("<redacted>").count(), 8, "{rendered}");
+
+            // Public members are still useful when debugging.
+            assert!(rendered.contains("PUBLIC-VALUE"), "{rendered}");
+            assert!(rendered.contains("RSA"), "{rendered}");
+        }
+    }
+
+    mod thumbprints {
+        use super::*;
+
+        use sha2::{Digest, Sha256};
+
+        fn thumbprint(jwk: &JsonWebKey) -> Thumbprint<Sha256> {
+            Thumbprint::from_jwk(jwk).unwrap()
+        }
+
+        /// The thumbprint of a canonical JSON string.
+        fn digest(canonical: &str) -> String {
+            base64ct::Base64UrlUnpadded::encode_string(&Sha256::digest(canonical.as_bytes()))
+        }
+
+        /// The RSA key from RFC 7638, section 3.1, without line wrapping.
+        fn rfc7638_n() -> String {
+            "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
+             VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6
+             4tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FD
+             W2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n9
+             1CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINH
+             aQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw"
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect()
+        }
+
+        fn rfc7638_jwk(extra: serde_json::Value) -> JsonWebKey {
+            let mut value = json!({"kty": "RSA", "n": rfc7638_n(), "e": "AQAB"});
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            serde_json::from_value(value).unwrap()
+        }
+
+        #[test]
+        fn rfc7638_example() {
+            // RFC 7638 section 3.1 lists the exact octets which are hashed...
+            let canonical = format!(r#"{{"e":"AQAB","kty":"RSA","n":"{}"}}"#, rfc7638_n());
+            assert_eq!(
+                digest(&canonical),
+                "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+            );
+
+            // ...and the thumbprint of the key is the digest of those octets.
+            let thumb = thumbprint(&rfc7638_jwk(json!({})));
+            assert_eq!(&*thumb, "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs");
+        }
+
+        #[test]
+        fn members_which_are_not_required_are_ignored() {
+            let plain = thumbprint(&rfc7638_jwk(json!({})));
+
+            let decorated = rfc7638_jwk(json!({
+                "kid": "2011-04-29",
+                "alg": "RS256",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "x5c": ["MIIB"],
+                "custom": {"nested": true},
+            }));
+            assert_eq!(thumbprint(&decorated), plain);
+        }
+
+        #[test]
+        fn required_members_are_hashed_in_lexicographic_order() {
+            let jwk: JsonWebKey = serde_json::from_value(json!({
+                "y": "y-value", "x": "x-value", "kty": "EC", "crv": "P-256", "kid": "ignored",
+            }))
+            .unwrap();
+            assert_eq!(
+                &*thumbprint(&jwk),
+                digest(r#"{"crv":"P-256","kty":"EC","x":"x-value","y":"y-value"}"#)
+            );
+
+            let jwk: JsonWebKey = serde_json::from_value(json!({
+                "kty": "oct", "k": "k-value", "alg": "HS256",
+            }))
+            .unwrap();
+            assert_eq!(&*thumbprint(&jwk), digest(r#"{"k":"k-value","kty":"oct"}"#));
+
+            let jwk: JsonWebKey = serde_json::from_value(json!({
+                "kty": "OKP", "x": "x-value", "crv": "Ed25519", "d": "ignored",
+            }))
+            .unwrap();
+            assert_eq!(
+                &*thumbprint(&jwk),
+                digest(r#"{"crv":"Ed25519","kty":"OKP","x":"x-value"}"#)
+            );
+        }
+
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        #[test]
+        fn private_and_public_keys_share_a_thumbprint() {
+            for f in fixtures::private_keys() {
+                let private = thumbprint(&JsonWebKey::build(&f.key));
+                let public = thumbprint(&JsonWebKey::build(&f.public()));
+                assert_eq!(private, public, "{}", f.label);
+
+                // Derived from the key directly, too.
+                let derived: Thumbprint<Sha256> = Thumbprint::derive_from_key(&f.key).unwrap();
+                assert_eq!(derived, public, "{}", f.label);
+            }
+        }
+
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        #[test]
+        fn algorithm_specific_keys_share_a_thumbprint() {
+            // `alg` is part of the JWK for signing and verifying keys, but not the thumbprint.
+            for f in fixtures::private_keys() {
+                let expected = thumbprint(&JsonWebKey::build(&f.public()));
+
+                for &alg in &f.algorithms {
+                    let signing = f.key.clone().into_algorithm(alg).unwrap();
+                    let verifying = f.public().into_algorithm(alg).unwrap();
+
+                    let label = format!("{} / {alg:?}", f.label);
+                    assert_eq!(
+                        thumbprint(&JsonWebKey::build(&signing)),
+                        expected,
+                        "{label}"
+                    );
+                    assert_eq!(
+                        thumbprint(&JsonWebKey::build(&verifying)),
+                        expected,
+                        "{label}"
+                    );
+                }
+            }
+        }
+
+        #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+        #[test]
+        fn different_keys_have_different_thumbprints() {
+            let keys = fixtures::private_keys();
+            let thumbprints: Vec<_> = keys
+                .iter()
+                .map(|f| thumbprint(&JsonWebKey::build(&f.public())))
+                .collect();
+
+            for (i, a) in thumbprints.iter().enumerate() {
+                for b in &thumbprints[i + 1..] {
+                    assert_ne!(a, b);
+                }
+            }
+        }
+
+        #[test]
+        fn digest_selects_the_thumbprint_length() {
+            let jwk = rfc7638_jwk(json!({}));
+
+            // Unpadded base64url of 20, 32 and 48 bytes.
+            assert_eq!(Thumbprint::<sha1::Sha1>::from_jwk(&jwk).unwrap().len(), 27);
+            assert_eq!(Thumbprint::<Sha256>::from_jwk(&jwk).unwrap().len(), 43);
+            assert_eq!(
+                Thumbprint::<sha2::Sha384>::from_jwk(&jwk).unwrap().len(),
+                64
+            );
+        }
+
+        #[test]
+        fn missing_required_members_are_an_error() {
+            for (kty, required) in [
+                ("oct", &["k"][..]),
+                ("RSA", &["e", "n"][..]),
+                ("EC", &["crv", "x", "y"][..]),
+                ("OKP", &["crv", "x"][..]),
+            ] {
+                let mut complete = json!({"kty": kty});
+                for member in required {
+                    complete[member] = json!("value");
+                }
+
+                let jwk: JsonWebKey = serde_json::from_value(complete.clone()).unwrap();
+                assert!(Thumbprint::<Sha256>::from_jwk(&jwk).is_ok(), "{kty}");
+
+                for &member in required {
+                    let mut value = complete.clone();
+                    value.as_object_mut().unwrap().remove(member);
+                    let jwk: JsonWebKey = serde_json::from_value(value).unwrap();
+
+                    let err = Thumbprint::<Sha256>::from_jwk(&jwk).unwrap_err();
+                    assert!(
+                        matches!(err, JsonWebKeyError::MissingParameter(m) if m == member),
+                        "{kty} without {member}: {err:?}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn required_members_must_be_strings() {
+            for bad in [json!(1), json!(null), json!(["AQAB"]), json!({"a": 1})] {
+                let jwk: JsonWebKey = serde_json::from_value(json!({
+                    "kty": "RSA", "n": rfc7638_n(), "e": bad,
+                }))
+                .unwrap();
+
+                let err = Thumbprint::<Sha256>::from_jwk(&jwk).unwrap_err();
+                assert!(
+                    matches!(err, JsonWebKeyError::InvalidKey("e", _)),
+                    "{bad}: {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn unknown_key_types_are_an_error() {
+            let jwk: JsonWebKey =
+                serde_json::from_value(json!({"kty": "banana", "k": "AQID"})).unwrap();
+
+            let err = Thumbprint::<Sha256>::from_jwk(&jwk).unwrap_err();
+            assert!(
+                matches!(err, JsonWebKeyError::UnsupportedKeyType(ref t) if t == "banana"),
+                "{err:?}"
+            );
+        }
+    }
 
     #[cfg(feature = "rsa")]
     mod rsa {

@@ -605,6 +605,7 @@ macro_rules! dispatch {
 /// A concrete key type that can be used to sign JWTs
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
+#[serde(tag = "alg")]
 pub enum SigningWebKey {
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-256
@@ -659,6 +660,7 @@ pub enum SigningWebKey {
     EdDSA,
 
     #[cfg(feature = "none")]
+    #[serde(rename = "none")]
     /// No signature
     None,
 }
@@ -1215,11 +1217,10 @@ mod serde_sigs {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rsa"))]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "rsa")]
     #[test]
     fn rsa_public_web_key_serde() {
         use rsa::Generate;
@@ -1238,7 +1239,6 @@ mod tests {
         assert!(jwk.contains_key("kty"), "expected kty field");
     }
 
-    #[cfg(feature = "rsa")]
     #[test]
     fn rsa_private_web_key_serde() {
         use rsa::Generate;

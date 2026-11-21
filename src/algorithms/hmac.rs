@@ -86,9 +86,12 @@ impl JWKeyType for HmacKey {
 
 impl SerializeJWK for HmacKey {
     fn parameters(&self) -> Parameters {
-        [("k".to_string(), serde_json::json!(self.key.clone()))]
-            .into_iter()
-            .collect()
+        [(
+            "k".to_string(),
+            serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key)),
+        )]
+        .into_iter()
+        .collect()
     }
 }
 
@@ -156,12 +159,7 @@ impl<D> JWKeyType for Hmac<D> {
 
 impl<D> SerializeJWK for Hmac<D> {
     fn parameters(&self) -> Parameters {
-        [(
-            "k".to_string(),
-            serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key.key)),
-        )]
-        .into_iter()
-        .collect()
+        self.key.parameters()
     }
 }
 

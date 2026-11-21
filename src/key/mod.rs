@@ -64,7 +64,7 @@ pub enum JsonWebKeyError {
 
 /// Returns the key type as a string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(into = "String", try_from = "&str")]
+#[serde(into = "String", try_from = "String")]
 #[non_exhaustive]
 pub enum KeyType {
     /// Octet key type
@@ -111,6 +111,14 @@ impl TryFrom<&str> for KeyType {
     type Error = UnknownKeyType;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl TryFrom<String> for KeyType {
+    type Error = UnknownKeyType;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
         s.parse()
     }
 }

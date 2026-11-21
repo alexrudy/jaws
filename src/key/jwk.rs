@@ -178,6 +178,12 @@ impl PrivateWebKey {
             (Self::EcDsa(JWEcSigningKey::P521(k)), AlgorithmIdentifier::ES512) => {
                 Ok(SigningWebKey::ES512(k))
             }
+            #[cfg(feature = "pss")]
+            (Self::Rsa(k), AlgorithmIdentifier::PS256) => Ok(SigningWebKey::PS256(k.into())),
+            #[cfg(feature = "pss")]
+            (Self::Rsa(k), AlgorithmIdentifier::PS384) => Ok(SigningWebKey::PS384(k.into())),
+            #[cfg(feature = "pss")]
+            (Self::Rsa(k), AlgorithmIdentifier::PS512) => Ok(SigningWebKey::PS512(k.into())),
             #[cfg(feature = "none")]
             (_, AlgorithmIdentifier::None) => Ok(SigningWebKey::None),
 
@@ -432,6 +438,12 @@ impl PublicWebKey {
             (Self::EcDsa(JWEcVerifyingKey::P521(k)), AlgorithmIdentifier::ES512) => {
                 Ok(VerifyingWebKey::ES512(k))
             }
+            #[cfg(feature = "pss")]
+            (Self::Rsa(k), AlgorithmIdentifier::PS256) => Ok(VerifyingWebKey::PS256(k.into())),
+            #[cfg(feature = "pss")]
+            (Self::Rsa(k), AlgorithmIdentifier::PS384) => Ok(VerifyingWebKey::PS384(k.into())),
+            #[cfg(feature = "pss")]
+            (Self::Rsa(k), AlgorithmIdentifier::PS512) => Ok(VerifyingWebKey::PS512(k.into())),
 
             #[allow(unreachable_patterns)]
             (_, alg) => Err(JsonWebKeyError::UnsupportedAlgorithm(alg)),

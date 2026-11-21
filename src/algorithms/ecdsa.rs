@@ -266,9 +266,9 @@ where
 {
     fn parameters(&self) -> Parameters {
         let mut parameters = self.public_key().parameters();
-        let d = self.to_sec1_der().expect("d is valid sec1 der");
+        let d = self.as_scalar_value();
         parameters
-            .insert("d", base64ct::Base64UrlUnpadded::encode_string(d.as_ref()))
+            .insert("d", Base64Url::encode_string(&d.to_bytes()))
             .expect("d is valid JSON");
 
         parameters
@@ -644,22 +644,16 @@ mod test {
     #[test]
     fn rfc7515_example_a3_signature() {
         let pkey = json!({
-        "kty":"EC",
-        "crv":"P-256",
-        "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
-        "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-        "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
+            "kty":"EC",
+            "crv":"P-256",
+            "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+            "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+            "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
         });
 
-        //TODO: elliptic_curve no longer provides JWK
-        // let ecpkey: elliptic_curve::JwkEcKey = serde_json::from_value(pkey.clone()).unwrap();
         let key = SigningKey::from_value(pkey).unwrap();
-
-        // assert_eq!(ecpkey.to_secret_key::<NistP256>().unwrap(), (&key).into());
-
-        let _point: Sec1Point<NistP256> = key.verifying_key().to_sec1_point(false);
-        // let ecpoint: Sec1Point<NistP256> = ecpkey.to_encoded_point::<NistP256>().unwrap();
-        // assert_eq!(ecpoint, point);
+        let ec_jwk = key.to_jwk().unwrap();
+        assert_eq!(key, SigningKey::from_jwk(&ec_jwk).unwrap());
 
         let payload = strip_whitespace(
             "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFt
@@ -727,6 +721,10 @@ mod test {
                 let signed = token.clone().sign::<_, SignatureBytes>(&key).unwrap();
                 let unverified = signed.unverify();
                 unverified.verify::<_, SignatureBytes>(&verify).unwrap();
+
+                let key_r = key.to_jwk().unwrap();
+                let key_b = SigningKey::<$curve>::from_jwk(&key_r).unwrap();
+                assert_eq!(key_b, key);
             }
         };
     }
@@ -736,4 +734,7 @@ mod test {
 
     #[cfg(feature = "p384")]
     ecdsa_algorithm_test!(p384_roundtrip, NistP384);
+
+    #[cfg(feature = "p521")]
+    ecdsa_algorithm_test!(p521_roundtrip, NistP521);
 }

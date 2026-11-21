@@ -130,12 +130,12 @@ impl PrivateWebKey {
             (Self::Rsa(_), AlgorithmIdentifier::RS384) => true,
             #[cfg(feature = "rsa")]
             (Self::Rsa(_), AlgorithmIdentifier::RS512) => true,
-            #[cfg(feature = "ecdsa")]
-            (Self::EcDsa(_), AlgorithmIdentifier::ES256) => true,
-            #[cfg(feature = "ecdsa")]
-            (Self::EcDsa(_), AlgorithmIdentifier::ES384) => true,
-            #[cfg(feature = "ecdsa")]
-            (Self::EcDsa(_), AlgorithmIdentifier::ES512) => true,
+            #[cfg(all(feature = "ecdsa", feature = "p256"))]
+            (Self::EcDsa(JWEcSigningKey::P256(_)), AlgorithmIdentifier::ES256) => true,
+            #[cfg(all(feature = "ecdsa", feature = "p384"))]
+            (Self::EcDsa(JWEcSigningKey::P384(_)), AlgorithmIdentifier::ES384) => true,
+            #[cfg(all(feature = "ecdsa", feature = "p521"))]
+            (Self::EcDsa(JWEcSigningKey::P521(_)), AlgorithmIdentifier::ES512) => true,
             #[cfg(feature = "pss")]
             (Self::Rsa(_), AlgorithmIdentifier::PS256) => true,
             #[cfg(feature = "pss")]
@@ -390,12 +390,12 @@ impl PublicWebKey {
             (Self::Rsa(_), AlgorithmIdentifier::RS384) => true,
             #[cfg(feature = "rsa")]
             (Self::Rsa(_), AlgorithmIdentifier::RS512) => true,
-            #[cfg(feature = "ecdsa")]
-            (Self::EcDsa(_), AlgorithmIdentifier::ES256) => true,
-            #[cfg(feature = "ecdsa")]
-            (Self::EcDsa(_), AlgorithmIdentifier::ES384) => true,
-            #[cfg(feature = "ecdsa")]
-            (Self::EcDsa(_), AlgorithmIdentifier::ES512) => true,
+            #[cfg(all(feature = "ecdsa", feature = "p256"))]
+            (Self::EcDsa(JWEcVerifyingKey::P256(_)), AlgorithmIdentifier::ES256) => true,
+            #[cfg(all(feature = "ecdsa", feature = "p384"))]
+            (Self::EcDsa(JWEcVerifyingKey::P384(_)), AlgorithmIdentifier::ES384) => true,
+            #[cfg(all(feature = "ecdsa", feature = "p521"))]
+            (Self::EcDsa(JWEcVerifyingKey::P521(_)), AlgorithmIdentifier::ES512) => true,
             #[cfg(feature = "pss")]
             (Self::Rsa(_), AlgorithmIdentifier::PS256) => true,
             #[cfg(feature = "pss")]

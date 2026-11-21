@@ -175,6 +175,9 @@ impl AlgorithmIdentifier {
                 | Self::ES256
                 | Self::ES384
                 | Self::ES512
+                | Self::PS256
+                | Self::PS384
+                | Self::PS512
                 | Self::EdDSA
         )
     }

@@ -426,7 +426,12 @@ impl JsonWebKey {
 
     /// Deserialize a concrete key type from this JWK.
     pub fn deserialize_key<K: DeserializeJWK>(&self) -> Result<K, JsonWebKeyError> {
-        match K::build(self.parameters.clone()) {
+        let mut entries = self.parameters.clone();
+        entries
+            .insert("kty", &self.key_type)
+            .expect("kty is valid JSON");
+
+        match K::build(entries) {
             Ok(key) => {
                 if key.key_type().as_str() == self.key_type {
                     Ok(key)
@@ -450,8 +455,9 @@ impl Serialize for JsonWebKey {
         // JWKs must serialize keys in alphabetical order.
 
         let mut entries = self.parameters.clone();
-        let kty = serde_json::Value::String(self.key_type.clone());
-        entries.insert("kty", &kty).expect("kty is valid JSON");
+        entries
+            .insert("kty", &self.key_type)
+            .expect("kty is valid JSON");
 
         let mut map = serializer.serialize_map(Some(entries.len()))?;
         for (key, value) in entries {
@@ -651,6 +657,26 @@ mod test {
                  }
             ))
             .unwrap();
+        }
+
+        #[test]
+        fn rfc7639_example_jwk() {
+            let key: JsonWebKey = serde_json::from_value(json!({
+                  "kty": "RSA",
+                  "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt
+                  VT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn6
+                  4tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FD
+                  W2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n9
+                  1CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINH
+                  aQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+                  "e": "AQAB",
+                  "kid": "2011-04-29"
+                 }
+            ))
+            .unwrap();
+
+            let pub_key: PublicWebKey = key.deserialize_key().unwrap();
+            assert_eq!(pub_key.key_type(), KeyType::Rsa);
         }
     }
 }

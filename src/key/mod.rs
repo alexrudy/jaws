@@ -16,13 +16,13 @@ use serde::{
 use signature::Keypair;
 
 mod jwk;
-mod jws;
+mod jwks;
 mod restricted;
 
 use crate::algorithms::AlgorithmIdentifier;
 
 pub use self::jwk::{PrivateWebKey, PublicWebKey, SigningWebKey, VerifyingWebKey};
-pub use self::jws::JwkSet;
+pub use self::jwks::JwkSet;
 pub use self::restricted::{Restricted, RestrictedAlgorithmError};
 
 /// Error when building or deserializing a JWK.
@@ -75,6 +75,9 @@ pub enum KeyType {
 
     /// Elliptic Curve key type
     EllipticCurve,
+
+    /// Octet Pairs
+    OctetPairs,
 }
 
 impl fmt::Display for KeyType {
@@ -86,6 +89,12 @@ impl fmt::Display for KeyType {
 impl From<KeyType> for String {
     fn from(kt: KeyType) -> Self {
         kt.as_str().to_owned()
+    }
+}
+
+impl From<KeyType> for serde_json::Value {
+    fn from(kt: KeyType) -> Self {
+        kt.to_string().into()
     }
 }
 
@@ -102,6 +111,7 @@ impl FromStr for KeyType {
             "oct" => Ok(KeyType::Octet),
             "RSA" => Ok(KeyType::Rsa),
             "EC" => Ok(KeyType::EllipticCurve),
+            "OKP" => Ok(KeyType::OctetPairs),
             _ => Err(UnknownKeyType(s.to_owned())),
         }
     }
@@ -130,6 +140,7 @@ impl KeyType {
             KeyType::Octet => cfg!(feature = "hmac"),
             KeyType::Rsa => cfg!(feature = "rsa"),
             KeyType::EllipticCurve => cfg!(feature = "ecdsa"),
+            KeyType::OctetPairs => cfg!(feature = "ed25519"),
         }
     }
 
@@ -139,6 +150,7 @@ impl KeyType {
             KeyType::Octet => "oct",
             KeyType::Rsa => "RSA",
             KeyType::EllipticCurve => "EC",
+            KeyType::OctetPairs => "OKP",
         }
     }
 
@@ -166,6 +178,7 @@ impl KeyType {
                     | AlgorithmIdentifier::ES384
                     | AlgorithmIdentifier::ES512
             ),
+            KeyType::OctetPairs => matches!(alg, AlgorithmIdentifier::EdDSA),
         }
     }
 }
@@ -221,13 +234,8 @@ impl Parameters {
     }
 
     /// Inserts a parameter into the map.
-    pub fn insert<V: Serialize>(
-        &mut self,
-        key: impl Into<String>,
-        value: V,
-    ) -> Result<(), serde_json::Error> {
-        self.0.insert(key.into(), serde_json::to_value(value)?);
-        Ok(())
+    pub fn insert<K: Into<String>, V: Into<serde_json::Value>>(&mut self, key: K, value: V) {
+        self.0.insert(key.into(), value.into());
     }
 
     /// Returns a reference to the value for the given key, if it exists.
@@ -331,9 +339,7 @@ pub trait DeserializeJWK: DynJwkKeyType + Sized {
     /// Build a concrete key type from [`JsonWebKey`].
     fn from_jwk(jwk: &JsonWebKey) -> Result<Self, JsonWebKeyError> {
         let mut parameters = jwk.parameters().clone();
-        parameters
-            .insert("kty", jwk.key_type())
-            .expect("kty is valid JSON");
+        parameters.insert("kty", jwk.key_type());
 
         match Self::build(parameters) {
             Ok(key) => {
@@ -395,7 +401,7 @@ pub struct JsonWebKey {
 impl JsonWebKey {
     /// Create a new JWK from a key type and parameters.
     pub fn new(key_type: String, parameters: Parameters) -> Self {
-        assert!(
+        debug_assert!(
             !parameters.iter().any(|(k, _)| k == "kty"),
             "parameters must not contain 'kty' key"
         );
@@ -443,9 +449,7 @@ impl JsonWebKey {
     /// Deserialize a concrete key type from this JWK.
     pub fn deserialize_key<K: DeserializeJWK>(&self) -> Result<K, JsonWebKeyError> {
         let mut entries = self.parameters.clone();
-        entries
-            .insert("kty", &self.key_type)
-            .expect("kty is valid JSON");
+        entries.insert("kty", &*self.key_type);
 
         match K::build(entries) {
             Ok(key) => {
@@ -471,9 +475,7 @@ impl Serialize for JsonWebKey {
         // JWKs must serialize keys in alphabetical order.
 
         let mut entries = self.parameters.clone();
-        entries
-            .insert("kty", &self.key_type)
-            .expect("kty is valid JSON");
+        entries.insert("kty", &*self.key_type);
 
         let mut map = serializer.serialize_map(Some(entries.len()))?;
         for (key, value) in entries {
@@ -612,8 +614,8 @@ pub struct Identified<Key> {
     pub key: Key,
 
     /// The identifier of the key.
-    #[serde(rename = "kid")]
-    pub id: String,
+    #[serde(rename = "kid", skip_serializing_if = "Option::is_none", default)]
+    pub id: Option<String>,
 }
 
 #[cfg(test)]

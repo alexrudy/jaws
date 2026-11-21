@@ -43,9 +43,9 @@ impl crate::key::SerializeJWK for rsa::PublicKey {
         let mut params = Parameters::new();
 
         let n = Base64UrlUnpadded::encode_string(&self.n().to_be_bytes_trimmed_vartime());
-        params.insert("n", n).expect("n is valid JSON");
+        params.insert("n", n);
         let e = Base64UrlUnpadded::encode_string(&self.e().to_be_bytes_trimmed_vartime());
-        params.insert("e", e).expect("e is valid JSON");
+        params.insert("e", e);
 
         params
     }
@@ -99,9 +99,7 @@ impl crate::key::SerializeJWK for rsa::PrivateKey {
         }
 
         let mut params = self.to_public_key().parameters();
-        params
-            .insert("d", from_biguint(self.d()))
-            .expect("d is valid JSON");
+        params.insert("d", from_biguint(self.d()));
 
         let mut additional_params = Vec::new();
         let mut primes = self.primes().iter();

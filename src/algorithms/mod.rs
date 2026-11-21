@@ -54,6 +54,8 @@
 //!
 //! [RFC7518]: https://tools.ietf.org/html/rfc7518
 
+use std::fmt;
+
 use ::signature::SignatureEncoding;
 
 use digest::Digest;
@@ -151,6 +153,27 @@ pub enum AlgorithmIdentifier {
     None,
 }
 
+impl fmt::Display for AlgorithmIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HS256 => write!(f, "HS256"),
+            Self::HS384 => write!(f, "HS384"),
+            Self::HS512 => write!(f, "HS512"),
+            Self::RS256 => write!(f, "RS256"),
+            Self::RS384 => write!(f, "RS384"),
+            Self::RS512 => write!(f, "RS512"),
+            Self::ES256 => write!(f, "ES256"),
+            Self::ES384 => write!(f, "ES384"),
+            Self::ES512 => write!(f, "ES512"),
+            Self::EdDSA => write!(f, "EdDSA"),
+            Self::PS256 => write!(f, "PS256"),
+            Self::PS384 => write!(f, "PS384"),
+            Self::PS512 => write!(f, "PS512"),
+            Self::None => write!(f, "none"),
+        }
+    }
+}
+
 impl AlgorithmIdentifier {
     /// Return whether this algorithm is available for signing.
     pub fn available(&self) -> bool {
@@ -198,6 +221,12 @@ impl AlgorithmIdentifier {
     }
 }
 
+impl From<AlgorithmIdentifier> for serde_json::Value {
+    fn from(alg: AlgorithmIdentifier) -> Self {
+        alg.to_string().into()
+    }
+}
+
 /// All JWS algorithms.
 pub const ALL_ALGORITHMS: &[AlgorithmIdentifier] = &[
     AlgorithmIdentifier::HS256,
@@ -230,11 +259,11 @@ pub const AVAILABLE_ALGORITHMS: &[AlgorithmIdentifier] = &[
     AlgorithmIdentifier::RS384,
     #[cfg(feature = "rsa")]
     AlgorithmIdentifier::RS512,
-    #[cfg(feature = "ecdsa")]
+    #[cfg(feature = "p256")]
     AlgorithmIdentifier::ES256,
-    #[cfg(feature = "ecdsa")]
+    #[cfg(feature = "p384")]
     AlgorithmIdentifier::ES384,
-    #[cfg(feature = "ecdsa")]
+    #[cfg(feature = "p521")]
     AlgorithmIdentifier::ES512,
     #[cfg(feature = "ed25519")]
     AlgorithmIdentifier::EdDSA,
@@ -244,6 +273,7 @@ pub const AVAILABLE_ALGORITHMS: &[AlgorithmIdentifier] = &[
     AlgorithmIdentifier::PS384,
     #[cfg(feature = "pss")]
     AlgorithmIdentifier::PS512,
+    #[cfg(feature = "none")]
     AlgorithmIdentifier::None,
 ];
 

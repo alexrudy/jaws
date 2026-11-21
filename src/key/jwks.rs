@@ -12,6 +12,16 @@ pub struct JwkSet<K> {
     keys: Vec<Identified<K>>,
 }
 
+impl<K> JwkSet<K> {
+    /// Returns the key with the given ID, if one exists.
+    pub fn get(&self, id: &str) -> Option<&K> {
+        self.keys
+            .iter()
+            .find(|k| k.id.as_deref() == Some(id))
+            .map(|k| &k.key)
+    }
+}
+
 impl<K> FromIterator<Identified<K>> for JwkSet<K> {
     fn from_iter<I: IntoIterator<Item = Identified<K>>>(iter: I) -> Self {
         Self {

@@ -1,3 +1,5 @@
+//! A wrapper around a key that restricts the algorithms that can be used with it.
+
 use crate::{
     algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     SignatureBytes, TokenSigner, TokenVerifier,
@@ -89,11 +91,7 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<SignatureBytes, signature::Error> {
-        if !self
-            .allowed_algorithms
-            .iter()
-            .any(|&a| a == self.identifier())
-        {
+        if !self.allowed_algorithms.contains(&self.identifier()) {
             return Err(signature::Error::from_source(
                 RestrictedAlgorithmError::from(self.identifier()),
             ));
@@ -132,7 +130,7 @@ where
 
 impl<K> TokenSigner for Restricted<K>
 where
-    K: TokenSigner + DynJwkKeyType,
+    K: TokenSigner,
 {
     fn try_sign_token(
         &self,

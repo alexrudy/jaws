@@ -103,5 +103,6 @@ path = "tests/web-key-rsa.rs"
 required-features = ["fmt", "rsa"]
 doc-scrape-examples = true
 
+# Pin transitive dependencies without triggering `unused` warnings
 [target.'cfg(false)'.dependencies]
 generic-array = { version = "=0.14.7" } # 0.14.9 deprecates everything.

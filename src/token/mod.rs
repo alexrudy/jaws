@@ -8,8 +8,6 @@
 //!
 //! [RFC7519]: https://tools.ietf.org/html/rfc7519
 
-#[cfg(feature = "fmt")]
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::{fmt::Write, str::FromStr};
 

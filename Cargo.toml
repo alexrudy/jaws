@@ -23,8 +23,8 @@ default-target = "x86_64-unknown-linux-gnu"
 base64ct = { version = "1.8", features = ["std"] }
 bytes = { version = "1.12" }
 chrono = { version = "0.4", features = ["serde"], default-features = false }
-crypto-bigint = { version = "0.7.0-rc.28", features = ["alloc"], optional = true }
-der = { version = "0.8.2", optional = true }
+crypto-bigint = { version = "0.7", features = ["alloc"], optional = true }
+der = { version = "0.8", optional = true }
 digest = { version = "0.11" }
 ecdsa = { version = "0.17", features = ["der"], optional = true }
 hmac = { version = "0.13", optional = true }
@@ -32,8 +32,8 @@ p256 = { version = "0.14", features = ["ecdsa"], optional = true }
 p384 = { version = "0.14", features = ["ecdsa"], optional = true }
 p521 = { version = "0.14", features = ["ecdsa"], optional = true }
 pkcs8 = "0.11"
-rand_core = { version = "0.10.1", optional = true, default-features = false }
-rsa = { version = "0.10.0", features = ["pkcs1v15"], optional = true }
+rand_core = { version = "0.10", optional = true, default-features = false }
+rsa = { version = "0.10", features = ["pkcs1v15"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.11"
@@ -51,7 +51,7 @@ optional = true
 
 [dev-dependencies]
 static_assertions = "1.1.0"
-rand = "0.10.3"
+rand = "0.10"
 
 [features]
 default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac"]

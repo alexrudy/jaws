@@ -732,6 +732,7 @@ where
 
 /// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TokenVerifyingError {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.
@@ -752,6 +753,7 @@ pub enum TokenVerifyingError {
 
 /// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TokenSigningError {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.

@@ -18,6 +18,7 @@ use super::fmt::{self, IndentWriter};
 
 /// Error type for decoding base64 data in wrappers.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum DecodeError {
     /// The data being decoded is not base64
     #[error(transparent)]

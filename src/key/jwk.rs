@@ -602,51 +602,51 @@ macro_rules! dispatch {
 pub enum SigningWebKey {
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-256
-    HS256(#[serde(with = "self::serde_keys")] Hmac<sha2::Sha256>),
+    HS256(#[serde(with = "self::serde_sigs")] Hmac<sha2::Sha256>),
 
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-384
-    HS384(#[serde(with = "self::serde_keys")] Hmac<sha2::Sha384>),
+    HS384(#[serde(with = "self::serde_sigs")] Hmac<sha2::Sha384>),
 
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-512
-    HS512(#[serde(with = "self::serde_keys")] Hmac<sha2::Sha512>),
+    HS512(#[serde(with = "self::serde_sigs")] Hmac<sha2::Sha512>),
 
     #[cfg(feature = "rsa")]
     /// RSA PKCS#1 v1.5 signature using SHA-256
-    RS256(#[serde(with = "self::serde_keys")] rsa::pkcs1v15::SigningKey<sha2::Sha256>),
+    RS256(#[serde(with = "self::serde_sigs")] rsa::pkcs1v15::SigningKey<sha2::Sha256>),
 
     #[cfg(feature = "rsa")]
     /// RSA PKCS#1 v1.5 signature using SHA-348
-    RS384(#[serde(with = "self::serde_keys")] rsa::pkcs1v15::SigningKey<sha2::Sha384>),
+    RS384(#[serde(with = "self::serde_sigs")] rsa::pkcs1v15::SigningKey<sha2::Sha384>),
 
     #[cfg(feature = "rsa")]
     /// RSA PKCS#1 v1.5 signature using SHA-512
-    RS512(#[serde(with = "self::serde_keys")] rsa::pkcs1v15::SigningKey<sha2::Sha512>),
+    RS512(#[serde(with = "self::serde_sigs")] rsa::pkcs1v15::SigningKey<sha2::Sha512>),
 
     #[cfg(all(feature = "ecdsa", feature = "p256"))]
     /// ECDSA using P-256 and SHA-256
-    ES256(#[serde(with = "self::serde_keys")] ecdsa::SigningKey<p256::NistP256>),
+    ES256(#[serde(with = "self::serde_sigs")] ecdsa::SigningKey<p256::NistP256>),
 
     #[cfg(all(feature = "ecdsa", feature = "p384"))]
     /// ECDSA using P-384 and SHA-384
-    ES384(#[serde(with = "self::serde_keys")] ecdsa::SigningKey<p384::NistP384>),
+    ES384(#[serde(with = "self::serde_sigs")] ecdsa::SigningKey<p384::NistP384>),
 
     #[cfg(all(feature = "ecdsa", feature = "p521"))]
     /// ECDSA using P-521 and SHA-512
-    ES512(#[serde(with = "self::serde_keys")] ecdsa::SigningKey<p521::NistP521>),
+    ES512(#[serde(with = "self::serde_sigs")] ecdsa::SigningKey<p521::NistP521>),
 
     #[cfg(feature = "pss")]
     /// RSASSA-PSS using SHA-256 and MGF1 with SHA-256
-    PS256(#[serde(with = "self::serde_keys")] rsa::pss::SigningKey<sha2::Sha256>),
+    PS256(#[serde(with = "self::serde_sigs")] rsa::pss::SigningKey<sha2::Sha256>),
 
     #[cfg(feature = "pss")]
     /// RSASSA-PSS using SHA-384 and MGF1 with SHA-384
-    PS384(#[serde(with = "self::serde_keys")] rsa::pss::SigningKey<sha2::Sha384>),
+    PS384(#[serde(with = "self::serde_sigs")] rsa::pss::SigningKey<sha2::Sha384>),
 
     #[cfg(feature = "pss")]
     /// RSASSA-PSS using SHA-512 and MGF1 with SHA-512
-    PS512(#[serde(with = "self::serde_keys")] rsa::pss::SigningKey<sha2::Sha512>),
+    PS512(#[serde(with = "self::serde_sigs")] rsa::pss::SigningKey<sha2::Sha512>),
 
     #[cfg(feature = "ed25519")]
     /// EdDSA using Ed25519
@@ -971,51 +971,51 @@ impl TokenSigner<SignatureBytes> for SigningWebKey {
 pub enum VerifyingWebKey {
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-256
-    HS256(#[serde(with = "self::serde_keys")] Hmac<sha2::Sha256>),
+    HS256(#[serde(with = "self::serde_sigs")] Hmac<sha2::Sha256>),
 
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-384
-    HS384(#[serde(with = "self::serde_keys")] Hmac<sha2::Sha384>),
+    HS384(#[serde(with = "self::serde_sigs")] Hmac<sha2::Sha384>),
 
     #[cfg(feature = "hmac")]
     /// Hash-based Message Authentication Code using SHA-512
-    HS512(#[serde(with = "self::serde_keys")] Hmac<sha2::Sha512>),
+    HS512(#[serde(with = "self::serde_sigs")] Hmac<sha2::Sha512>),
 
     #[cfg(feature = "rsa")]
     /// RSA PKCS#1 v1.5 signature using SHA-256
-    RS256(#[serde(with = "self::serde_keys")] rsa::pkcs1v15::VerifyingKey<sha2::Sha256>),
+    RS256(#[serde(with = "self::serde_sigs")] rsa::pkcs1v15::VerifyingKey<sha2::Sha256>),
 
     #[cfg(feature = "rsa")]
     /// RSA PKCS#1 v1.5 signature using SHA-348
-    RS384(#[serde(with = "self::serde_keys")] rsa::pkcs1v15::VerifyingKey<sha2::Sha384>),
+    RS384(#[serde(with = "self::serde_sigs")] rsa::pkcs1v15::VerifyingKey<sha2::Sha384>),
 
     #[cfg(feature = "rsa")]
     /// RSA PKCS#1 v1.5 signature using SHA-512
-    RS512(#[serde(with = "self::serde_keys")] rsa::pkcs1v15::VerifyingKey<sha2::Sha512>),
+    RS512(#[serde(with = "self::serde_sigs")] rsa::pkcs1v15::VerifyingKey<sha2::Sha512>),
 
     #[cfg(all(feature = "ecdsa", feature = "p256"))]
     /// ECDSA using P-256 and SHA-256
-    ES256(#[serde(with = "self::serde_keys")] ecdsa::VerifyingKey<p256::NistP256>),
+    ES256(#[serde(with = "self::serde_sigs")] ecdsa::VerifyingKey<p256::NistP256>),
 
     #[cfg(all(feature = "ecdsa", feature = "p384"))]
     /// ECDSA using P-384 and SHA-384
-    ES384(#[serde(with = "self::serde_keys")] ecdsa::VerifyingKey<p384::NistP384>),
+    ES384(#[serde(with = "self::serde_sigs")] ecdsa::VerifyingKey<p384::NistP384>),
 
     #[cfg(all(feature = "ecdsa", feature = "p521"))]
     /// ECDSA using P-521 and SHA-512
-    ES512(#[serde(with = "self::serde_keys")] ecdsa::VerifyingKey<p521::NistP521>),
+    ES512(#[serde(with = "self::serde_sigs")] ecdsa::VerifyingKey<p521::NistP521>),
 
     #[cfg(feature = "pss")]
     /// RSASSA-PSS using SHA-256 and MGF1 with SHA-256
-    PS256(#[serde(with = "self::serde_keys")] rsa::pss::VerifyingKey<sha2::Sha256>),
+    PS256(#[serde(with = "self::serde_sigs")] rsa::pss::VerifyingKey<sha2::Sha256>),
 
     #[cfg(feature = "pss")]
     /// RSASSA-PSS using SHA-384 and MGF1 with SHA-384
-    PS384(#[serde(with = "self::serde_keys")] rsa::pss::VerifyingKey<sha2::Sha384>),
+    PS384(#[serde(with = "self::serde_sigs")] rsa::pss::VerifyingKey<sha2::Sha384>),
 
     #[cfg(feature = "pss")]
     /// RSASSA-PSS using SHA-512 and MGF1 with SHA-512
-    PS512(#[serde(with = "self::serde_keys")] rsa::pss::VerifyingKey<sha2::Sha512>),
+    PS512(#[serde(with = "self::serde_sigs")] rsa::pss::VerifyingKey<sha2::Sha512>),
 
     #[cfg(feature = "ed25519")]
     /// EdDSA using Ed25519
@@ -1176,14 +1176,14 @@ impl TokenVerifier for VerifyingWebKey {
 mod serde_keys {
     use serde::{de, Serialize as _};
 
-    use crate::key::{DeserializeJWK, JsonWebKey, Parameters, SerializeJWK};
+    use crate::key::{DeserializeJWK, Parameters, SerializeJWK};
 
     pub(super) fn serialize<S, T>(key: &T, serializer: S) -> Result<S::Ok, S::Error>
     where
         T: SerializeJWK,
         S: serde::Serializer,
     {
-        JsonWebKey::build(key).serialize(serializer)
+        key.parameters().serialize(serializer)
     }
 
     pub(super) fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -1193,5 +1193,76 @@ mod serde_keys {
     {
         let parameters: Parameters = de::Deserialize::deserialize(deserializer)?;
         T::build(parameters).map_err(de::Error::custom)
+    }
+}
+
+#[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
+mod serde_sigs {
+    use serde::{de, Serialize as _};
+
+    use crate::key::{DeserializeJWK, Parameters, SerializeJWK};
+
+    pub(super) fn serialize<S, T>(key: &T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        T: SerializeJWK,
+        S: serde::Serializer,
+    {
+        let mut parameters = key.parameters();
+        parameters
+            .insert("kty", key.key_type())
+            .expect("kty must be valid JSON");
+        parameters.serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    where
+        T: DeserializeJWK,
+        D: de::Deserializer<'de>,
+    {
+        let parameters: Parameters = de::Deserialize::deserialize(deserializer)?;
+        T::build(parameters).map_err(de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "rsa")]
+    #[test]
+    fn rsa_public_web_key_serde() {
+        use rsa::Generate;
+
+        let key = PublicWebKey::from(rsa::PrivateKey::generate().to_public_key());
+
+        let rendered = serde_json::to_string(&key).unwrap();
+        assert_eq!(
+            rendered.matches("\"kty\"").count(),
+            1,
+            "expected exactly one kty field"
+        );
+
+        let value = serde_json::to_value(key).unwrap();
+        let jwk = value.as_object().unwrap();
+        assert!(jwk.contains_key("kty"), "expected kty field");
+    }
+
+    #[cfg(feature = "rsa")]
+    #[test]
+    fn rsa_private_web_key_serde() {
+        use rsa::Generate;
+
+        let key = PrivateWebKey::from(rsa::PrivateKey::generate());
+
+        let rendered = serde_json::to_string(&key).unwrap();
+        assert_eq!(
+            rendered.matches("\"kty\"").count(),
+            1,
+            "expected exactly one kty field"
+        );
+
+        let value = serde_json::to_value(key).unwrap();
+        let jwk = value.as_object().unwrap();
+        assert!(jwk.contains_key("kty"), "expected kty field");
     }
 }

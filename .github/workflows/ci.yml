@@ -81,10 +81,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features -- -D warnings
+        run: cargo clippy --all-features -- -D warnings
 
   docs:
     name: Docs

@@ -3,8 +3,6 @@ use std::fmt;
 use base64ct::Encoding;
 use bytes::Bytes;
 
-pub use signature::*;
-
 /// A signature which has not been matched to an algorithm or key.
 ///
 /// This is a basic signature `struct` which can be used to store any signature

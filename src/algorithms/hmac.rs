@@ -19,7 +19,7 @@
 //! which is a wrapper around the [`digest::Output`] type from the [`digest`](https://crates.io/crates/digest)
 //! crate, but which provides the appropriate signature encoding behavior.
 
-use std::{collections::BTreeMap, marker::PhantomData, ops::Deref};
+use std::{marker::PhantomData, ops::Deref};
 
 use base64ct::Encoding;
 use digest::{Digest, Mac};
@@ -27,16 +27,26 @@ use hmac::{KeyInit as _, SimpleHmac};
 use signature::{Keypair, SignatureEncoding};
 
 use crate::{
-    key::{DeserializeJWK, JWKeyType, SerializeJWK},
+    key::{DeserializeJWK, JWKeyType, KeyType, Parameters, SerializeJWK},
     SignatureBytes,
 };
 
 use super::JsonWebAlgorithm;
 
 /// A key used to seed an HMAC signature.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Default)]
+///
+/// The [`Debug`](std::fmt::Debug) implementation does not print the key material.
+#[derive(Clone, PartialEq, Eq, Hash, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Default)]
 pub struct HmacKey {
     key: Vec<u8>,
+}
+
+impl std::fmt::Debug for HmacKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HmacKey")
+            .field("len", &self.key.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl HmacKey {
@@ -80,6 +90,42 @@ impl AsRef<[u8]> for HmacKey {
     }
 }
 
+impl JWKeyType for HmacKey {
+    const KEY_TYPE: KeyType = KeyType::Octet;
+}
+
+impl SerializeJWK for HmacKey {
+    fn parameters(&self) -> Parameters {
+        [(
+            "k".to_string(),
+            serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key)),
+        )]
+        .into_iter()
+        .collect()
+    }
+}
+
+impl DeserializeJWK for HmacKey {
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
+        let key_data = parameters
+            .get("k")
+            .ok_or(crate::key::JsonWebKeyError::MissingParameter("k"))?
+            .as_str()
+            .ok_or(crate::key::JsonWebKeyError::InvalidKey(
+                "k",
+                "k must be a str".into(),
+            ))?;
+        let decoded_len = 3 * key_data.len() / 4;
+
+        let mut key = HmacKey::with_capacity(decoded_len);
+        key.resize(decoded_len, 0);
+
+        base64ct::Base64UrlUnpadded::decode(key_data, key.as_mut())
+            .map_err(|err| crate::key::JsonWebKeyError::InvalidKey("k", err.into()))?;
+        Ok(key)
+    }
+}
+
 /// The HMAC algorithm as used when signing a JWS.
 ///
 /// This type exists to associate the original key value with the digest.
@@ -118,38 +164,18 @@ impl<D> Clone for Hmac<D> {
 }
 
 impl<D> JWKeyType for Hmac<D> {
-    const KEY_TYPE: &'static str = "oct";
+    const KEY_TYPE: KeyType = KeyType::Octet;
 }
 
 impl<D> SerializeJWK for Hmac<D> {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        vec![(
-            "k".to_string(),
-            serde_json::Value::String(base64ct::Base64UrlUnpadded::encode_string(&self.key.key)),
-        )]
+    fn parameters(&self) -> Parameters {
+        self.key.parameters()
     }
 }
 
 impl<D> DeserializeJWK for Hmac<D> {
-    fn build(
-        parameters: BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError> {
-        let key_data = parameters
-            .get("k")
-            .ok_or(crate::key::JsonWebKeyError::MissingParameter("k"))?
-            .as_str()
-            .ok_or(crate::key::JsonWebKeyError::InvalidKey(
-                "k",
-                "k must be a str".into(),
-            ))?;
-        let decoded_len = 3 * key_data.len() / 4;
-
-        let mut key = HmacKey::with_capacity(decoded_len);
-        key.resize(decoded_len, 0);
-
-        base64ct::Base64UrlUnpadded::decode(key_data, key.as_mut())
-            .map_err(|err| crate::key::JsonWebKeyError::InvalidKey("k", err.into()))?;
-
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
+        let key = HmacKey::build(parameters)?;
         Ok(Self::new(key))
     }
 }
@@ -159,6 +185,21 @@ impl<D> Keypair for Hmac<D> {
 
     fn verifying_key(&self) -> Self::VerifyingKey {
         self.clone()
+    }
+}
+
+impl<D> From<Hmac<D>> for HmacKey {
+    fn from(value: Hmac<D>) -> Self {
+        value.key
+    }
+}
+
+impl<D> From<HmacKey> for Hmac<D> {
+    fn from(value: HmacKey) -> Self {
+        Self {
+            key: value,
+            _digest: PhantomData,
+        }
     }
 }
 
@@ -297,6 +338,8 @@ mod test {
     use crate::algorithms::TokenSigner;
     use crate::algorithms::TokenVerifier;
 
+    use crate::key::JsonWebKeyError;
+
     use base64ct::Encoding;
     use serde_json::json;
     use sha2::Sha256;
@@ -306,12 +349,7 @@ mod test {
     }
 
     fn jwk() -> serde_json::Value {
-        json!({
-            "kty":"oct",
-            "k":strip_whitespace("AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75
-                aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow")
-        }
-        )
+        crate::key::fixtures::rfc7515_a1()
     }
 
     #[test]
@@ -431,4 +469,145 @@ mod test {
     hmac_algorithm_test!(hs256, sha2::Sha256);
     hmac_algorithm_test!(hs384, sha2::Sha384);
     hmac_algorithm_test!(hs512, sha2::Sha512);
+
+    #[test]
+    fn rfc7515_example_a1_jwk_serializes_unchanged() {
+        let key = HmacKey::from_value(jwk()).unwrap();
+
+        let serialized = key.to_jwk().unwrap();
+        assert_eq!(serialized.key_type(), "oct");
+        assert_eq!(serialized.parameters().get("k"), Some(&jwk()["k"]));
+        assert_eq!(serialized.parameters().len(), 1);
+    }
+
+    #[test]
+    fn hmac_key_jwk_roundtrip_for_every_length() {
+        // Unpadded base64url has a different tail for each length mod 3.
+        for len in 1..=70usize {
+            let bytes: Vec<u8> = (0..len).map(|i| (i * 7 + len) as u8).collect();
+            let key = HmacKey::from(bytes);
+
+            let back = HmacKey::from_jwk(&key.to_jwk().unwrap()).unwrap();
+            assert_eq!(back, key, "key of length {len}");
+        }
+    }
+
+    #[test]
+    fn hmac_key_serializes_as_base64url_string() {
+        let key = HmacKey::from(vec![0xfbu8, 0xff, 0xfe]);
+
+        // 0xfbfffe is `-__-` in base64url, and `+//+` in the standard alphabet.
+        assert_eq!(key.parameters().get("k"), Some(&json!("-__-")));
+    }
+
+    fn hmac_jwk_roundtrip<D>()
+    where
+        Hmac<D>: JsonWebAlgorithm,
+    {
+        let algorithm: Hmac<D> = Hmac::from_value(jwk()).unwrap();
+
+        let back = Hmac::<D>::from_jwk(&algorithm.to_jwk().unwrap()).unwrap();
+        assert_eq!(back.key(), algorithm.key());
+
+        // Conversions to and from the bare key.
+        let key: HmacKey = algorithm.clone().into();
+        assert_eq!(&key, algorithm.key());
+        let again: Hmac<D> = key.into();
+        assert_eq!(again.key(), algorithm.key());
+
+        // The verifying key is the same secret.
+        assert_eq!(algorithm.verifying_key().key(), algorithm.key());
+    }
+
+    #[test]
+    fn hmac_jwk_roundtrip_hs256() {
+        hmac_jwk_roundtrip::<sha2::Sha256>();
+    }
+
+    #[test]
+    fn hmac_jwk_roundtrip_hs384() {
+        hmac_jwk_roundtrip::<sha2::Sha384>();
+    }
+
+    #[test]
+    fn hmac_jwk_roundtrip_hs512() {
+        hmac_jwk_roundtrip::<sha2::Sha512>();
+    }
+
+    #[test]
+    fn debug_does_not_print_the_key() {
+        let key = HmacKey::from(vec![17u8, 34, 51, 68, 85]);
+        let algorithm: Hmac<Sha256> = key.clone().into();
+
+        for rendered in [
+            format!("{key:?}"),
+            format!("{key:#?}"),
+            format!("{algorithm:?}"),
+            format!("{algorithm:#?}"),
+        ] {
+            assert!(rendered.contains("HmacKey"), "{rendered}");
+            assert!(rendered.contains('5'), "the length is printed: {rendered}");
+
+            for leaked in ["17", "34", "51", "68", "85,", "85\n", "ESI", "["] {
+                assert!(!rendered.contains(leaked), "{leaked:?} in {rendered}");
+            }
+        }
+    }
+
+    #[test]
+    fn hmac_key_requires_k() {
+        let err = HmacKey::from_value(json!({"kty": "oct"})).unwrap_err();
+        assert!(
+            matches!(err, JsonWebKeyError::MissingParameter("k")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn hmac_key_rejects_non_string_k() {
+        for k in [json!(1), json!([1, 2, 3]), json!(null), json!({"a": 1})] {
+            let err = HmacKey::from_value(json!({"kty": "oct", "k": k})).unwrap_err();
+            assert!(
+                matches!(err, JsonWebKeyError::InvalidKey("k", _)),
+                "{err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hmac_key_rejects_bad_base64() {
+        // Not in the alphabet, wrong alphabet, and padded (JWKs use unpadded base64url).
+        for k in ["!!!!", "+//+", "AQID=", "AQ==", "A"] {
+            let err = HmacKey::from_value(json!({"kty": "oct", "k": k})).unwrap_err();
+            assert!(
+                matches!(err, JsonWebKeyError::InvalidKey("k", _)),
+                "{k}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hmac_key_rejects_other_key_types() {
+        for kty in ["RSA", "EC", "OKP"] {
+            let err = HmacKey::from_value(json!({"kty": kty, "k": "AQID"})).unwrap_err();
+            assert!(
+                matches!(err, JsonWebKeyError::KeyType { .. }),
+                "{kty}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hmac_key_ignores_unrelated_members() {
+        let key = HmacKey::from_value(json!({
+            "kty": "oct",
+            "k": "AQID",
+            "alg": "HS256",
+            "kid": "abc",
+            "use": "sig",
+        }))
+        .unwrap();
+
+        assert_eq!(key, HmacKey::from(vec![1u8, 2, 3]));
+    }
 }

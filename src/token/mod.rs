@@ -19,13 +19,13 @@ use serde::{
 };
 use signature::SignatureEncoding;
 
-#[cfg(feature = "fmt")]
-use crate::fmt;
 use crate::{
     algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     base64data::{Base64JSON, Base64Signature, DecodeError},
     jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
+#[cfg(feature = "fmt")]
+use crate::{fmt, JWTFormat};
 
 pub mod formats;
 mod state;
@@ -560,6 +560,14 @@ where
     H: Serialize,
     P: Serialize,
 {
+    /// Returns `true` if the token can be verified with the given algorithm.
+    pub fn can_verify<A>(&self, algorithm: &A) -> bool
+    where
+        A: crate::algorithms::TokenVerifier + ?Sized,
+    {
+        algorithm.identifier() == *self.state.header.algorithm()
+    }
+
     /// Verify the signature of the token with the given algorithm.
     ///
     /// This method consumes the token and returns a new one with the signature verified.
@@ -667,26 +675,32 @@ where
 impl<P, S, Fmt> fmt::JWTFormat for Token<P, S, Fmt>
 where
     S: HasSignature,
+    S::Signature: SignatureEncoding,
     <S as MaybeSigned>::Header: Serialize,
     <S as MaybeSigned>::HeaderState: HeaderState,
     P: Serialize,
     Fmt: TokenFormat,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
-        let header = serde_json::to_value(self.state.header()).unwrap();
-        let payload = serde_json::to_value(&self.payload).unwrap();
-        let signature =
-            serde_json::to_value(Base64Signature(self.state.signature().clone())).unwrap();
+        {
+            let mut inner = f.indent_skip_first();
 
-        let token = serde_json::json!({
-            "header": header,
-            "payload": payload,
-            "signature": signature,
-        });
+            inner.write_str("{\n")?;
+            inner.write_str("\"header\": ")?;
+            self.state.header().fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"payload\": ")?;
+            self.payload.fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"signature\": ")?;
+            JWTFormat::fmt(
+                &Base64Signature(self.state.signature().to_bytes().as_ref()),
+                &mut inner,
+            )?;
+        }
+        f.write_str("\n}")?;
 
-        let rendered = serde_json::to_string_pretty(&token).unwrap();
-
-        f.write_str(&rendered)
+        Ok(())
     }
 }
 
@@ -698,23 +712,21 @@ where
     Fmt: TokenFormat,
 {
     fn fmt<W: std::fmt::Write>(&self, f: &mut fmt::IndentWriter<'_, W>) -> std::fmt::Result {
-        let header = self
-            .state
-            .header()
-            .value()
-            .expect("header should serialize to json:");
-        let payload =
-            serde_json::to_value(&self.payload).expect("payload should serialize to json:");
+        {
+            let mut inner = f.indent_skip_first();
 
-        let token = serde_json::json!({
-            "header": header,
-            "payload": payload,
-            "signature": "<signature>",
-        });
+            inner.write_str("{\n")?;
+            inner.write_str("\"header\": ")?;
+            self.state.header().fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"payload\": ")?;
+            self.payload.fmt(&mut inner)?;
+            inner.write_str(",\n")?;
+            inner.write_str("\"signature\": <signature>")?;
+        }
+        f.write_str("\n}")?;
 
-        let rendered = serde_json::to_string_pretty(&token).unwrap();
-
-        f.write_str(&rendered)
+        Ok(())
     }
 }
 
@@ -770,38 +782,7 @@ mod test_rsa {
     }
 
     fn rfc7515_example_a2_key() -> ::rsa::PrivateKey {
-        rsa::PrivateKey::from_value(json!( {"kty":"RSA",
-              "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
-       HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
-       D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
-       SXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdV
-       MTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8
-       NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
-              "e":"AQAB",
-              "d":"Eq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyWPEAeP88vLNO97I
-       jlA7_GQ5sLKMgvfTeXZx9SE-7YwVol2NXOoAJe46sui395IW_GO-pWJ1O0
-       BkTGoVEn2bKVRUCgu-GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzjkn
-       439X0M_V51gfpRLI9JYanrC4D4qAdGcopV_0ZHHzQlBjudU2QvXt4ehNYT
-       CBr6XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl_x_jTj3ccPDVZFD9pIuhLh
-       BOneufuBiB4cS98l2SR_RQyGWSeWjnczT0QU91p1DhOVRuOopznQ",
-              "p":"4BzEEOtIpmVdVEZNCqS7baC4crd0pqnRH_5IB3jw3bcxGn6QLvnEtfdUdi
-       YrqBdss1l58BQ3KhooKeQTa9AB0Hw_Py5PJdTJNPY8cQn7ouZ2KKDcmnPG
-       BY5t7yLc1QlQ5xHdwW1VhvKn-nXqhJTBgIPgtldC-KDV5z-y2XDwGUc",
-              "q":"uQPEfgmVtjL0Uyyx88GZFF1fOunH3-7cepKmtH4pxhtCoHqpWmT8YAmZxa
-       ewHgHAjLYsp1ZSe7zFYHj7C6ul7TjeLQeZD_YwD66t62wDmpe_HlB-TnBA
-       -njbglfIsRLtXlnDzQkv5dTltRJ11BKBBypeeF6689rjcJIDEz9RWdc",
-              "dp":"BwKfV3Akq5_MFZDFZCnW-wzl-CCo83WoZvnLQwCTeDv8uzluRSnm71I3Q
-       CLdhrqE2e9YkxvuxdBfpT_PI7Yz-FOKnu1R6HsJeDCjn12Sk3vmAktV2zb
-       34MCdy7cpdTh_YVr7tss2u6vneTwrA86rZtu5Mbr1C1XsmvkxHQAdYo0",
-              "dq":"h_96-mK1R_7glhsum81dZxjTnYynPbZpHziZjeeHcXYsXaaMwkOlODsWa
-       7I9xXDoRwbKgB719rrmI2oKr6N3Do9U0ajaHF-NKJnwgjMd2w9cjz3_-ky
-       NlxAr2v4IKhGNpmM5iIgOS1VZnOZ68m6_pbLBSp3nssTdlqvd0tIiTHU",
-              "qi":"IYd7DHOhrWvxkwPQsRM2tOgrjbcrfvtQJipd-DlcxyVuuM9sQLdgjVk2o
-       y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
-       W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
-             }
-        ))
-        .unwrap()
+        rsa::PrivateKey::from_value(crate::key::fixtures::rfc7515_a2()).unwrap()
     }
 
     #[test]
@@ -887,7 +868,6 @@ mod test_ecdsa {
     use base64ct::Encoding;
     use ecdsa::SigningKey;
     use elliptic_curve::FieldBytes;
-    use serde_json::json;
     use zeroize::Zeroize;
 
     fn strip_whitespace(s: &str) -> String {
@@ -906,13 +886,7 @@ mod test_ecdsa {
 
     #[test]
     fn rfc7515_example_a3() {
-        let pkey = &json!({
-        "kty":"EC",
-        "crv":"P-256",
-        "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
-        "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-        "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
-        });
+        let pkey = &crate::key::fixtures::rfc7515_a3();
 
         let key = ecdsa(pkey);
 
@@ -933,13 +907,7 @@ mod test_ecdsa {
     #[cfg(feature = "rand")]
     #[test]
     fn rfc7515_example_a3_randomized() {
-        let pkey = &json!({
-        "kty":"EC",
-        "crv":"P-256",
-        "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
-        "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-        "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
-        });
+        let pkey = &crate::key::fixtures::rfc7515_a3();
 
         let key = ecdsa(pkey);
 
@@ -967,7 +935,6 @@ mod test_hmac {
     use super::*;
 
     use base64ct::Encoding;
-    use serde_json::json;
     use sha2::Sha256;
 
     fn strip_whitespace(s: &str) -> String {
@@ -976,12 +943,7 @@ mod test_hmac {
 
     #[test]
     fn rfc7515_example_a1() {
-        let pkey = &json!({
-            "kty":"oct",
-            "k":"AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75
-                aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow"
-        }
-        );
+        let pkey = &crate::key::fixtures::rfc7515_a1();
 
         let key_data = strip_whitespace(pkey["k"].as_str().unwrap());
 

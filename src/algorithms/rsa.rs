@@ -17,32 +17,35 @@
 //! Use [rsa::pss::BlindedSigningKey] to sign tokens, and [rsa::pss::VerifyingKey] to verify tokens.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
+use pkcs8::AssociatedOid;
 use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::BoxedUint;
 use rsa::PrivateKey;
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 use signature::RandomizedDigestSigner;
 
 pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
 use crate::key::DeserializeJWK;
-#[cfg(feature = "rand")]
+use crate::key::KeyType;
+use crate::key::Parameters;
+#[cfg(feature = "pss")]
 use crate::SignatureBytes;
 
 impl crate::key::JWKeyType for rsa::PublicKey {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl crate::key::SerializeJWK for rsa::PublicKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        let mut params = Vec::with_capacity(2);
+    fn parameters(&self) -> Parameters {
+        let mut params = Parameters::new();
 
         let n = Base64UrlUnpadded::encode_string(&self.n().to_be_bytes_trimmed_vartime());
-        params.push(("n".to_owned(), n.into()));
+        params.insert("n", n);
         let e = Base64UrlUnpadded::encode_string(&self.e().to_be_bytes_trimmed_vartime());
-        params.push(("e".to_owned(), e.into()));
+        params.insert("e", e);
 
         params
     }
@@ -62,7 +65,7 @@ fn to_biguint(v: &serde_json::Value) -> Option<BoxedUint> {
 }
 
 fn rsa_key_parameter(
-    parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+    parameters: &Parameters,
     name: &'static str,
 ) -> Result<BoxedUint, crate::key::JsonWebKeyError> {
     let val = parameters
@@ -72,9 +75,7 @@ fn rsa_key_parameter(
 }
 
 impl crate::key::DeserializeJWK for rsa::PublicKey {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError>
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError>
     where
         Self: Sized,
     {
@@ -87,18 +88,18 @@ impl crate::key::DeserializeJWK for rsa::PublicKey {
 }
 
 impl crate::key::JWKeyType for rsa::PrivateKey {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl crate::key::SerializeJWK for rsa::PrivateKey {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         fn from_biguint(n: &BoxedUint) -> String {
             let bytes = n.to_be_bytes_trimmed_vartime();
             Base64UrlUnpadded::encode_string(&bytes)
         }
 
         let mut params = self.to_public_key().parameters();
-        params.push(("d".into(), from_biguint(self.d()).into()));
+        params.insert("d", from_biguint(self.d()));
 
         let mut additional_params = Vec::new();
         let mut primes = self.primes().iter();
@@ -144,14 +145,12 @@ impl crate::key::SerializeJWK for rsa::PrivateKey {
 }
 
 impl DeserializeJWK for PrivateKey {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError>
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError>
     where
         Self: Sized,
     {
         fn validate_key_parameter(
-            parameters: &std::collections::BTreeMap<String, serde_json::Value>,
+            parameters: &Parameters,
             name: &'static str,
             precomputed: Option<&BoxedUint>,
         ) -> Result<(), crate::key::JsonWebKeyError> {
@@ -202,15 +201,24 @@ impl<D> crate::key::JWKeyType for rsa::pkcs1v15::SigningKey<D>
 where
     D: digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::SigningKey<D>
 where
     D: digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.as_ref().to_public_key().parameters()
+    fn parameters(&self) -> Parameters {
+        self.as_ref().parameters()
+    }
+}
+
+impl<D> crate::key::DeserializeJWK for rsa::pkcs1v15::SigningKey<D>
+where
+    D: digest::Digest + AssociatedOid,
+{
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
+        rsa::PrivateKey::build(parameters).map(Into::into)
     }
 }
 
@@ -218,15 +226,24 @@ impl<D> crate::key::JWKeyType for rsa::pkcs1v15::VerifyingKey<D>
 where
     D: digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl<D> crate::key::SerializeJWK for rsa::pkcs1v15::VerifyingKey<D>
 where
     D: digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.as_ref().parameters()
+    }
+}
+
+impl<D> crate::key::DeserializeJWK for rsa::pkcs1v15::VerifyingKey<D>
+where
+    D: digest::Digest + AssociatedOid,
+{
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
+        rsa::PublicKey::build(parameters).map(Into::into)
     }
 }
 
@@ -250,27 +267,36 @@ impl<D> crate::key::JWKeyType for rsa::pss::VerifyingKey<D>
 where
     D: signature::digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
 impl<D> crate::key::SerializeJWK for rsa::pss::VerifyingKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
+    fn parameters(&self) -> Parameters {
         self.as_ref().parameters()
     }
 }
 
-#[cfg(feature = "rand")]
+impl<D> crate::key::DeserializeJWK for rsa::pss::VerifyingKey<D>
+where
+    D: signature::digest::Digest,
+{
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError> {
+        rsa::PublicKey::build(parameters).map(Into::into)
+    }
+}
+
+#[cfg(feature = "pss")]
 impl<D> crate::key::JWKeyType for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
 {
-    const KEY_TYPE: &'static str = "RSA";
+    const KEY_TYPE: KeyType = KeyType::Rsa;
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 macro_rules! rsa_pss_algorithm {
     ($alg:ident, $digest:ty) => {
         impl $crate::algorithms::JsonWebAlgorithm for rsa::pss::SigningKey<$digest> {
@@ -326,31 +352,29 @@ macro_rules! rsa_pss_algorithm {
     };
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 rsa_pss_algorithm!(PS256, sha2::Sha256);
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 rsa_pss_algorithm!(PS384, sha2::Sha384);
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 rsa_pss_algorithm!(PS512, sha2::Sha512);
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<D> crate::key::SerializeJWK for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn parameters(&self) -> Vec<(String, serde_json::Value)> {
-        self.as_ref().to_public_key().parameters()
+    fn parameters(&self) -> Parameters {
+        self.as_ref().parameters()
     }
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<D> crate::key::DeserializeJWK for rsa::pss::SigningKey<D>
 where
     D: signature::digest::Digest,
 {
-    fn build(
-        parameters: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Self, crate::key::JsonWebKeyError>
+    fn build(parameters: Parameters) -> Result<Self, crate::key::JsonWebKeyError>
     where
         Self: Sized,
     {
@@ -360,7 +384,7 @@ where
     }
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<S, D> crate::algorithms::RandomizedTokenSigner<S> for rsa::pss::SigningKey<D>
 where
     D: digest::Digest + digest::Update,
@@ -383,7 +407,7 @@ where
     }
 }
 
-#[cfg(feature = "rand")]
+#[cfg(feature = "pss")]
 impl<S, D> crate::algorithms::TokenVerifier<S> for rsa::pss::VerifyingKey<D>
 where
     D: digest::Digest + digest::Update,
@@ -421,6 +445,7 @@ where
 mod test {
 
     use crate::key::DeserializeJWK;
+    use crate::key::SerializeJWK;
     use crate::SignatureBytes;
     use crate::TokenSigner;
 
@@ -438,38 +463,8 @@ mod test {
         rsa::PrivateKey::from_value(jwk).unwrap()
     }
 
-    fn jwk() -> serde_json::Value {
-        json!( {"kty":"RSA",
-              "n":"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddx
-       HmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMs
-       D1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSH
-       SXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdV
-       MTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8
-       NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
-              "e":"AQAB",
-              "d":"Eq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyWPEAeP88vLNO97I
-       jlA7_GQ5sLKMgvfTeXZx9SE-7YwVol2NXOoAJe46sui395IW_GO-pWJ1O0
-       BkTGoVEn2bKVRUCgu-GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzjkn
-       439X0M_V51gfpRLI9JYanrC4D4qAdGcopV_0ZHHzQlBjudU2QvXt4ehNYT
-       CBr6XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl_x_jTj3ccPDVZFD9pIuhLh
-       BOneufuBiB4cS98l2SR_RQyGWSeWjnczT0QU91p1DhOVRuOopznQ",
-              "p":"4BzEEOtIpmVdVEZNCqS7baC4crd0pqnRH_5IB3jw3bcxGn6QLvnEtfdUdi
-       YrqBdss1l58BQ3KhooKeQTa9AB0Hw_Py5PJdTJNPY8cQn7ouZ2KKDcmnPG
-       BY5t7yLc1QlQ5xHdwW1VhvKn-nXqhJTBgIPgtldC-KDV5z-y2XDwGUc",
-              "q":"uQPEfgmVtjL0Uyyx88GZFF1fOunH3-7cepKmtH4pxhtCoHqpWmT8YAmZxa
-       ewHgHAjLYsp1ZSe7zFYHj7C6ul7TjeLQeZD_YwD66t62wDmpe_HlB-TnBA
-       -njbglfIsRLtXlnDzQkv5dTltRJ11BKBBypeeF6689rjcJIDEz9RWdc",
-              "dp":"BwKfV3Akq5_MFZDFZCnW-wzl-CCo83WoZvnLQwCTeDv8uzluRSnm71I3Q
-       CLdhrqE2e9YkxvuxdBfpT_PI7Yz-FOKnu1R6HsJeDCjn12Sk3vmAktV2zb
-       34MCdy7cpdTh_YVr7tss2u6vneTwrA86rZtu5Mbr1C1XsmvkxHQAdYo0",
-              "dq":"h_96-mK1R_7glhsum81dZxjTnYynPbZpHziZjeeHcXYsXaaMwkOlODsWa
-       7I9xXDoRwbKgB719rrmI2oKr6N3Do9U0ajaHF-NKJnwgjMd2w9cjz3_-ky
-       NlxAr2v4IKhGNpmM5iIgOS1VZnOZ68m6_pbLBSp3nssTdlqvd0tIiTHU",
-              "qi":"IYd7DHOhrWvxkwPQsRM2tOgrjbcrfvtQJipd-DlcxyVuuM9sQLdgjVk2o
-       y26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLU
-       W0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
-             }
-        )
+    pub(super) fn jwk() -> serde_json::Value {
+        crate::key::fixtures::rfc7515_a2()
     }
 
     #[test]
@@ -539,6 +534,10 @@ mod test {
                     &algorithm.verifying_key(),
                 );
                 algorithm_roundtrip::<SignatureBytes>(&algorithm, &algorithm.verifying_key());
+
+                let key_r = algorithm.to_jwk().unwrap();
+                let key_b = rsa::pkcs1v15::SigningKey::<$digest>::from_jwk(&key_r).unwrap();
+                assert_eq!(key_b, algorithm);
             }
         };
     }
@@ -547,13 +546,15 @@ mod test {
     rsa_pkcs1v15_algorithm_test!(rs384_algorithm, sha2::Sha384);
     rsa_pkcs1v15_algorithm_test!(rs512_algorithm, sha2::Sha512);
 
-    #[cfg(feature = "rand")]
+    #[cfg(feature = "pss")]
     mod pss {
         use rand::rngs::SysRng;
         use serde_json::json;
         use signature::Keypair;
         use signature::SignatureEncoding;
 
+        use crate::key::DeserializeJWK;
+        use crate::key::SerializeJWK;
         use crate::SignatureBytes;
 
         fn algorithm_roundtrip<S>(
@@ -593,6 +594,10 @@ mod test {
                         &algorithm.verifying_key(),
                     );
                     algorithm_roundtrip::<SignatureBytes>(&algorithm, &algorithm.verifying_key());
+
+                    let key_r = algorithm.to_jwk().unwrap();
+                    let key_b = rsa::pss::SigningKey::<$digest>::from_jwk(&key_r).unwrap();
+                    assert_eq!(key_b, algorithm);
                 }
             };
         }
@@ -601,4 +606,290 @@ mod test {
         rsa_pss_algorithm_test!(ps384_algorithm, sha2::Sha384);
         rsa_pss_algorithm_test!(ps512_algorithm, sha2::Sha512);
     }
+}
+
+#[cfg(all(test, feature = "rsa"))]
+mod jwk_tests {
+    use super::test::jwk as rfc7515_a2;
+    use super::*;
+
+    use crate::key::fixtures;
+    use crate::key::{JsonWebKeyError, SerializeJWK};
+
+    use serde_json::{json, Value};
+    use signature::Keypair;
+
+    fn without(member: &str) -> Value {
+        let mut value = rfc7515_a2();
+        value.as_object_mut().unwrap().remove(member);
+        value
+    }
+
+    fn with(member: &str, replacement: Value) -> Value {
+        let mut value = rfc7515_a2();
+        value[member] = replacement;
+        value
+    }
+
+    #[test]
+    fn private_key_serializes_unchanged() {
+        let key = rsa::PrivateKey::from_value(rfc7515_a2()).unwrap();
+        let serialized = key.to_jwk().unwrap();
+
+        assert_eq!(serialized.key_type(), "RSA");
+
+        let mut expected = rfc7515_a2();
+        expected.as_object_mut().unwrap().remove("kty");
+        assert_eq!(
+            serde_json::to_value(serialized.parameters()).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn public_key_serializes_only_n_and_e() {
+        let key = rsa::PublicKey::from_value(rfc7515_a2()).unwrap();
+        let serialized = key.to_jwk().unwrap();
+
+        let expected = rfc7515_a2();
+        assert_eq!(
+            serde_json::to_value(serialized.parameters()).unwrap(),
+            json!({"n": expected["n"], "e": expected["e"]})
+        );
+    }
+
+    #[test]
+    fn whitespace_within_members_is_ignored() {
+        // RFC 7515 wraps long members across lines, so people paste them that way.
+        let expected = rsa::PrivateKey::from_value(rfc7515_a2()).unwrap();
+
+        let mut wrapped = rfc7515_a2();
+        for member in ["n", "d", "p", "q", "dp", "dq", "qi"] {
+            let value = wrapped[member].as_str().unwrap();
+            let (head, tail) = value.split_at(value.len() / 2);
+            wrapped[member] = json!(format!("{head}\n       {tail}"));
+        }
+
+        let key = rsa::PrivateKey::from_value(wrapped).unwrap();
+        assert_eq!(key.parameters(), expected.parameters());
+    }
+
+    #[test]
+    fn private_key_jwk_roundtrip() {
+        let key = fixtures::rsa_private();
+        let back = rsa::PrivateKey::from_jwk(&key.to_jwk().unwrap()).unwrap();
+
+        assert_eq!(back.parameters(), key.parameters());
+        assert_eq!(back.to_public_key(), key.to_public_key());
+    }
+
+    #[test]
+    fn public_key_jwk_roundtrip() {
+        let key = fixtures::rsa_private().to_public_key();
+        let back = rsa::PublicKey::from_jwk(&key.to_jwk().unwrap()).unwrap();
+
+        assert_eq!(back, key);
+        assert_eq!(back.parameters(), key.parameters());
+    }
+
+    #[test]
+    fn public_key_reads_private_jwk() {
+        let private = fixtures::rsa_private();
+        let public = rsa::PublicKey::from_jwk(&private.to_jwk().unwrap()).unwrap();
+
+        assert_eq!(public, private.to_public_key());
+    }
+
+    #[test]
+    fn private_key_without_crt_parameters_is_accepted() {
+        let mut value = rfc7515_a2();
+        let object = value.as_object_mut().unwrap();
+        for member in ["dp", "dq", "qi"] {
+            object.remove(member);
+        }
+
+        let key = rsa::PrivateKey::from_value(value).unwrap();
+        assert_eq!(key.to_public_key(), fixtures::rsa_private().to_public_key());
+        assert_eq!(
+            key.parameters().get("d"),
+            fixtures::rsa_private().parameters().get("d")
+        );
+    }
+
+    #[test]
+    fn missing_members_are_rejected() {
+        for member in ["n", "e", "d", "p", "q"] {
+            assert!(
+                rsa::PrivateKey::from_value(without(member)).is_err(),
+                "private key accepted without {member}"
+            );
+        }
+
+        for member in ["n", "e"] {
+            assert!(
+                rsa::PublicKey::from_value(without(member)).is_err(),
+                "public key accepted without {member}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_members_are_rejected() {
+        for member in ["n", "e", "d", "p", "q"] {
+            for bad in [json!(1), json!(null), json!("!!!"), json!("")] {
+                assert!(
+                    rsa::PrivateKey::from_value(with(member, bad.clone())).is_err(),
+                    "private key accepted {member}={bad}"
+                );
+            }
+        }
+
+        for member in ["n", "e"] {
+            for bad in [json!(1), json!(null), json!("!!!"), json!("")] {
+                assert!(
+                    rsa::PublicKey::from_value(with(member, bad.clone())).is_err(),
+                    "public key accepted {member}={bad}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inconsistent_key_material_is_rejected() {
+        let original = rfc7515_a2();
+
+        // Valid base64url integers, but not the right ones.
+        for (member, other) in [("d", "e"), ("n", "e"), ("p", "q"), ("q", "p")] {
+            let value = with(member, original[other].clone());
+            assert!(
+                rsa::PrivateKey::from_value(value).is_err(),
+                "private key accepted with {member} replaced by {other}"
+            );
+        }
+
+        // Public exponent of 1.
+        assert!(rsa::PublicKey::from_value(with("e", json!("AQ"))).is_err());
+    }
+
+    #[test]
+    fn inconsistent_crt_parameters_are_rejected() {
+        let original = rfc7515_a2();
+
+        for (member, other) in [("dp", "dq"), ("dq", "dp"), ("qi", "dp")] {
+            let value = with(member, original[other].clone());
+            assert!(
+                rsa::PrivateKey::from_value(value).is_err(),
+                "private key accepted with {member} replaced by {other}"
+            );
+        }
+
+        // The primes are interchangeable, but then the CRT parameters are wrong.
+        let mut swapped = rfc7515_a2();
+        swapped["p"] = original["q"].clone();
+        swapped["q"] = original["p"].clone();
+        assert!(rsa::PrivateKey::from_value(swapped).is_err());
+    }
+
+    #[test]
+    fn other_key_types_are_rejected() {
+        for kty in ["EC", "oct", "OKP"] {
+            let value = with("kty", json!(kty));
+
+            let err = rsa::PrivateKey::from_value(value.clone()).unwrap_err();
+            assert!(
+                matches!(err, JsonWebKeyError::KeyType { .. }),
+                "{kty}: {err:?}"
+            );
+
+            let err = rsa::PublicKey::from_value(value).unwrap_err();
+            assert!(
+                matches!(err, JsonWebKeyError::KeyType { .. }),
+                "{kty}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unrelated_members_are_ignored() {
+        let mut value = rfc7515_a2();
+        let object = value.as_object_mut().unwrap();
+        object.insert("kid".into(), json!("abc"));
+        object.insert("use".into(), json!("sig"));
+        object.insert("alg".into(), json!("RS256"));
+        object.insert("key_ops".into(), json!(["sign"]));
+
+        assert!(rsa::PrivateKey::from_value(value.clone()).is_ok());
+        assert!(rsa::PublicKey::from_value(value).is_ok());
+    }
+
+    macro_rules! digest_tests {
+        ($module:ident, $digest:ty) => {
+            mod $module {
+                use super::*;
+
+                #[test]
+                fn pkcs1v15_jwk_roundtrip() {
+                    let signing =
+                        rsa::pkcs1v15::SigningKey::<$digest>::new(fixtures::rsa_private());
+
+                    let jwk = signing.to_jwk().unwrap();
+                    assert_eq!(jwk.key_type(), "RSA");
+                    for member in ["n", "e", "d", "p", "q"] {
+                        assert!(jwk.parameters().get(member).is_some(), "{member}");
+                    }
+
+                    let back = rsa::pkcs1v15::SigningKey::<$digest>::from_jwk(&jwk).unwrap();
+                    assert_eq!(back, signing);
+                    assert_eq!(back.parameters(), signing.parameters());
+
+                    let verifying = signing.verifying_key();
+                    let jwk = verifying.to_jwk().unwrap();
+                    assert_eq!(jwk.parameters().len(), 2, "n and e only");
+
+                    let back = rsa::pkcs1v15::VerifyingKey::<$digest>::from_jwk(&jwk).unwrap();
+                    assert_eq!(back, verifying);
+                }
+
+                #[cfg(feature = "pss")]
+                #[test]
+                fn pss_jwk_roundtrip() {
+                    let signing = rsa::pss::SigningKey::<$digest>::new(fixtures::rsa_private());
+
+                    let jwk = signing.to_jwk().unwrap();
+                    assert_eq!(jwk.key_type(), "RSA");
+                    for member in ["n", "e", "d", "p", "q"] {
+                        assert!(jwk.parameters().get(member).is_some(), "{member}");
+                    }
+
+                    let back = rsa::pss::SigningKey::<$digest>::from_jwk(&jwk).unwrap();
+                    assert_eq!(back, signing);
+                    assert_eq!(back.parameters(), signing.parameters());
+
+                    let verifying = signing.verifying_key();
+                    let jwk = verifying.to_jwk().unwrap();
+                    assert_eq!(jwk.parameters().len(), 2, "n and e only");
+
+                    let back = rsa::pss::VerifyingKey::<$digest>::from_jwk(&jwk).unwrap();
+                    assert_eq!(back, verifying);
+                }
+
+                #[test]
+                fn pkcs1v15_and_pss_keys_share_rsa_parameters() {
+                    let key = fixtures::rsa_private();
+                    let pkcs1v15 = rsa::pkcs1v15::SigningKey::<$digest>::new(key.clone());
+                    assert_eq!(pkcs1v15.parameters(), key.parameters());
+
+                    #[cfg(feature = "pss")]
+                    {
+                        let pss = rsa::pss::SigningKey::<$digest>::new(key.clone());
+                        assert_eq!(pss.parameters(), key.parameters());
+                    }
+                }
+            }
+        };
+    }
+
+    digest_tests!(sha256, sha2::Sha256);
+    digest_tests!(sha384, sha2::Sha384);
+    digest_tests!(sha512, sha2::Sha512);
 }

@@ -14,18 +14,19 @@ use std::{fmt::Write, str::FromStr};
 use base64ct::Encoding;
 use bytes::Bytes;
 use serde::{
+    Deserialize, Serialize,
     de::{self, DeserializeOwned},
-    ser, Deserialize, Serialize,
+    ser,
 };
 use signature::SignatureEncoding;
 
+#[cfg(feature = "fmt")]
+use crate::{JWTFormat, fmt};
 use crate::{
     algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     base64data::{Base64JSON, Base64Signature, DecodeError},
     jose::{Header, HeaderAccess, HeaderAccessMut, HeaderState},
 };
-#[cfg(feature = "fmt")]
-use crate::{fmt, JWTFormat};
 
 pub mod formats;
 mod state;
@@ -605,7 +606,7 @@ where
                 return Err(TokenVerifyingError::new(
                     self,
                     TokenVerifyingErrorKind::Verify(err),
-                ))
+                ));
             }
         };
 

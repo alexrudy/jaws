@@ -4,7 +4,7 @@
 /// seconds from 1970-01-01T00:00:00Z UTC until the specified UTC date/time,
 /// ignoring leap seconds.
 use chrono::{DateTime, TimeZone, Utc};
-use serde::{de, de::Deserialize, Deserializer, Serializer};
+use serde::{Deserializer, Serializer, de, de::Deserialize};
 
 pub fn serialize<S>(date: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
 where

@@ -78,21 +78,21 @@ println!("{}", signed.formatted());
 use base64ct::Base64UrlUnpadded as Base64Url;
 use base64ct::Encoding;
 use bytes::Bytes;
-use digest::array::Array;
 #[cfg(feature = "rand")]
 use digest::Digest;
+use digest::array::Array;
 #[cfg(feature = "rand")]
 use ecdsa::DigestAlgorithm;
 use ecdsa::EcdsaCurve;
 use ecdsa::Sec1Point;
+use elliptic_curve::CurveArithmetic;
 use elliptic_curve::sec1::FromSec1Point;
 use elliptic_curve::sec1::ToSec1Point;
-use elliptic_curve::CurveArithmetic;
 use elliptic_curve::{
+    AffinePoint, Curve, FieldBytes, FieldBytesSize, PublicKey, Scalar, SecretKey,
     ops::Invert,
     sec1::{Coordinates, ModulusSize, ValidatePublicKey},
     subtle::CtOption,
-    AffinePoint, Curve, FieldBytes, FieldBytesSize, PublicKey, Scalar, SecretKey,
 };
 
 use pkcs8::AssociatedOid;
@@ -255,7 +255,6 @@ impl<C> crate::key::SerializeJWK for SecretKey<C>
 where
     C: JwkCurve + EcdsaCurve + CurveArithmetic + AssociatedOid,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
-
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -321,7 +320,6 @@ impl<C> crate::key::SerializeJWK for ecdsa::SigningKey<C>
 where
     C: JwkCurve + EcdsaCurve + CurveArithmetic + AssociatedOid,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
-
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -334,7 +332,6 @@ impl<C> crate::key::DeserializeJWK for ecdsa::SigningKey<C>
 where
     C: JwkCurve + EcdsaCurve + CurveArithmetic + AssociatedOid,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
-
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -364,7 +361,6 @@ impl<S, C> crate::algorithms::RandomizedTokenSigner<S> for ecdsa::SigningKey<C>
 where
     C: JwkCurve + EcdsaCurve + CurveArithmetic + DigestAlgorithm,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
-
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
     S: SignatureEncoding,
@@ -619,9 +615,9 @@ mod test {
 
     use super::*;
     use crate::{
+        SignatureBytes,
         algorithms::{TokenSigner, TokenVerifier},
         key::SerializeJWK,
-        SignatureBytes,
     };
 
     use static_assertions as sa;
@@ -879,9 +875,15 @@ mod jwk_tests {
         };
     }
 
-    curve_tests!(curve_p256, "p256", NistP256, "P-256", ES256, P256, 32, ec_p256);
-    curve_tests!(curve_p384, "p384", NistP384, "P-384", ES384, P384, 48, ec_p384);
-    curve_tests!(curve_p521, "p521", NistP521, "P-521", ES512, P521, 66, ec_p521);
+    curve_tests!(
+        curve_p256, "p256", NistP256, "P-256", ES256, P256, 32, ec_p256
+    );
+    curve_tests!(
+        curve_p384, "p384", NistP384, "P-384", ES384, P384, 48, ec_p384
+    );
+    curve_tests!(
+        curve_p521, "p521", NistP521, "P-521", ES512, P521, 66, ec_p521
+    );
 
     /// Tests which use the key from RFC 7515, appendix A.3.
     #[cfg(feature = "p256")]

@@ -338,7 +338,10 @@ where
                         return Err(HeaderError::ReservedKey(key));
                     }
                     if parameters.insert(key.clone(), value.clone()).is_some() {
-                        panic!("duplicate custom header key (should have errored as a registered key): {}", key);
+                        panic!(
+                            "duplicate custom header key (should have errored as a registered key): {}",
+                            key
+                        );
                     }
                 }
             }

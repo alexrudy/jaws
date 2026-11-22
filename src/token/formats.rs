@@ -6,7 +6,7 @@ use std::fmt::Write;
 
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
-use serde::{ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser};
 use signature::SignatureEncoding;
 
 use super::{HasSignature, MaybeSigned, Unverified};

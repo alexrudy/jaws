@@ -18,21 +18,21 @@
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use pkcs8::AssociatedOid;
-use rsa::traits::PrivateKeyParts;
-use rsa::traits::PublicKeyParts;
 use rsa::BoxedUint;
 use rsa::PrivateKey;
+use rsa::traits::PrivateKeyParts;
+use rsa::traits::PublicKeyParts;
 #[cfg(feature = "pss")]
 use signature::RandomizedDigestSigner;
 
 pub use rsa::pkcs1v15;
 pub use rsa::pss;
 
+#[cfg(feature = "pss")]
+use crate::SignatureBytes;
 use crate::key::DeserializeJWK;
 use crate::key::KeyType;
 use crate::key::Parameters;
-#[cfg(feature = "pss")]
-use crate::SignatureBytes;
 
 impl crate::key::JWKeyType for rsa::PublicKey {
     const KEY_TYPE: KeyType = KeyType::Rsa;
@@ -444,10 +444,10 @@ where
 #[cfg(test)]
 mod test {
 
-    use crate::key::DeserializeJWK;
-    use crate::key::SerializeJWK;
     use crate::SignatureBytes;
     use crate::TokenSigner;
+    use crate::key::DeserializeJWK;
+    use crate::key::SerializeJWK;
 
     use base64ct::Encoding as _;
     use serde_json::json;
@@ -553,9 +553,9 @@ mod test {
         use signature::Keypair;
         use signature::SignatureEncoding;
 
+        use crate::SignatureBytes;
         use crate::key::DeserializeJWK;
         use crate::key::SerializeJWK;
-        use crate::SignatureBytes;
 
         fn algorithm_roundtrip<S>(
             sign: &impl crate::algorithms::RandomizedTokenSigner<S>,
@@ -616,7 +616,7 @@ mod jwk_tests {
     use crate::key::fixtures;
     use crate::key::{JsonWebKeyError, SerializeJWK};
 
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use signature::Keypair;
 
     fn without(member: &str) -> Value {

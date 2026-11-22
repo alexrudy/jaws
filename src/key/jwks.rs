@@ -5,9 +5,9 @@ use std::{borrow::Cow, marker::PhantomData, ops::Deref};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    Token,
     algorithms::AlgorithmIdentifier,
     token::{Signed, TokenFormat, TokenVerifyingError, TokenVerifyingErrorKind, Unverified},
-    Token,
 };
 
 use super::{Identified, IntoVerifyingKey, Restricted, UnsupportedAlgorithmError};
@@ -379,7 +379,7 @@ mod roundtrip_tests {
     use crate::key::fixtures::private_keys;
     use crate::key::{Identified, PrivateWebKey, PublicWebKey, SerializeJWK, VerifyingWebKey};
 
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     fn identified<K>(key: K, id: &str) -> Identified<K> {
         Identified {
@@ -564,7 +564,7 @@ mod roundtrip_tests {
 mod verify_tests {
     use super::*;
 
-    use crate::key::fixtures::{private_keys, Fixture};
+    use crate::key::fixtures::{Fixture, private_keys};
     use crate::key::{IntoSigningKey, PublicWebKey};
 
     type Unverified = Token<(), crate::token::Unverified<()>>;

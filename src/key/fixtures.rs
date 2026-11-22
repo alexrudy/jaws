@@ -22,8 +22,7 @@ pub(crate) const HEADER: &str = "eyJhbGciOiJSUzI1NiJ9";
 
 /// A JWS payload (base64url) used when signing in tests.
 #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
-pub(crate) const PAYLOAD: &str =
-    "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ";
+pub(crate) const PAYLOAD: &str = "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ";
 
 /// Members of a JWK which only appear in private keys.
 pub(crate) const PRIVATE_MEMBERS: &[&str] = &["d", "p", "q", "dp", "dq", "qi"];

@@ -1,11 +1,11 @@
+use jaws::Compact;
+use jaws::JWTFormat;
+use jaws::Token;
 use jaws::algorithms::SignatureBytes;
 use jaws::algorithms::TokenSigner;
 use jaws::algorithms::TokenVerifier;
 use jaws::key::DeserializeJWK;
 use jaws::token::Unverified;
-use jaws::Compact;
-use jaws::JWTFormat;
-use jaws::Token;
 use jaws::{Claims, RegisteredClaims};
 use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;

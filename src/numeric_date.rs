@@ -1,11 +1,13 @@
-/// Serialization and deserialization of `chrono::DateTime` as a numeric date.
-///
-/// The serialization format is a JSON numeric value representing the number of
-/// seconds from 1970-01-01T00:00:00Z UTC until the specified UTC date/time,
-/// ignoring leap seconds.
+//! Serialization and deserialization of `chrono::DateTime` as a numeric date.
+//!
+//! The serialization format is a JSON numeric value representing the number of
+//! seconds from 1970-01-01T00:00:00Z UTC until the specified UTC date/time,
+//! ignoring leap seconds.
+
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{de, de::Deserialize, Deserializer, Serializer};
 
+/// Serializes a `DateTime<Utc>` as a numeric date.
 pub fn serialize<S>(date: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -16,6 +18,7 @@ where
     }
 }
 
+/// Deserializes a numeric date as a `DateTime<Utc>`.
 pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
 where
     D: Deserializer<'de>,

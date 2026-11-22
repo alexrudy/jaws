@@ -13,44 +13,72 @@
 //! valid JSON.
 //!
 //! [RFC 7519]: https://tools.ietf.org/html/rfc7519#section-4
-use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "fmt")]
 use crate::fmt;
 
-/// A wrapper around a [`Timestamp`] that is used as a JWT timestamp,
-/// and so serializes to/from an `i64` value.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "i64", into = "i64")]
-pub struct JWTTimestamp(Timestamp);
+/// Serializer/deserializer for [jiff::Timestamp] values.
+///
+/// Use via `with = "jaws::claims::jiff_jwt_serde"` on an `Option<Timestamp>` field.
+pub mod jiff_jwt_serde {
+    use serde::{Deserialize, Serialize, de};
 
-impl From<Timestamp> for JWTTimestamp {
-    fn from(timestamp: Timestamp) -> Self {
-        Self(timestamp)
+    /// Serializer for [jiff::Timestamp] values as `i64` seconds since the Unix epoch.
+    ///
+    /// This is the format used in JWT claims.
+    pub fn serialize<S>(timestamp: &jiff::Timestamp, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        timestamp.as_second().serialize(serializer)
+    }
+
+    /// Deserializer for [jiff::Timestamp] values as `i64` seconds since the Unix epoch.
+    ///
+    /// This is the format used in JWT claims.
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<jiff::Timestamp, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        i64::deserialize(deserializer)
+            .and_then(|t| jiff::Timestamp::from_second(t).map_err(|err| de::Error::custom(err)))
+    }
+
+    /// Serializer/deserializer for [jiff::Timestamp] values.
+    ///
+    /// Use via `with = "jaws::claims::jiff_jwt_serde::opt"` on an `Option<Timestamp>` field.
+    pub mod opt {
+        use serde::{Deserialize, Serialize, de};
+
+        /// Serializer for `Option<jiff::Timestamp>` values as `i64` seconds since the Unix epoch.
+        ///
+        /// This is the format used in JWT claims.
+        pub fn serialize<S>(
+            timestamp: &Option<jiff::Timestamp>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            timestamp.map(|t| t.as_second()).serialize(serializer)
+        }
+
+        /// Deserializer for `Option<jiff::Timestamp>` values as `i64` seconds since the Unix epoch.
+        ///
+        /// This is the format used in JWT claims.
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<jiff::Timestamp>, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Option::deserialize(deserializer).and_then(|t: Option<i64>| {
+                t.map(|s| jiff::Timestamp::from_second(s))
+                    .transpose()
+                    .map_err(|err| de::Error::custom(err))
+            })
+        }
     }
 }
-
-impl From<JWTTimestamp> for Timestamp {
-    fn from(timestamp: JWTTimestamp) -> Self {
-        timestamp.0
-    }
-}
-
-impl TryFrom<i64> for JWTTimestamp {
-    type Error = jiff::Error;
-
-    fn try_from(timestamp: i64) -> Result<Self, Self::Error> {
-        Ok(Self(Timestamp::from_second(timestamp)?))
-    }
-}
-
-impl From<JWTTimestamp> for i64 {
-    fn from(timestamp: JWTTimestamp) -> Self {
-        timestamp.0.as_second()
-    }
-}
-
 /// The signed header values for the JWS which are common to each
 /// request.
 ///
@@ -94,8 +122,13 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// provide for some small leeway, usually no more than a few minutes, to
     /// account for clock skew. Its value MUST be a number containing a
     /// NumericDate value. Use of this claim is OPTIONAL.
-    #[serde(default, rename = "exp", skip_serializing_if = "Option::is_none")]
-    pub expiration: Option<JWTTimestamp>,
+    #[serde(
+        default,
+        rename = "exp",
+        skip_serializing_if = "Option::is_none",
+        with = "jiff_jwt_serde::opt"
+    )]
+    pub expiration: Option<jiff::Timestamp>,
 
     /// The "nbf" (not before) claim identifies the time before which the JWT
     /// MUST NOT be accepted for processing. The processing of the "nbf" claim
@@ -104,19 +137,61 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// for some small leeway, usually no more than a few minutes, to account
     /// for clock skew. Its value MUST be a number containing a NumericDate value.
     /// Use of this claim is OPTIONAL.
-    #[serde(default, rename = "nbf", skip_serializing_if = "Option::is_none")]
-    pub not_before: Option<JWTTimestamp>,
+    #[serde(
+        default,
+        rename = "nbf",
+        skip_serializing_if = "Option::is_none",
+        with = "jiff_jwt_serde::opt"
+    )]
+    pub not_before: Option<jiff::Timestamp>,
 
     /// The "iat" (issued at) claim identifies the time at which the JWT was
     /// issued.  This claim can be used to determine the age of the JWT.  Its
     /// value MUST be a number containing a NumericDate value.  Use of this
     /// claim is OPTIONAL.
-    #[serde(default, rename = "iat", skip_serializing_if = "Option::is_none")]
-    pub issued_at: Option<JWTTimestamp>,
+    #[serde(
+        default,
+        rename = "iat",
+        skip_serializing_if = "Option::is_none",
+        with = "jiff_jwt_serde::opt"
+    )]
+    pub issued_at: Option<jiff::Timestamp>,
 
     /// The "jti" (JWT ID) claim provides a unique identifier for the JWT. The identifier value MUST be assigned in a manner that ensures that there is a negligible probability that the same value will be accidentally assigned to a different data object; if the application uses multiple issuers, collisions MUST be prevented among values produced by different issuers as well. The "jti" claim can be used to prevent the JWT from being replayed. The "jti" value is a case- sensitive string. Use of this claim is OPTIONAL.
     #[serde(default, rename = "jti", skip_serializing_if = "Option::is_none")]
     pub token_id: Option<JTI>,
+}
+
+/// Represents errors that can occur during claim validation.
+#[derive(Debug, thiserror::Error)]
+pub enum ClaimValidationError {
+    /// The claims have expired.
+    #[error("claims expired at {0}")]
+    Expired(jiff::Timestamp),
+
+    /// The claims are not yet valid.
+    #[error("claims not yet valid until {0}")]
+    NotYetValid(jiff::Timestamp),
+}
+
+impl<ISS, SUB, AUD, JTI> RegisteredClaims<ISS, SUB, AUD, JTI> {
+    /// Validates the timestamps as of the given time.
+    pub fn validate_timestamps_as_of(
+        &self,
+        now: jiff::Timestamp,
+    ) -> Result<(), ClaimValidationError> {
+        if let Some(expiration) = &self.expiration {
+            if now >= *expiration {
+                return Err(ClaimValidationError::Expired(*expiration));
+            }
+        }
+        if let Some(not_before) = &self.not_before {
+            if now <= *not_before {
+                return Err(ClaimValidationError::NotYetValid(*not_before));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<ISS, SUB, AUD, JTI> Default for RegisteredClaims<ISS, SUB, AUD, JTI> {
@@ -199,6 +274,11 @@ mod test {
     use super::*;
     use serde_json::json;
 
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+    struct CustomClaims {
+        foo: String,
+    }
+
     #[test]
     fn claim_iss_integer() {
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -222,11 +302,6 @@ mod test {
 
     #[test]
     fn claim_nbf() {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-        struct CustomClaims {
-            foo: String,
-        }
-
         let claims = Claims::new(
             RegisteredClaims::<()> {
                 not_before: "2023-04-18T21:54:39Z"
@@ -242,5 +317,75 @@ mod test {
 
         let json = serde_json::to_value(claims).unwrap();
         assert_eq!(json["nbf"].as_i64(), Some(1681854879), "{json:?}");
+    }
+
+    #[test]
+    fn validate_claim_exp() {
+        let claims = RegisteredClaims::<()> {
+            expiration: "2023-04-18T21:54:39Z".parse::<jiff::Timestamp>().ok(),
+            ..Default::default()
+        };
+
+        assert!(
+            claims
+                .validate_timestamps_as_of(
+                    "2023-04-18T21:54:39Z".parse::<jiff::Timestamp>().unwrap()
+                )
+                .is_err(),
+            "Claim expires at boundary"
+        );
+
+        assert!(
+            claims
+                .validate_timestamps_as_of(
+                    "2023-04-18T20:54:39Z".parse::<jiff::Timestamp>().unwrap()
+                )
+                .is_ok(),
+            "Claim not expired"
+        );
+
+        assert!(
+            claims
+                .validate_timestamps_as_of(
+                    "2023-04-18T22:54:39Z".parse::<jiff::Timestamp>().unwrap()
+                )
+                .is_err(),
+            "Claim expired"
+        );
+    }
+
+    #[test]
+    fn validate_claim_nbf() {
+        let claims = RegisteredClaims::<()> {
+            not_before: "2023-04-18T21:54:39Z".parse::<jiff::Timestamp>().ok(),
+            ..Default::default()
+        };
+
+        assert!(
+            claims
+                .validate_timestamps_as_of(
+                    "2023-04-18T20:54:39Z".parse::<jiff::Timestamp>().unwrap()
+                )
+                .is_err(),
+            "Claim not before boundary"
+        );
+
+        assert!(
+            claims
+                .validate_timestamps_as_of(
+                    "2023-04-18T21:54:39Z".parse::<jiff::Timestamp>().unwrap()
+                )
+                .is_err(),
+            "Claim not valid on boundary"
+        );
+
+        assert!(
+            claims
+                .validate_timestamps_as_of(
+                    "2023-04-18T22:54:39Z".parse::<jiff::Timestamp>().unwrap()
+                )
+                .is_ok(),
+            "Claim not expired"
+        );
     }
 }

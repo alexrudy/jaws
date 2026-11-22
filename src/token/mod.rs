@@ -801,7 +801,7 @@ pub enum TokenSigningError {
     Serialization(#[from] serde_json::Error),
 }
 
-#[cfg(all(test, feature = "rsa"))]
+#[cfg(all(test, feature = "rsa", feature = "claims"))]
 mod test_rsa {
     use super::*;
     use crate::{claims::Claims, key::DeserializeJWK as _};

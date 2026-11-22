@@ -44,6 +44,8 @@ ecosystem.
 
 pub mod algorithms;
 pub mod base64data;
+
+#[cfg(feature = "claims")]
 pub mod claims;
 
 #[cfg(feature = "fmt")]
@@ -54,6 +56,8 @@ pub mod key;
 pub mod token;
 
 pub use algorithms::{SignatureBytes, TokenSigner, TokenVerifier};
+
+#[cfg(feature = "claims")]
 pub use claims::{Claims, RegisteredClaims};
 #[cfg(feature = "fmt")]
 pub use fmt::JWTFormat;

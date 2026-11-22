@@ -22,7 +22,7 @@ default-target = "x86_64-unknown-linux-gnu"
 [dependencies]
 base64ct = { version = "1.8", features = ["std"] }
 bytes = { version = "1.12" }
-jiff = { version = "1" }
+jiff = { version = "1", optional = true }
 crypto-bigint = { version = "0.7", features = ["alloc"], optional = true }
 der = { version = "0.8", optional = true }
 digest = { version = "0.11" }
@@ -55,7 +55,7 @@ static_assertions = "1.1.0"
 rand = "0.10"
 
 [features]
-default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac"]
+default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac", "claims"]
 fmt = []
 rand = ["dep:rand_core"]
 rsa = ["dep:rsa", "dep:crypto-bigint"]
@@ -69,6 +69,7 @@ spki = ["dep:spki"]
 der = ["dep:der"]
 ed25519 = []
 none = []
+claims = ["dep:jiff"]
 
 [[example]]
 name = "acme-new-account"

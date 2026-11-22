@@ -574,7 +574,7 @@ where
     ///
     /// The algorithm must be uniquely specified for verification, otherwise the token
     /// could perform a signature downgrade attack.
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::result_large_err, clippy::type_complexity)]
     pub fn verify<A, S>(
         self,
         algorithm: &A,

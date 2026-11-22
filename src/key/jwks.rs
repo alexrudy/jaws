@@ -119,7 +119,11 @@ impl<K> JwkSet<K> {
     }
 }
 
+pub type SignedToken<P, H, K, F> = Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>;
+pub type UnverifiedToken<P, H, F> = Token<P, Unverified<H>, F>;
+
 /// Trait for verifying JWTs using a JWK set.
+#[allow(clippy::result_large_err, clippy::type_complexity)]
 pub trait VerifyJWKSet<K>
 where
     K: IntoVerifyingKey + Clone,
@@ -129,8 +133,8 @@ where
     /// If a key is identified, it is used to verify the token. If no key is identified, the token is guessed using [`Self::verify_token_guess`].
     fn verify_token_any<P, H, F>(
         &self,
-        token: Token<P, Unverified<H>, F>,
-    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
     where
         F: TokenFormat + 'static;
 
@@ -139,16 +143,16 @@ where
     /// This is inherently less secure than [`Self::verify_token`], as it does not require a key to be identified.
     fn verify_token_guess<P, H, F>(
         &self,
-        token: Token<P, Unverified<H>, F>,
-    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
     where
         F: TokenFormat + 'static;
 
     /// Verify the token using the identified key in the set, returning the verified token if successful.
     fn verify_token<P, H, F>(
         &self,
-        token: Token<P, Unverified<H>, F>,
-    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
     where
         F: TokenFormat + 'static;
 }
@@ -159,26 +163,25 @@ where
 {
     fn verify_token_any<P, H, F>(
         &self,
-        token: Token<P, Unverified<H>, F>,
-    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
     where
         F: TokenFormat + 'static,
     {
         match self.verify_token(token) {
             Ok(verified) => Ok(verified),
-            Err(JWKSetVerifyError { token, kind })
-                if matches!(kind, JWKSetVerifyErrorKind::NoKeyIdentified) =>
-            {
-                self.verify_token_guess(token)
-            }
+            Err(JWKSetVerifyError {
+                token,
+                kind: JWKSetVerifyErrorKind::NoKeyIdentified,
+            }) => self.verify_token_guess(token),
             Err(err) => Err(err),
         }
     }
 
     fn verify_token_guess<P, H, F>(
         &self,
-        mut token: Token<P, Unverified<H>, F>,
-    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+        mut token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
     where
         F: TokenFormat + 'static,
     {
@@ -205,8 +208,8 @@ where
 
     fn verify_token<P, H, F>(
         &self,
-        token: Token<P, Unverified<H>, F>,
-    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
     where
         F: TokenFormat + 'static,
     {

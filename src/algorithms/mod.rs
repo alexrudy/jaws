@@ -72,7 +72,7 @@ pub use sha2::Sha384;
 #[cfg(any(feature = "hmac", feature = "rsa"))]
 pub use sha2::Sha512;
 
-use crate::key::SerializePublicJWK;
+use crate::key::{IntoSigningKey, IntoVerifyingKey, SerializePublicJWK, UnsupportedAlgorithmError};
 
 mod sig;
 
@@ -350,6 +350,28 @@ where
     }
 }
 
+impl<K, S> IntoSigningKey<S> for K
+where
+    K: TokenSigner<S>,
+    S: SignatureEncoding,
+{
+    type Key = K;
+
+    fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
+        self.identifier() == algorithm
+    }
+
+    fn into_signing_key(
+        self,
+        algorithm: AlgorithmIdentifier,
+    ) -> Result<K, UnsupportedAlgorithmError> {
+        if !self.supports_algorithm(algorithm) {
+            return Err(algorithm.into());
+        }
+        Ok(self)
+    }
+}
+
 impl<K, S> TokenSigner<S> for K
 where
     K: JsonWebAlgorithmDigest + SerializePublicJWK,
@@ -435,6 +457,28 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<S, signature::Error>;
+}
+
+impl<K, S> IntoVerifyingKey<S> for K
+where
+    K: TokenVerifier<S>,
+    S: SignatureEncoding,
+{
+    type Key = K;
+
+    fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
+        self.identifier() == algorithm
+    }
+
+    fn into_verifying_key(
+        self,
+        algorithm: AlgorithmIdentifier,
+    ) -> Result<Self::Key, UnsupportedAlgorithmError> {
+        if !self.supports_algorithm(algorithm) {
+            return Err(algorithm.into());
+        }
+        Ok(self)
+    }
 }
 
 impl<K, S> TokenVerifier<S> for K

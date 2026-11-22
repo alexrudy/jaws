@@ -372,6 +372,7 @@ where
 
 /// Access to the header fields of a JOSE header.
 #[derive(Debug)]
+#[must_use = "header access should be used immediately"]
 pub struct HeaderAccess<'h, H, State> {
     header: &'h Header<H, State>,
 }
@@ -392,98 +393,98 @@ impl<'h, H, State> HeaderAccess<'h, H, State> {
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/jwk_set_url.md"))]
-    pub fn jwk_set_url(&self) -> Option<&Url> {
+    pub fn jwk_set_url(&self) -> Option<&'h Url> {
         self.header.registered.jwk_set_url.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/type.md"))]
-    pub fn r#type(&self) -> Option<&str> {
+    pub fn r#type(&self) -> Option<&'h str> {
         self.header.registered.r#type.as_deref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/key_id.md"))]
-    pub fn key_id(&self) -> Option<&str> {
+    pub fn key_id(&self) -> Option<&'h str> {
         self.header.registered.key_id.as_deref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/certificate_url.md"))]
-    pub fn certificate_url(&self) -> Option<&Url> {
+    pub fn certificate_url(&self) -> Option<&'h Url> {
         self.header.registered.certificate_url.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/certificate_chain.md"))]
-    pub fn certificate_chain(&self) -> Option<&[Certificate]> {
+    pub fn certificate_chain(&self) -> Option<&'h [Certificate]> {
         self.header.registered.certificate_chain.as_deref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/content_type.md"))]
-    pub fn content_type(&self) -> Option<&str> {
+    pub fn content_type(&self) -> Option<&'h str> {
         self.header.registered.content_type.as_deref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/critical.md"))]
-    pub fn critical(&self) -> Option<&[String]> {
+    pub fn critical(&self) -> Option<&'h [String]> {
         self.header.registered.critical.as_deref()
     }
 }
 
-impl<H> HeaderAccess<'_, H, UnsignedHeader> {
+impl<'h, H> HeaderAccess<'h, H, UnsignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> &DeriveFromKey<JsonWebKey> {
+    pub fn key(&self) -> &'h DeriveFromKey<JsonWebKey> {
         &self.header.state.key
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> &DeriveFromKey<Thumbprint<Sha1>> {
+    pub fn thumbprint(&self) -> &'h DeriveFromKey<Thumbprint<Sha1>> {
         &self.header.state.thumbprint
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> &DeriveFromKey<Thumbprint<Sha256>> {
+    pub fn thumbprint_sha256(&self) -> &'h DeriveFromKey<Thumbprint<Sha256>> {
         &self.header.state.thumbprint_sha256
     }
 }
 
-impl<H> HeaderAccess<'_, H, SignedHeader> {
+impl<'h, H> HeaderAccess<'h, H, SignedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
-    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+    pub fn algorithm(&self) -> &'h AlgorithmIdentifier {
         self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> Option<&JsonWebKey> {
+    pub fn key(&self) -> Option<&'h JsonWebKey> {
         self.header.state.json_web_key.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> Option<&Thumbprint<Sha1>> {
+    pub fn thumbprint(&self) -> Option<&'h Thumbprint<Sha1>> {
         self.header.state.thumbprint.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> Option<&Thumbprint<Sha256>> {
+    pub fn thumbprint_sha256(&self) -> Option<&'h Thumbprint<Sha256>> {
         self.header.state.thumbprint_sha256.as_ref()
     }
 }
 
-impl<H> HeaderAccess<'_, H, RenderedHeader> {
+impl<'h, H> HeaderAccess<'h, H, RenderedHeader> {
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/algorithm.md"))]
-    pub fn algorithm(&self) -> &AlgorithmIdentifier {
+    pub fn algorithm(&self) -> &'h AlgorithmIdentifier {
         self.header.algorithm()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&self) -> Option<&JsonWebKey> {
+    pub fn key(&self) -> Option<&'h JsonWebKey> {
         self.header.state.key.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&self) -> Option<&Thumbprint<Sha1>> {
+    pub fn thumbprint(&self) -> Option<&'h Thumbprint<Sha1>> {
         self.header.state.thumbprint.as_ref()
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&self) -> Option<&Thumbprint<Sha256>> {
+    pub fn thumbprint_sha256(&self) -> Option<&'h Thumbprint<Sha256>> {
         self.header.state.thumbprint_sha256.as_ref()
     }
 }
@@ -500,6 +501,7 @@ where
 }
 
 /// Mutable access to header fields of a JOSE header.
+#[must_use = "header access should be used immediately"]
 pub struct HeaderAccessMut<'h, H, State> {
     header: &'h mut Header<H, State>,
 }
@@ -515,47 +517,47 @@ impl<'h, H, State> HeaderAccessMut<'h, H, State> {
     ///
     /// Using a custom header value which conflicts with a registered header
     /// value will result in an error when signing the token.
-    pub fn custom(&mut self) -> &mut H {
+    pub fn custom(self) -> &'h mut H {
         &mut self.header.custom
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/jwk_set_url.md"))]
-    pub fn jwk_set_url(&mut self) -> &mut Option<Url> {
+    pub fn jwk_set_url(self) -> &'h mut Option<Url> {
         &mut self.header.registered.jwk_set_url
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/type.md"))]
-    pub fn r#type(&mut self) -> &mut Option<String> {
+    pub fn r#type(self) -> &'h mut Option<String> {
         &mut self.header.registered.r#type
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/key_id.md"))]
-    pub fn key_id(&mut self) -> &mut Option<String> {
+    pub fn key_id(self) -> &'h mut Option<String> {
         &mut self.header.registered.key_id
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/certificate_url.md"))]
-    pub fn certificate_url(&mut self) -> &mut Option<Url> {
+    pub fn certificate_url(self) -> &'h mut Option<Url> {
         &mut self.header.registered.certificate_url
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/certificate_chain.md"))]
-    pub fn certificate_chain(&mut self) -> &mut Option<Vec<Certificate>> {
+    pub fn certificate_chain(self) -> &'h mut Option<Vec<Certificate>> {
         &mut self.header.registered.certificate_chain
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/content_type.md"))]
-    pub fn content_type(&mut self) -> &mut Option<String> {
+    pub fn content_type(self) -> &'h mut Option<String> {
         &mut self.header.registered.content_type
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/critical.md"))]
-    pub fn critical(&mut self) -> &mut Option<Vec<String>> {
+    pub fn critical(self) -> &'h mut Option<Vec<String>> {
         &mut self.header.registered.critical
     }
 }
 
-impl<H> HeaderAccessMut<'_, H, UnsignedHeader> {
+impl<'h, H> HeaderAccessMut<'h, H, UnsignedHeader> {
     /// Reset all the non-custom header values to their defaults.
     pub fn reset_registered_headers(&mut self) {
         self.header.registered = Default::default();
@@ -563,17 +565,17 @@ impl<H> HeaderAccessMut<'_, H, UnsignedHeader> {
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/json_web_key.md"))]
-    pub fn key(&mut self) -> &mut DeriveFromKey<JsonWebKey> {
+    pub fn key(self) -> &'h mut DeriveFromKey<JsonWebKey> {
         &mut self.header.state.key
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint.md"))]
-    pub fn thumbprint(&mut self) -> &mut DeriveFromKey<Thumbprint<Sha1>> {
+    pub fn thumbprint(self) -> &'h mut DeriveFromKey<Thumbprint<Sha1>> {
         &mut self.header.state.thumbprint
     }
 
     #[doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/jose/thumbprint_sha256.md"))]
-    pub fn thumbprint_sha256(&mut self) -> &mut DeriveFromKey<Thumbprint<Sha256>> {
+    pub fn thumbprint_sha256(self) -> &'h mut DeriveFromKey<Thumbprint<Sha256>> {
         &mut self.header.state.thumbprint_sha256
     }
 }

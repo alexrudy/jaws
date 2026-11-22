@@ -574,30 +574,40 @@ where
     ///
     /// The algorithm must be uniquely specified for verification, otherwise the token
     /// could perform a signature downgrade attack.
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::result_large_err, clippy::type_complexity)]
     pub fn verify<A, S>(
         self,
         algorithm: &A,
-    ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenVerifyingError>
+    ) -> Result<Token<P, Signed<H, A, S>, Fmt>, TokenVerifyingError<P, H, Fmt>>
     where
         A: crate::algorithms::TokenVerifier<S> + ?Sized,
         S: SignatureEncoding,
     {
         if algorithm.identifier() != *self.state.header.algorithm() {
-            return Err(TokenVerifyingError::Algorithm(
-                algorithm.identifier(),
-                *self.state.header.algorithm(),
+            let token_algorithm = *self.state.header.algorithm();
+            return Err(TokenVerifyingError::new(
+                self,
+                TokenVerifyingErrorKind::Algorithm {
+                    expected: algorithm.identifier(),
+                    actual: token_algorithm,
+                },
             ));
         }
 
         let signature = &self.state.signature;
-        let signature = algorithm
-            .verify_token(
-                &self.state.header.state.raw,
-                &self.state.payload,
-                signature.as_ref(),
-            )
-            .map_err(TokenVerifyingError::Verify)?;
+        let signature = match algorithm.verify_token(
+            &self.state.header.state.raw,
+            &self.state.payload,
+            signature.as_ref(),
+        ) {
+            Ok(sig) => sig,
+            Err(err) => {
+                return Err(TokenVerifyingError::new(
+                    self,
+                    TokenVerifyingErrorKind::Verify(err),
+                ))
+            }
+        };
 
         let header = self.state.header.into_signed_header::<A, S>(algorithm);
 
@@ -731,22 +741,47 @@ where
 /// An error which occured while verifying a token.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum TokenVerifyingError {
+#[error("{kind}")]
+pub struct TokenVerifyingError<P, H, F>
+where
+    F: TokenFormat,
+{
+    /// The token which failed to verify.
+    pub token: Token<P, Unverified<H>, F>,
+
+    /// The error which occurred during verification.
+    #[source]
+    pub kind: TokenVerifyingErrorKind,
+}
+
+impl<P, H, F> TokenVerifyingError<P, H, F>
+where
+    F: TokenFormat,
+{
+    pub(crate) fn new(token: Token<P, Unverified<H>, F>, kind: TokenVerifyingErrorKind) -> Self {
+        Self { token, kind }
+    }
+}
+
+/// An error which occured while verifying a token.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TokenVerifyingErrorKind {
     /// The verification failed during the cryptographic process, meaning
     /// that the signature was invalid, or the algorithm was invalid.
     #[error("verifying: {0}")]
     Verify(#[source] signature::Error),
 
-    /// An error occured while re-serailizing the header or payload for
-    /// signature verification. This indicates that something is probably
-    /// wrong with your custom types.
-    #[error("serializing: {0}")]
-    Serialization(#[from] serde_json::Error),
-
     /// The algorithm specified in the header does not match the algorithm
     /// of the verifier.
-    #[error("algorithm mismatch: expected {0:?}, got {1:?}")]
-    Algorithm(AlgorithmIdentifier, AlgorithmIdentifier),
+    #[error("algorithm mismatch: expected {expected:?}, got {actual:?}")]
+    Algorithm {
+        /// The expected algorithm.
+        expected: AlgorithmIdentifier,
+
+        /// The actual algorithm for the token
+        actual: AlgorithmIdentifier,
+    },
 }
 
 /// An error which occured while verifying a token.

@@ -5,7 +5,10 @@ use crate::{
     SignatureBytes, TokenSigner, TokenVerifier,
 };
 
-use super::{DynJwkKeyType, KeyType, Parameters, SerializeJWK, SerializePublicJWK};
+use super::{
+    DynJwkKeyType, IntoVerifyingKey, JWKSetVerifyError, JwkSet, KeyType, Parameters, SerializeJWK,
+    SerializePublicJWK, UnsupportedAlgorithmError, VerifyJWKSet,
+};
 
 /// Error when an algorithm is not allowed by the restricted key.
 #[derive(Debug, Clone)]
@@ -31,8 +34,8 @@ impl std::error::Error for RestrictedAlgorithmError {}
 /// A Verifying or Signing key that has been restricted to a set of allowed algorithms.
 #[derive(Debug, Clone)]
 pub struct Restricted<K> {
-    /// The underlying key.
-    pub key: K,
+    /// The underlying key/inner object.
+    pub inner: K,
 
     /// The set of allowed algorithms.
     pub allowed_algorithms: Vec<AlgorithmIdentifier>,
@@ -40,9 +43,9 @@ pub struct Restricted<K> {
 
 impl<K> Restricted<K> {
     /// Creates a K that allows all available algorithms except `None`.
-    pub fn all(key: K) -> Self {
+    pub fn all(inner: K) -> Self {
         Self {
-            key,
+            inner,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
                 .iter()
                 .copied()
@@ -52,22 +55,39 @@ impl<K> Restricted<K> {
     }
 
     /// Creates a K that allows all available algorithms, including `None`.
-    pub fn insecure(key: K) -> Self {
+    pub fn insecure(inner: K) -> Self {
         Self {
-            key,
+            inner,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS.to_vec(),
         }
     }
 
     /// Creates a K that only allows asymmetric algorithms.
-    pub fn asymmetric(key: K) -> Self {
+    pub fn asymmetric(inner: K) -> Self {
         Self {
-            key,
+            inner,
             allowed_algorithms: crate::algorithms::AVAILABLE_ALGORITHMS
                 .iter()
                 .copied()
                 .filter(|&a| a.is_asymmetric())
                 .collect(),
+        }
+    }
+
+    /// Returns whether the algorithm is supported by this key.
+    pub fn allows_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
+        self.allowed_algorithms.contains(&algorithm)
+    }
+
+    /// Validates that the algorithm is supported by this key.
+    pub fn validate_algorithm(
+        &self,
+        algorithm: AlgorithmIdentifier,
+    ) -> Result<(), UnsupportedAlgorithmError> {
+        if self.allows_algorithm(algorithm) {
+            Ok(())
+        } else {
+            Err(algorithm.into())
         }
     }
 }
@@ -77,7 +97,7 @@ where
     K: DynJsonWebAlgorithm,
 {
     fn identifier(&self) -> AlgorithmIdentifier {
-        self.key.identifier()
+        self.inner.identifier()
     }
 }
 
@@ -91,13 +111,13 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<SignatureBytes, signature::Error> {
-        if !self.allowed_algorithms.contains(&self.identifier()) {
+        if !self.allows_algorithm(self.identifier()) {
             return Err(signature::Error::from_source(
                 RestrictedAlgorithmError::from(self.identifier()),
             ));
         }
 
-        self.key.verify_token(header, payload, signature)
+        self.inner.verify_token(header, payload, signature)
     }
 }
 
@@ -106,7 +126,7 @@ where
     K: DynJwkKeyType,
 {
     fn key_type(&self) -> KeyType {
-        self.key.key_type()
+        self.inner.key_type()
     }
 }
 
@@ -115,7 +135,7 @@ where
     K: SerializeJWK,
 {
     fn parameters(&self) -> Parameters {
-        self.key.parameters()
+        self.inner.parameters()
     }
 }
 
@@ -124,7 +144,7 @@ where
     K: SerializePublicJWK,
 {
     fn public_parameters(&self) -> Parameters {
-        self.key.public_parameters()
+        self.inner.public_parameters()
     }
 }
 
@@ -137,16 +157,136 @@ where
         header: &str,
         payload: &str,
     ) -> Result<SignatureBytes, signature::Error> {
-        if !self
-            .allowed_algorithms
-            .iter()
-            .any(|&a| a == self.identifier())
-        {
+        if !self.allows_algorithm(self.identifier()) {
             return Err(signature::Error::from_source(
                 RestrictedAlgorithmError::from(self.identifier()),
             ));
         }
 
-        self.key.try_sign_token(header, payload)
+        self.inner.try_sign_token(header, payload)
+    }
+}
+
+impl<K> VerifyJWKSet<K> for Restricted<JwkSet<K>>
+where
+    K: IntoVerifyingKey + Clone,
+{
+    fn verify_token_any<P, H, F>(
+        &self,
+        token: crate::Token<P, crate::token::Unverified<H>, F>,
+    ) -> Result<
+        crate::Token<P, crate::token::Signed<H, <K as super::IntoVerifyingKey>::Key>, F>,
+        super::JWKSetVerifyError<P, H, F>,
+    >
+    where
+        F: crate::token::TokenFormat + 'static,
+    {
+        if let Err(kind) = self.validate_algorithm(*token.header().algorithm()) {
+            return Err(JWKSetVerifyError::new(token, kind.into()));
+        }
+
+        self.inner.verify_token_any(token)
+    }
+
+    fn verify_token_guess<P, H, F>(
+        &self,
+        token: crate::Token<P, crate::token::Unverified<H>, F>,
+    ) -> Result<
+        crate::Token<P, crate::token::Signed<H, <K as super::IntoVerifyingKey>::Key>, F>,
+        super::JWKSetVerifyError<P, H, F>,
+    >
+    where
+        F: crate::token::TokenFormat + 'static,
+    {
+        if let Err(kind) = self.validate_algorithm(*token.header().algorithm()) {
+            return Err(JWKSetVerifyError::new(token, kind.into()));
+        }
+
+        self.inner.verify_token_guess(token)
+    }
+
+    fn verify_token<P, H, F>(
+        &self,
+        token: crate::Token<P, crate::token::Unverified<H>, F>,
+    ) -> Result<
+        crate::Token<P, crate::token::Signed<H, <K as super::IntoVerifyingKey>::Key>, F>,
+        super::JWKSetVerifyError<P, H, F>,
+    >
+    where
+        F: crate::token::TokenFormat + 'static,
+    {
+        if let Err(kind) = self.validate_algorithm(*token.header().algorithm()) {
+            return Err(JWKSetVerifyError::new(token, kind.into()));
+        }
+
+        self.inner.verify_token(token)
+    }
+}
+
+#[cfg(all(test, feature = "rsa", feature = "none"))]
+mod tests {
+    use rsa::Generate;
+
+    use crate::{algorithms::none::NoneAlgorithm, key::Identified, Token};
+
+    use super::*;
+
+    #[test]
+    fn restricted_allows_allowed_algorithm() {
+        let key = rsa::pkcs1v15::SigningKey::<sha2::Sha256>::from(rsa::PrivateKey::generate());
+        let restricted_key = Restricted::all(key);
+
+        assert!(
+            Token::compact((), ()).sign(&restricted_key).is_ok(),
+            "signing should succeed with allowed algorithm"
+        );
+    }
+
+    #[test]
+    fn restricted_denies_unsupported_algorithm() {
+        let key = rsa::pkcs1v15::SigningKey::<sha2::Sha256>::from(rsa::PrivateKey::generate());
+        let mut restricted_key = Restricted::all(key);
+        restricted_key
+            .allowed_algorithms
+            .retain(|&a| a != AlgorithmIdentifier::RS256);
+
+        assert!(
+            Token::compact((), ()).sign(&restricted_key).is_err(),
+            "signing should fail with unsupported algorithm"
+        );
+    }
+
+    #[test]
+    fn restricted_all_denies_none() {
+        let key = Restricted::all(NoneAlgorithm);
+
+        assert!(
+            Token::compact((), ()).sign(&key).is_err(),
+            "signing should fail with None algorithm"
+        );
+    }
+
+    #[test]
+    fn restricted_denies_none_jwks() {
+        let keyset: JwkSet<NoneAlgorithm> = [Identified::unidentified(NoneAlgorithm)]
+            .into_iter()
+            .collect();
+
+        let token: Token<(), crate::token::Unverified<()>> = Token::compact((), ())
+            .sign(&NoneAlgorithm)
+            .unwrap()
+            .unverify();
+
+        assert!(
+            keyset.verify_token_any(token.clone()).is_ok(),
+            "verify should succeed with None algorithm"
+        );
+
+        let restricted_keyset = Restricted::all(keyset);
+
+        assert!(
+            restricted_keyset.verify_token_any(token).is_err(),
+            "verify should fail with None algorithm"
+        );
     }
 }

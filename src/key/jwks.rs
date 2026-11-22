@@ -4,7 +4,85 @@ use std::{borrow::Cow, marker::PhantomData, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
-use super::Identified;
+use crate::{
+    algorithms::AlgorithmIdentifier,
+    token::{Signed, TokenFormat, TokenVerifyingError, TokenVerifyingErrorKind, Unverified},
+    Token,
+};
+
+use super::{Identified, IntoVerifyingKey, Restricted, UnsupportedAlgorithmError};
+
+/// Error when verifying a token using a JWK set.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[error("JWK set verification error: {kind}")]
+pub struct JWKSetVerifyError<P, H, F>
+where
+    F: TokenFormat,
+{
+    /// The token that failed verification.
+    pub token: Token<P, Unverified<H>, F>,
+
+    /// The kind of error that occurred.
+    pub kind: JWKSetVerifyErrorKind,
+}
+
+impl<P, H, F> JWKSetVerifyError<P, H, F>
+where
+    F: TokenFormat,
+{
+    /// Creates a new `JWKSetVerifyError` with the given token and kind.
+    pub fn new(token: Token<P, Unverified<H>, F>, kind: JWKSetVerifyErrorKind) -> Self {
+        Self { token, kind }
+    }
+}
+
+/// The kind of error that occurred when verifying a token using a JWK set.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum JWKSetVerifyErrorKind {
+    /// The key used to verify the token was not found in the JWK set.
+    #[error("missing key in JWKS: {0}")]
+    MissingKey(String),
+
+    /// The signature failed to verify.
+    #[error("verification failed: {0}")]
+    Verify(#[from] signature::Error),
+
+    /// The algorithm expected by the key does not match the actual algorithm
+    /// used to originally sign the token.
+    #[error("algorithm mismatch: expected {expected:?}, got {actual:?}")]
+    AlgorithmMismatch {
+        /// The algorithm expected by the key.
+        expected: AlgorithmIdentifier,
+
+        /// The actual algorithm used to sign the token.
+        actual: AlgorithmIdentifier,
+    },
+
+    /// The algorithm used to sign the token is not supported.
+    #[error(transparent)]
+    UnsupportedAlgorithm(#[from] UnsupportedAlgorithmError),
+
+    /// No key was identified in the JWK set.
+    #[error("no key identified")]
+    NoKeyIdentified,
+
+    /// No key was able to verify the token's signature.
+    #[error("no key validated")]
+    NoKeyValidated,
+}
+
+impl From<TokenVerifyingErrorKind> for JWKSetVerifyErrorKind {
+    fn from(value: TokenVerifyingErrorKind) -> Self {
+        match value {
+            TokenVerifyingErrorKind::Verify(err) => Self::Verify(err),
+            TokenVerifyingErrorKind::Algorithm { expected, actual } => {
+                Self::AlgorithmMismatch { expected, actual }
+            }
+        }
+    }
+}
 
 /// A set of JSON Web Keys.
 ///
@@ -24,6 +102,149 @@ impl<K> JwkSet<K> {
             .iter()
             .find(|k| k.id.as_deref() == Some(id))
             .map(|k| &k.key)
+    }
+
+    /// Applies [`Restricted`] to each key in the set using the given function, returning a new [`JwkSet`] of [`Restricted`] keys.
+    pub fn restrict<F: Fn(K) -> Restricted<K>>(self, func: F) -> JwkSet<Restricted<K>> {
+        JwkSet {
+            keys: self
+                .keys
+                .into_iter()
+                .map(|k| Identified {
+                    key: func(k.key),
+                    id: k.id,
+                })
+                .collect(),
+        }
+    }
+}
+
+pub type SignedToken<P, H, K, F> = Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>;
+pub type UnverifiedToken<P, H, F> = Token<P, Unverified<H>, F>;
+
+/// Trait for verifying JWTs using a JWK set.
+#[allow(clippy::result_large_err, clippy::type_complexity)]
+pub trait VerifyJWKSet<K>
+where
+    K: IntoVerifyingKey + Clone,
+{
+    /// Verify the token using any key in the set, trying to guess the key if no key is identified.
+    ///
+    /// If a key is identified, it is used to verify the token. If no key is identified, the token is guessed using [`Self::verify_token_guess`].
+    fn verify_token_any<P, H, F>(
+        &self,
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static;
+
+    /// Verify the token using any key in the set, returning the verified token if successful.
+    ///
+    /// This is inherently less secure than [`Self::verify_token`], as it does not require a key to be identified.
+    fn verify_token_guess<P, H, F>(
+        &self,
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static;
+
+    /// Verify the token using the identified key in the set, returning the verified token if successful.
+    fn verify_token<P, H, F>(
+        &self,
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static;
+}
+
+impl<K> VerifyJWKSet<K> for JwkSet<K>
+where
+    K: IntoVerifyingKey + Clone,
+{
+    fn verify_token_any<P, H, F>(
+        &self,
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static,
+    {
+        match self.verify_token(token) {
+            Ok(verified) => Ok(verified),
+            Err(JWKSetVerifyError {
+                token,
+                kind: JWKSetVerifyErrorKind::NoKeyIdentified,
+            }) => self.verify_token_guess(token),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn verify_token_guess<P, H, F>(
+        &self,
+        mut token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static,
+    {
+        let alg = *token.header().algorithm();
+        for key in &self.keys {
+            if !key.key.supports_algorithm(alg) {
+                continue;
+            }
+            if let Ok(verifier) = key.key.clone().into_verifying_key(alg) {
+                token = match token.verify(&verifier) {
+                    Ok(verified) => return Ok(verified),
+                    Err(TokenVerifyingError { token, kind }) => {
+                        tracing::trace!(kid=%key.id.as_deref().unwrap_or_default(), %alg, "verify error: {kind:?}");
+                        token
+                    }
+                };
+            }
+        }
+        Err(JWKSetVerifyError {
+            token,
+            kind: JWKSetVerifyErrorKind::NoKeyValidated,
+        })
+    }
+
+    fn verify_token<P, H, F>(
+        &self,
+        token: UnverifiedToken<P, H, F>,
+    ) -> Result<SignedToken<P, H, K, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static,
+    {
+        if let Some(kid) = token.header().key_id() {
+            let key = match self.get(kid) {
+                Some(key) => key,
+                None => {
+                    let kid = kid.into();
+                    return Err(JWKSetVerifyError::new(
+                        token,
+                        JWKSetVerifyErrorKind::MissingKey(kid),
+                    ));
+                }
+            };
+
+            let algorithm = token.header().algorithm();
+            let key = match key.clone().into_verifying_key(*algorithm) {
+                Ok(key) => key,
+                Err(err) => {
+                    return Err(JWKSetVerifyError::new(token, err.into()));
+                }
+            };
+
+            return match token.verify(&key) {
+                Ok(verified) => Ok(verified),
+                Err(TokenVerifyingError { token, kind }) => {
+                    Err(JWKSetVerifyError::new(token, kind.into()))
+                }
+            };
+        }
+
+        Err(JWKSetVerifyError::new(
+            token,
+            JWKSetVerifyErrorKind::NoKeyIdentified,
+        ))
     }
 }
 
@@ -232,7 +453,7 @@ mod roundtrip_tests {
         for f in private_keys() {
             for &alg in &f.algorithms {
                 ids.push(format!("{}-{alg:?}", f.label));
-                keys.push(f.public().into_algorithm(alg).unwrap());
+                keys.push(f.public().into_verifying_key(alg).unwrap());
             }
         }
 
@@ -336,6 +557,243 @@ mod roundtrip_tests {
             .unwrap(),
             JwkSet::default()
         );
+    }
+}
+
+#[cfg(all(test, any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
+mod verify_tests {
+    use super::*;
+
+    use crate::key::fixtures::{private_keys, Fixture};
+    use crate::key::{IntoSigningKey, PublicWebKey};
+
+    type Unverified = Token<(), crate::token::Unverified<()>>;
+
+    /// Algorithms of a fixture which can be signed without an RNG.
+    fn algorithms(f: &Fixture) -> Vec<AlgorithmIdentifier> {
+        f.algorithms
+            .iter()
+            .copied()
+            .filter(|a| {
+                !matches!(
+                    a,
+                    AlgorithmIdentifier::PS256
+                        | AlgorithmIdentifier::PS384
+                        | AlgorithmIdentifier::PS512
+                )
+            })
+            .collect()
+    }
+
+    fn keyset(fixtures: &[Fixture]) -> JwkSet<PublicWebKey> {
+        fixtures
+            .iter()
+            .map(|f| Identified::unidentified(f.public()).with_id(f.label.to_string()))
+            .collect()
+    }
+
+    fn token(f: &Fixture, alg: AlgorithmIdentifier, kid: Option<&str>) -> Unverified {
+        let mut token = Token::compact((), ());
+        if let Some(kid) = kid {
+            *token.header_mut().key_id() = Some(kid.to_string());
+        }
+        let key = f.key.clone().into_signing_key(alg).unwrap();
+        token.sign(&key).unwrap().unverify()
+    }
+
+    /// Runs `check` for every fixture / algorithm pair, along with a key set holding every fixture.
+    fn for_each(check: impl Fn(&Fixture, AlgorithmIdentifier, &JwkSet<PublicWebKey>)) {
+        let fixtures = private_keys();
+        let set = keyset(&fixtures);
+        for f in &fixtures {
+            for alg in algorithms(f) {
+                check(f, alg, &set);
+            }
+        }
+    }
+
+    #[test]
+    fn verify_token_by_kid() {
+        for_each(|f, alg, set| {
+            let t = token(f, alg, Some(f.label));
+            let verified = set
+                .verify_token(t)
+                .unwrap_or_else(|e| panic!("{} / {alg:?}: {e}", f.label));
+            assert_eq!(*verified.header().algorithm(), alg);
+        });
+    }
+
+    #[test]
+    fn verify_token_missing_kid_in_set() {
+        for_each(|f, alg, set| {
+            let t = token(f, alg, Some("does-not-exist"));
+            for result in [set.verify_token(t.clone()), set.verify_token_any(t)] {
+                let err = result.err().expect("unknown kid must fail");
+                assert!(
+                    matches!(&err.kind, JWKSetVerifyErrorKind::MissingKey(k) if k == "does-not-exist"),
+                    "{} / {alg:?}: got {:?}",
+                    f.label,
+                    err.kind
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn verify_token_without_kid_is_not_identified() {
+        for_each(|f, alg, set| {
+            let t = token(f, alg, None);
+            let err = set.verify_token(t).err().expect("no kid must fail");
+            assert!(matches!(err.kind, JWKSetVerifyErrorKind::NoKeyIdentified));
+            // The token is handed back to the caller.
+            assert_eq!(*err.token.header().algorithm(), alg);
+        });
+    }
+
+    #[test]
+    fn verify_token_with_another_keys_kid_fails() {
+        let fixtures = private_keys();
+        if fixtures.len() < 2 {
+            return;
+        }
+        let set = keyset(&fixtures);
+        let signer = &fixtures[0];
+        let other = &fixtures[1];
+
+        for alg in algorithms(signer) {
+            let t = token(signer, alg, Some(other.label));
+            let err = set.verify_token(t).err().expect("wrong key must fail");
+            assert!(
+                matches!(
+                    err.kind,
+                    JWKSetVerifyErrorKind::UnsupportedAlgorithm(_)
+                        | JWKSetVerifyErrorKind::Verify(_)
+                ),
+                "{alg:?}: got {:?}",
+                err.kind
+            );
+        }
+    }
+
+    #[test]
+    fn verify_token_guess_finds_key() {
+        for_each(|f, alg, set| {
+            let t = token(f, alg, None);
+            assert!(set.verify_token_guess(t).is_ok(), "{} / {alg:?}", f.label);
+        });
+    }
+
+    #[test]
+    fn verify_token_any_falls_back_to_guess() {
+        for_each(|f, alg, set| {
+            let t = token(f, alg, None);
+            assert!(set.verify_token_any(t).is_ok(), "{} / {alg:?}", f.label);
+        });
+    }
+
+    #[test]
+    fn verify_token_any_uses_kid_when_present() {
+        for_each(|f, alg, set| {
+            let t = token(f, alg, Some(f.label));
+            assert!(set.verify_token_any(t).is_ok(), "{} / {alg:?}", f.label);
+        });
+    }
+
+    #[test]
+    fn verify_token_guess_without_matching_key() {
+        let fixtures = private_keys();
+        for (i, signer) in fixtures.iter().enumerate() {
+            let rest: Vec<_> = private_keys()
+                .into_iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, f)| f)
+                .collect();
+            let set = keyset(&rest);
+
+            for alg in algorithms(signer) {
+                let t = token(signer, alg, None);
+                for result in [set.verify_token_guess(t.clone()), set.verify_token_any(t)] {
+                    let err = result.err().expect("no matching key must fail");
+                    assert!(
+                        matches!(err.kind, JWKSetVerifyErrorKind::NoKeyValidated),
+                        "{} / {alg:?}: got {:?}",
+                        signer.label,
+                        err.kind
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn verify_empty_set() {
+        let set: JwkSet<PublicWebKey> = JwkSet::default();
+        let fixtures = private_keys();
+        let f = &fixtures[0];
+        let alg = algorithms(f)[0];
+
+        let err = set.verify_token(token(f, alg, Some("a"))).err().unwrap();
+        assert!(matches!(err.kind, JWKSetVerifyErrorKind::MissingKey(_)));
+
+        let err = set.verify_token_guess(token(f, alg, None)).err().unwrap();
+        assert!(matches!(err.kind, JWKSetVerifyErrorKind::NoKeyValidated));
+    }
+
+    #[test]
+    fn restrict_preserves_ids() {
+        let fixtures = private_keys();
+        let set = keyset(&fixtures);
+        let restricted = set.restrict(Restricted::all);
+
+        assert_eq!(restricted.len(), fixtures.len());
+        for (f, k) in fixtures.iter().zip(restricted.iter()) {
+            assert_eq!(k.id(), Some(f.label));
+            assert_eq!(
+                k.key.allowed_algorithms,
+                Restricted::all(()).allowed_algorithms
+            );
+        }
+    }
+
+    #[test]
+    fn restricted_set_allows_listed_algorithms() {
+        for_each(|f, alg, set| {
+            let restricted = Restricted::all(set.clone());
+
+            let by_kid = token(f, alg, Some(f.label));
+            assert!(restricted.verify_token(by_kid.clone()).is_ok());
+            assert!(restricted.verify_token_any(by_kid).is_ok());
+
+            let guessed = token(f, alg, None);
+            assert!(restricted.verify_token_guess(guessed).is_ok());
+        });
+    }
+
+    #[test]
+    fn restricted_set_rejects_unlisted_algorithms() {
+        for_each(|f, alg, set| {
+            let mut restricted = Restricted::all(set.clone());
+            restricted.allowed_algorithms.retain(|&a| a != alg);
+
+            let by_kid = token(f, alg, Some(f.label));
+            let guessed = token(f, alg, None);
+            let results = [
+                restricted.verify_token(by_kid.clone()),
+                restricted.verify_token_any(by_kid),
+                restricted.verify_token_guess(guessed.clone()),
+                restricted.verify_token_any(guessed),
+            ];
+            for result in results {
+                let err = result.err().expect("unlisted algorithm must fail");
+                assert!(
+                    matches!(&err.kind, JWKSetVerifyErrorKind::UnsupportedAlgorithm(e) if e.0 == alg),
+                    "{} / {alg:?}: got {:?}",
+                    f.label,
+                    err.kind
+                );
+            }
+        });
     }
 }
 

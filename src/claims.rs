@@ -19,6 +19,38 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "fmt")]
 use crate::fmt;
 
+/// A wrapper around a [`Timestamp`] that is used as a JWT timestamp,
+/// and so serializes to/from an `i64` value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "i64", into = "i64")]
+pub struct JWTTimestamp(Timestamp);
+
+impl From<Timestamp> for JWTTimestamp {
+    fn from(timestamp: Timestamp) -> Self {
+        Self(timestamp)
+    }
+}
+
+impl From<JWTTimestamp> for Timestamp {
+    fn from(timestamp: JWTTimestamp) -> Self {
+        timestamp.0
+    }
+}
+
+impl TryFrom<i64> for JWTTimestamp {
+    type Error = jiff::Error;
+
+    fn try_from(timestamp: i64) -> Result<Self, Self::Error> {
+        Ok(Self(Timestamp::from_second(timestamp)?))
+    }
+}
+
+impl From<JWTTimestamp> for i64 {
+    fn from(timestamp: JWTTimestamp) -> Self {
+        timestamp.0.as_second()
+    }
+}
+
 /// The signed header values for the JWS which are common to each
 /// request.
 ///
@@ -63,7 +95,7 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// account for clock skew. Its value MUST be a number containing a
     /// NumericDate value. Use of this claim is OPTIONAL.
     #[serde(default, rename = "exp", skip_serializing_if = "Option::is_none")]
-    pub expiration: Option<Timestamp>,
+    pub expiration: Option<JWTTimestamp>,
 
     /// The "nbf" (not before) claim identifies the time before which the JWT
     /// MUST NOT be accepted for processing. The processing of the "nbf" claim
@@ -73,14 +105,14 @@ pub struct RegisteredClaims<ISS = String, SUB = String, AUD = String, JTI = Stri
     /// for clock skew. Its value MUST be a number containing a NumericDate value.
     /// Use of this claim is OPTIONAL.
     #[serde(default, rename = "nbf", skip_serializing_if = "Option::is_none")]
-    pub not_before: Option<Timestamp>,
+    pub not_before: Option<JWTTimestamp>,
 
     /// The "iat" (issued at) claim identifies the time at which the JWT was
     /// issued.  This claim can be used to determine the age of the JWT.  Its
     /// value MUST be a number containing a NumericDate value.  Use of this
     /// claim is OPTIONAL.
     #[serde(default, rename = "iat", skip_serializing_if = "Option::is_none")]
-    pub issued_at: Option<Timestamp>,
+    pub issued_at: Option<JWTTimestamp>,
 
     /// The "jti" (JWT ID) claim provides a unique identifier for the JWT. The identifier value MUST be assigned in a manner that ensures that there is a negligible probability that the same value will be accidentally assigned to a different data object; if the application uses multiple issuers, collisions MUST be prevented among values produced by different issuers as well. The "jti" claim can be used to prevent the JWT from being replayed. The "jti" value is a case- sensitive string. Use of this claim is OPTIONAL.
     #[serde(default, rename = "jti", skip_serializing_if = "Option::is_none")]
@@ -196,8 +228,11 @@ mod test {
         }
 
         let claims = Claims::new(
-            RegisteredClaims::<i32> {
-                not_before: "2023-04-18T21:54:39Z".parse().ok(),
+            RegisteredClaims::<()> {
+                not_before: "2023-04-18T21:54:39Z"
+                    .parse::<jiff::Timestamp>()
+                    .map(Into::into)
+                    .ok(),
                 ..Default::default()
             },
             CustomClaims {
@@ -206,6 +241,6 @@ mod test {
         );
 
         let json = serde_json::to_value(claims).unwrap();
-        assert_eq!(json["nbf"].as_u64(), Some(1681854879));
+        assert_eq!(json["nbf"].as_i64(), Some(1681854879), "{json:?}");
     }
 }

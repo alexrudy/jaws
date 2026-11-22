@@ -839,7 +839,7 @@ mod test_rsa {
         });
 
         let mut claims = Claims::from(custom);
-        claims.registered.issued_at = Some(jiff::Timestamp::constant(1300819380, 0));
+        claims.registered.issued_at = Some(jiff::Timestamp::constant(1300819380, 0).into());
         claims.registered.issuer = Some("joe".into());
 
         let token = Token::new((), claims, Compact::new());

@@ -12,6 +12,7 @@ use crate::{
 
 use super::{Identified, IntoVerifyingKey, Restricted, UnsupportedAlgorithmError};
 
+/// Error when verifying a token using a JWK set.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 #[error("JWK set verification error: {kind}")]
@@ -19,7 +20,10 @@ pub struct JWKSetVerifyError<P, H, F>
 where
     F: TokenFormat + 'static,
 {
+    /// The token that failed verification.
     pub token: Token<P, Unverified<H>, F>,
+
+    /// The kind of error that occurred.
     pub kind: JWKSetVerifyErrorKind,
 }
 
@@ -27,32 +31,44 @@ impl<P, H, F> JWKSetVerifyError<P, H, F>
 where
     F: TokenFormat + 'static,
 {
+    /// Creates a new `JWKSetVerifyError` with the given token and kind.
     pub fn new(token: Token<P, Unverified<H>, F>, kind: JWKSetVerifyErrorKind) -> Self {
         Self { token, kind }
     }
 }
 
+/// The kind of error that occurred when verifying a token using a JWK set.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum JWKSetVerifyErrorKind {
+    /// The key used to verify the token was not found in the JWK set.
     #[error("missing key in JWKS: {0}")]
     MissingKey(String),
 
+    /// The signature failed to verify.
     #[error("verification failed: {0}")]
     Verify(#[from] signature::Error),
 
+    /// The algorithm expected by the key does not match the actual algorithm
+    /// used to originally sign the token.
     #[error("algorithm mismatch: expected {expected:?}, got {actual:?}")]
     AlgorithmMismatch {
+        /// The algorithm expected by the key.
         expected: AlgorithmIdentifier,
+
+        /// The actual algorithm used to sign the token.
         actual: AlgorithmIdentifier,
     },
 
+    /// The algorithm used to sign the token is not supported.
     #[error(transparent)]
     UnsupportedAlgorithm(#[from] UnsupportedAlgorithmError),
 
+    /// No key was identified in the JWK set.
     #[error("no key identified")]
     NoKeyIdentified,
 
+    /// No key was able to verify the token's signature.
     #[error("no key validated")]
     NoKeyValidated,
 }
@@ -103,14 +119,45 @@ impl<K> JwkSet<K> {
     }
 }
 
-impl<K> JwkSet<K>
+/// Trait for verifying JWTs using a JWK set.
+pub trait VerifyJWKSet<K>
 where
     K: IntoVerifyingKey + Clone,
 {
     /// Verify the token using any key in the set, trying to guess the key if no key is identified.
     ///
     /// If a key is identified, it is used to verify the token. If no key is identified, the token is guessed using [`Self::verify_token_guess`].
-    pub fn verify_token_any<P, H, F>(
+    fn verify_token_any<P, H, F>(
+        &self,
+        token: Token<P, Unverified<H>, F>,
+    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static;
+
+    /// Verify the token using any key in the set, returning the verified token if successful.
+    ///
+    /// This is inherently less secure than [`Self::verify_token`], as it does not require a key to be identified.
+    fn verify_token_guess<P, H, F>(
+        &self,
+        token: Token<P, Unverified<H>, F>,
+    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static;
+
+    /// Verify the token using the set's keys, guessing the key if no key is identified.
+    fn verify_token<P, H, F>(
+        &self,
+        token: Token<P, Unverified<H>, F>,
+    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static;
+}
+
+impl<K> VerifyJWKSet<K> for JwkSet<K>
+where
+    K: IntoVerifyingKey + Clone,
+{
+    fn verify_token_any<P, H, F>(
         &self,
         token: Token<P, Unverified<H>, F>,
     ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
@@ -128,10 +175,7 @@ where
         }
     }
 
-    /// Verify the token using any key in the set, returning the verified token if successful.
-    ///
-    /// This is inherently less secure than [`Self::verify_token`], as it does not require a key to be identified.
-    pub fn verify_token_guess<P, H, F>(
+    fn verify_token_guess<P, H, F>(
         &self,
         mut token: Token<P, Unverified<H>, F>,
     ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
@@ -156,8 +200,7 @@ where
         })
     }
 
-    /// Verifies a token using the identified key in the token's header.
-    pub fn verify_token<P, H, F>(
+    fn verify_token<P, H, F>(
         &self,
         token: Token<P, Unverified<H>, F>,
     ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>

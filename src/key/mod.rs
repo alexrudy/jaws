@@ -29,7 +29,7 @@ mod web_key_tests;
 use crate::{algorithms::AlgorithmIdentifier, SignatureBytes, TokenSigner, TokenVerifier};
 
 pub use self::jwk::{PrivateWebKey, PublicWebKey, SigningWebKey, VerifyingWebKey};
-pub use self::jwks::JwkSet;
+pub use self::jwks::{JWKSetVerifyError, JWKSetVerifyErrorKind, JwkSet, VerifyJWKSet};
 pub use self::restricted::{Restricted, RestrictedAlgorithmError};
 
 /// Error when an algorithm is not supported.
@@ -747,6 +747,26 @@ pub struct Identified<Key> {
     /// The identifier of the key.
     #[serde(rename = "kid", skip_serializing_if = "Option::is_none", default)]
     pub id: Option<String>,
+}
+
+impl<Key> Identified<Key> {
+    /// Creates an unidentified key.
+    pub fn unidentified(key: Key) -> Self {
+        Self { key, id: None }
+    }
+
+    /// Returns the identifier of the key.
+    pub fn with_id(self, id: String) -> Self {
+        Self {
+            id: Some(id),
+            ..self
+        }
+    }
+
+    /// Returns the identifier of the key.
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
 }
 
 #[cfg(test)]

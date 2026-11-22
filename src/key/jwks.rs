@@ -4,7 +4,69 @@ use std::{borrow::Cow, marker::PhantomData, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
-use super::Identified;
+use crate::{
+    algorithms::AlgorithmIdentifier,
+    token::{Signed, TokenFormat, TokenVerifyingError, TokenVerifyingErrorKind, Unverified},
+    Token,
+};
+
+use super::{Identified, IntoVerifyingKey, Restricted, UnsupportedAlgorithmError};
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[error("JWK set verification error: {kind}")]
+pub struct JWKSetVerifyError<P, H, F>
+where
+    F: TokenFormat + 'static,
+{
+    pub token: Token<P, Unverified<H>, F>,
+    pub kind: JWKSetVerifyErrorKind,
+}
+
+impl<P, H, F> JWKSetVerifyError<P, H, F>
+where
+    F: TokenFormat + 'static,
+{
+    pub fn new(token: Token<P, Unverified<H>, F>, kind: JWKSetVerifyErrorKind) -> Self {
+        Self { token, kind }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum JWKSetVerifyErrorKind {
+    #[error("missing key in JWKS: {0}")]
+    MissingKey(String),
+
+    #[error("verification failed: {0}")]
+    Verify(#[from] signature::Error),
+
+    #[error("algorithm mismatch: expected {expected:?}, got {actual:?}")]
+    AlgorithmMismatch {
+        expected: AlgorithmIdentifier,
+        actual: AlgorithmIdentifier,
+    },
+
+    #[error(transparent)]
+    UnsupportedAlgorithm(#[from] UnsupportedAlgorithmError),
+
+    #[error("no key identified")]
+    NoKeyIdentified,
+
+    #[error("no key validated")]
+    NoKeyValidated,
+}
+
+impl From<TokenVerifyingErrorKind> for JWKSetVerifyErrorKind {
+    fn from(value: TokenVerifyingErrorKind) -> Self {
+        match value {
+            TokenVerifyingErrorKind::Verify(err) => Self::Verify(err),
+            TokenVerifyingErrorKind::Algorithm { expected, actual } => {
+                Self::AlgorithmMismatch { expected, actual }
+            }
+        }
+    }
+}
 
 /// A set of JSON Web Keys.
 ///
@@ -24,6 +86,116 @@ impl<K> JwkSet<K> {
             .iter()
             .find(|k| k.id.as_deref() == Some(id))
             .map(|k| &k.key)
+    }
+
+    /// Applies [`Restricted`] to each key in the set using the given function, returning a new [`JwkSet`] of [`Restricted`] keys.
+    pub fn restrict<F: Fn(K) -> Restricted<K>>(self, func: F) -> JwkSet<Restricted<K>> {
+        JwkSet {
+            keys: self
+                .keys
+                .into_iter()
+                .map(|k| Identified {
+                    key: func(k.key),
+                    id: k.id,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl<K> JwkSet<K>
+where
+    K: IntoVerifyingKey + Clone,
+{
+    /// Verify the token using any key in the set, trying to guess the key if no key is identified.
+    ///
+    /// If a key is identified, it is used to verify the token. If no key is identified, the token is guessed using [`Self::verify_token_guess`].
+    pub fn verify_token_any<P, H, F>(
+        &self,
+        token: Token<P, Unverified<H>, F>,
+    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static,
+    {
+        match self.verify_token(token) {
+            Ok(verified) => Ok(verified),
+            Err(JWKSetVerifyError { token, kind })
+                if matches!(kind, JWKSetVerifyErrorKind::NoKeyIdentified) =>
+            {
+                self.verify_token_guess(token)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Verify the token using any key in the set, returning the verified token if successful.
+    ///
+    /// This is inherently less secure than [`Self::verify_token`], as it does not require a key to be identified.
+    pub fn verify_token_guess<P, H, F>(
+        &self,
+        mut token: Token<P, Unverified<H>, F>,
+    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static,
+    {
+        let alg = *token.header().algorithm();
+        for key in &self.keys {
+            if let Ok(verifier) = key.key.clone().into_verifying_key(alg) {
+                token = match token.verify(&verifier) {
+                    Ok(verified) => return Ok(verified),
+                    Err(TokenVerifyingError { token, kind }) => {
+                        tracing::trace!(kid=%&key.id.as_deref().unwrap_or_default(), %alg, "verify error: {kind:?}");
+                        token
+                    }
+                };
+            }
+        }
+        Err(JWKSetVerifyError {
+            token,
+            kind: JWKSetVerifyErrorKind::NoKeyIdentified,
+        })
+    }
+
+    /// Verifies a token using the identified key in the token's header.
+    pub fn verify_token<P, H, F>(
+        &self,
+        token: Token<P, Unverified<H>, F>,
+    ) -> Result<Token<P, Signed<H, <K as IntoVerifyingKey>::Key>, F>, JWKSetVerifyError<P, H, F>>
+    where
+        F: TokenFormat + 'static,
+    {
+        if let Some(kid) = token.header().key_id() {
+            let key = match self.get(kid) {
+                Some(key) => key,
+                None => {
+                    let kid = kid.into();
+                    return Err(JWKSetVerifyError::new(
+                        token,
+                        JWKSetVerifyErrorKind::MissingKey(kid),
+                    ));
+                }
+            };
+
+            let algorithm = token.header().algorithm();
+            let key = match key.clone().into_verifying_key(*algorithm) {
+                Ok(key) => key,
+                Err(err) => {
+                    return Err(JWKSetVerifyError::new(token, err.into()));
+                }
+            };
+
+            return match token.verify(&key) {
+                Ok(verified) => Ok(verified),
+                Err(TokenVerifyingError { token, kind }) => {
+                    Err(JWKSetVerifyError::new(token, kind.into()))
+                }
+            };
+        }
+
+        Err(JWKSetVerifyError::new(
+            token,
+            JWKSetVerifyErrorKind::NoKeyIdentified,
+        ))
     }
 }
 
@@ -232,7 +404,7 @@ mod roundtrip_tests {
         for f in private_keys() {
             for &alg in &f.algorithms {
                 ids.push(format!("{}-{alg:?}", f.label));
-                keys.push(f.public().into_algorithm(alg).unwrap());
+                keys.push(f.public().into_verifying_key(alg).unwrap());
             }
         }
 

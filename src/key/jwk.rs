@@ -18,7 +18,10 @@ use crate::{
     SignatureBytes, TokenSigner, TokenVerifier,
 };
 
-use super::{DeserializeJWK, DynJwkKeyType, JsonWebKeyError, KeyType, Parameters, SerializeJWK};
+use super::{
+    DeserializeJWK, DynJwkKeyType, IntoSigningKey, IntoVerifyingKey, JsonWebKeyError, KeyType,
+    Parameters, SerializeJWK, UnsupportedAlgorithmError,
+};
 
 /// A concrete key type that can be used to deserialize from a JWK
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -114,9 +117,10 @@ impl From<ecdsa::SigningKey<p521::NistP521>> for PrivateWebKey {
     }
 }
 
-impl PrivateWebKey {
-    /// Returns whether this key supports the given algorithm.
-    pub fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
+impl IntoSigningKey for PrivateWebKey {
+    type Key = SigningWebKey;
+
+    fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
         match (self, algorithm) {
             #[cfg(feature = "hmac")]
             (Self::HMac(_), AlgorithmIdentifier::HS256) => true,
@@ -148,11 +152,10 @@ impl PrivateWebKey {
         }
     }
 
-    /// Converts this key into a [`SigningWebKey`] for the given algorithm.
-    pub fn into_algorithm(
+    fn into_signing_key(
         self,
         algorithm: AlgorithmIdentifier,
-    ) -> Result<SigningWebKey, JsonWebKeyError> {
+    ) -> Result<Self::Key, UnsupportedAlgorithmError> {
         match (self, algorithm) {
             #[cfg(feature = "hmac")]
             (Self::HMac(h), AlgorithmIdentifier::HS256) => Ok(SigningWebKey::HS256(h.into())),
@@ -186,7 +189,7 @@ impl PrivateWebKey {
             (Self::Rsa(k), AlgorithmIdentifier::PS512) => Ok(SigningWebKey::PS512(k.into())),
 
             #[allow(unreachable_patterns)]
-            (_, alg) => Err(JsonWebKeyError::UnsupportedAlgorithm(alg)),
+            (_, alg) => Err(alg.into()),
         }
     }
 }
@@ -370,9 +373,11 @@ impl From<ecdsa::VerifyingKey<p521::NistP521>> for PublicWebKey {
     }
 }
 
-impl PublicWebKey {
+impl IntoVerifyingKey for PublicWebKey {
+    type Key = VerifyingWebKey;
+
     /// Returns whether this public key supports the given algorithm
-    pub fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
+    fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
         match (self, algorithm) {
             #[cfg(feature = "hmac")]
             (Self::HMac(_), AlgorithmIdentifier::HS256) => true,
@@ -405,10 +410,10 @@ impl PublicWebKey {
     }
 
     /// Converts this public key into a verifying key for the given algorithm
-    pub fn into_algorithm(
+    fn into_verifying_key(
         self,
         algorithm: AlgorithmIdentifier,
-    ) -> Result<VerifyingWebKey, JsonWebKeyError> {
+    ) -> Result<VerifyingWebKey, UnsupportedAlgorithmError> {
         match (self, algorithm) {
             #[cfg(feature = "hmac")]
             (Self::HMac(h), AlgorithmIdentifier::HS256) => Ok(VerifyingWebKey::HS256(h.into())),
@@ -442,7 +447,7 @@ impl PublicWebKey {
             (Self::Rsa(k), AlgorithmIdentifier::PS512) => Ok(VerifyingWebKey::PS512(k.into())),
 
             #[allow(unreachable_patterns)]
-            (_, alg) => Err(JsonWebKeyError::UnsupportedAlgorithm(alg)),
+            (_, alg) => Err(UnsupportedAlgorithmError(alg)),
         }
     }
 }

@@ -10,6 +10,7 @@ use signature::{Keypair, SignatureEncoding};
 use crate::algorithms::{
     AlgorithmIdentifier as Alg, DynJsonWebAlgorithm, TokenSigner, TokenVerifier, ALL_ALGORITHMS,
 };
+use crate::key::{IntoSigningKey as _, IntoVerifyingKey as _, UnsupportedAlgorithmError};
 use crate::SignatureBytes;
 
 use super::fixtures::{private_keys, HEADER, PAYLOAD, PRIVATE_MEMBERS};
@@ -156,10 +157,10 @@ fn debug_output_never_contains_secrets() {
         ];
 
         for &alg in &f.algorithms {
-            let signing = f.key.clone().into_algorithm(alg).unwrap();
+            let signing = f.key.clone().into_signing_key(alg).unwrap();
             outputs.push(format!("{signing:?}"));
             outputs.push(format!("{:#?}", signing.verifying_key()));
-            outputs.push(format!("{:?}", f.public().into_algorithm(alg).unwrap()));
+            outputs.push(format!("{:?}", f.public().into_verifying_key(alg).unwrap()));
             outputs.push(format!("{:?}", signing.parameters()));
         }
 
@@ -417,8 +418,8 @@ fn supports_algorithm_matrix() {
                 continue;
             }
 
-            let signing = f.key.clone().into_algorithm(alg);
-            let verifying = public.clone().into_algorithm(alg);
+            let signing = f.key.clone().into_signing_key(alg);
+            let verifying = public.clone().into_verifying_key(alg);
 
             if expected {
                 let signing = signing.unwrap_or_else(|e| panic!("{label}: signing: {e}"));
@@ -428,11 +429,11 @@ fn supports_algorithm_matrix() {
                 assert_eq!(verifying.identifier(), alg, "{label}");
             } else {
                 assert!(
-                    matches!(&signing, Err(JsonWebKeyError::UnsupportedAlgorithm(a)) if *a == alg),
+                    matches!(&signing, Err(UnsupportedAlgorithmError(a)) if *a == alg),
                     "{label}: signing key conversion should be unsupported, got {signing:?}"
                 );
                 assert!(
-                    matches!(&verifying, Err(JsonWebKeyError::UnsupportedAlgorithm(a)) if *a == alg),
+                    matches!(&verifying, Err(UnsupportedAlgorithmError(a)) if *a == alg),
                     "{label}: verifying key conversion should be unsupported, got {verifying:?}"
                 );
             }
@@ -444,7 +445,7 @@ fn supports_algorithm_matrix() {
 fn public_keys_never_become_none_verifiers() {
     for f in private_keys() {
         assert!(
-            f.public().into_algorithm(Alg::None).is_err(),
+            f.public().into_verifying_key(Alg::None).is_err(),
             "{}: a public key must not convert to a verifier for `none`",
             f.label
         );
@@ -460,7 +461,7 @@ fn signing_key_roundtrips_to_private_key() {
     for f in private_keys() {
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
-            let signing = f.key.clone().into_algorithm(alg).expect(&label);
+            let signing = f.key.clone().into_signing_key(alg).expect(&label);
 
             let private = PrivateWebKey::try_from(signing).expect(&label);
             assert_eq!(private.parameters(), f.key.parameters(), "{label}");
@@ -473,7 +474,7 @@ fn signing_key_parameters_include_alg_and_kty() {
     for f in private_keys() {
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
-            let signing = f.key.clone().into_algorithm(alg).expect(&label);
+            let signing = f.key.clone().into_signing_key(alg).expect(&label);
 
             let params = signing.parameters();
             assert_eq!(params.get("alg"), Some(&alg_name(alg)), "{label}");
@@ -492,7 +493,7 @@ fn signing_key_serializes_with_alg_and_kty() {
     for f in private_keys() {
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
-            let signing = f.key.clone().into_algorithm(alg).expect(&label);
+            let signing = f.key.clone().into_signing_key(alg).expect(&label);
 
             let rendered = serde_json::to_string(&signing).expect(&label);
             let value: Value = serde_json::from_str(&rendered).unwrap();
@@ -513,7 +514,7 @@ fn sign_and_verify_with_every_algorithm() {
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
 
-            let signing = f.key.clone().into_algorithm(alg).expect(&label);
+            let signing = f.key.clone().into_signing_key(alg).expect(&label);
             let signature = sign(&signing, alg);
             let signature = signature.to_bytes();
             let signature: &[u8] = signature.as_ref();
@@ -524,7 +525,7 @@ fn sign_and_verify_with_every_algorithm() {
             assert_verifies(&format!("{label}: verifying_key()"), &verifying, signature);
 
             // 2. A verifying key built from the public key.
-            let from_public = public.clone().into_algorithm(alg).expect(&label);
+            let from_public = public.clone().into_verifying_key(alg).expect(&label);
             assert_verifies(&format!("{label}: from public"), &from_public, signature);
 
             // 3. A verifying key which has been through JSON.
@@ -555,12 +556,12 @@ fn verifying_key_rejects_signature_from_another_key() {
 
         for &alg in &first.algorithms {
             let label = format!("{} / {alg:?}", first.label);
-            let signing = first.key.clone().into_algorithm(alg).expect(&label);
+            let signing = first.key.clone().into_signing_key(alg).expect(&label);
             let signature = sign(&signing, alg);
             let signature = signature.to_bytes();
             let signature: &[u8] = signature.as_ref();
 
-            let other = second.public().into_algorithm(alg).expect(&label);
+            let other = second.public().into_verifying_key(alg).expect(&label);
             assert!(
                 other
                     .verify_token(HEADER.as_bytes(), PAYLOAD.as_bytes(), signature)
@@ -578,7 +579,7 @@ fn verifying_key_converts_to_public_key() {
 
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
-            let verifying = public.clone().into_algorithm(alg).expect(&label);
+            let verifying = public.clone().into_verifying_key(alg).expect(&label);
 
             let back = PublicWebKey::try_from(verifying).expect(&label);
             assert_eq!(back.parameters(), public.parameters(), "{label}");
@@ -591,7 +592,7 @@ fn verifying_key_serde_has_alg_and_kty() {
     for f in private_keys() {
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
-            let verifying = f.public().into_algorithm(alg).expect(&label);
+            let verifying = f.public().into_verifying_key(alg).expect(&label);
 
             let rendered = serde_json::to_string(&verifying).expect(&label);
             let value: Value = serde_json::from_str(&rendered).unwrap();
@@ -613,7 +614,7 @@ fn verifying_key_ignores_extra_jwk_members() {
     for f in private_keys() {
         for &alg in &f.algorithms {
             let label = format!("{} / {alg:?}", f.label);
-            let verifying = f.public().into_algorithm(alg).expect(&label);
+            let verifying = f.public().into_verifying_key(alg).expect(&label);
 
             let mut value = serde_json::to_value(&verifying).unwrap();
             let object = value.as_object_mut().unwrap();

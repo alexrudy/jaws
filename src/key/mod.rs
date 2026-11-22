@@ -14,6 +14,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use signature::Keypair;
+use signature::SignatureEncoding;
 
 mod jwk;
 mod jwks;
@@ -25,11 +26,22 @@ pub(crate) mod fixtures;
 #[cfg(all(test, any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
 mod web_key_tests;
 
-use crate::algorithms::AlgorithmIdentifier;
+use crate::{algorithms::AlgorithmIdentifier, SignatureBytes, TokenSigner, TokenVerifier};
 
 pub use self::jwk::{PrivateWebKey, PublicWebKey, SigningWebKey, VerifyingWebKey};
 pub use self::jwks::JwkSet;
 pub use self::restricted::{Restricted, RestrictedAlgorithmError};
+
+/// Error when an algorithm is not supported.
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+#[error("unsupported algorithm: {0}")]
+pub struct UnsupportedAlgorithmError(pub AlgorithmIdentifier);
+
+impl From<AlgorithmIdentifier> for UnsupportedAlgorithmError {
+    fn from(algorithm: AlgorithmIdentifier) -> Self {
+        Self(algorithm)
+    }
+}
 
 /// Error when building or deserializing a JWK.
 #[derive(Debug, thiserror::Error)]
@@ -217,6 +229,42 @@ where
     fn key_type(&self) -> KeyType {
         T::KEY_TYPE
     }
+}
+
+/// Trait for types that are not Algorithm-specific, but can be converted into a verifying key for a given algorithm.
+pub trait IntoVerifyingKey<S = SignatureBytes>
+where
+    S: SignatureEncoding,
+{
+    /// The verifying key type for this algorithm.
+    type Key: TokenVerifier<S>;
+
+    /// Returns whether this public key supports the given algorithm
+    fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool;
+
+    /// Converts this public key into a verifying key for the given algorithm
+    fn into_verifying_key(
+        self,
+        algorithm: AlgorithmIdentifier,
+    ) -> Result<Self::Key, UnsupportedAlgorithmError>;
+}
+
+/// Trait for types that are not Algorithm-specific, but can be converted into a signing key for a given algorithm.
+pub trait IntoSigningKey<S = SignatureBytes>
+where
+    S: SignatureEncoding,
+{
+    /// The signing key type for this algorithm.
+    type Key: TokenSigner<S>;
+
+    /// Returns whether this key supports the given algorithm.
+    fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool;
+
+    /// Converts this key into a signing key for the given algorithm.
+    fn into_signing_key(
+        self,
+        algorithm: AlgorithmIdentifier,
+    ) -> Result<Self::Key, UnsupportedAlgorithmError>;
 }
 
 /// JWK members which hold secret key material, for any key type.
@@ -1112,8 +1160,8 @@ mod test {
                 let expected = thumbprint(&JsonWebKey::build(&f.public()));
 
                 for &alg in &f.algorithms {
-                    let signing = f.key.clone().into_algorithm(alg).unwrap();
-                    let verifying = f.public().into_algorithm(alg).unwrap();
+                    let signing = f.key.clone().into_signing_key(alg).unwrap();
+                    let verifying = f.public().into_verifying_key(alg).unwrap();
 
                     let label = format!("{} / {alg:?}", f.label);
                     assert_eq!(

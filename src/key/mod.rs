@@ -9,9 +9,8 @@ use std::{collections::BTreeMap, fmt, hash::Hash, marker::PhantomData, str::From
 
 use base64ct::Encoding;
 use serde::{
-    de,
+    Deserialize, Serialize, de,
     ser::{self, SerializeMap},
-    Deserialize, Serialize,
 };
 use signature::Keypair;
 use signature::SignatureEncoding;
@@ -26,7 +25,7 @@ pub(crate) mod fixtures;
 #[cfg(all(test, any(feature = "hmac", feature = "rsa", feature = "ecdsa")))]
 mod web_key_tests;
 
-use crate::{algorithms::AlgorithmIdentifier, SignatureBytes, TokenSigner, TokenVerifier};
+use crate::{SignatureBytes, TokenSigner, TokenVerifier, algorithms::AlgorithmIdentifier};
 
 pub use self::jwk::{PrivateWebKey, PublicWebKey, SigningWebKey, VerifyingWebKey};
 pub use self::jwks::{JWKSetVerifyError, JWKSetVerifyErrorKind, JwkSet, VerifyJWKSet};

@@ -27,8 +27,8 @@ use hmac::{KeyInit as _, SimpleHmac};
 use signature::{Keypair, SignatureEncoding};
 
 use crate::{
-    key::{DeserializeJWK, JWKeyType, KeyType, Parameters, SerializeJWK},
     SignatureBytes,
+    key::{DeserializeJWK, JWKeyType, KeyType, Parameters, SerializeJWK},
 };
 
 use super::JsonWebAlgorithm;

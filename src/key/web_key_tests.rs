@@ -4,16 +4,16 @@
 //! Every test iterates over [`private_keys`], so each key type that is available
 //! with the enabled features is covered by every test.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use signature::{Keypair, SignatureEncoding};
 
+use crate::SignatureBytes;
 use crate::algorithms::{
-    AlgorithmIdentifier as Alg, DynJsonWebAlgorithm, TokenSigner, TokenVerifier, ALL_ALGORITHMS,
+    ALL_ALGORITHMS, AlgorithmIdentifier as Alg, DynJsonWebAlgorithm, TokenSigner, TokenVerifier,
 };
 use crate::key::{IntoSigningKey as _, IntoVerifyingKey as _, UnsupportedAlgorithmError};
-use crate::SignatureBytes;
 
-use super::fixtures::{private_keys, HEADER, PAYLOAD, PRIVATE_MEMBERS};
+use super::fixtures::{HEADER, PAYLOAD, PRIVATE_MEMBERS, private_keys};
 use super::{
     DeserializeJWK, JsonWebKey, JsonWebKeyError, Parameters, PrivateWebKey, PublicWebKey,
     SerializeJWK, SigningWebKey, VerifyingWebKey,
@@ -691,10 +691,12 @@ fn none_verifying_key_serde() {
     assert!(serde_json::from_value::<VerifyingWebKey>(json!({"alg": "NONE"})).is_err());
 
     // `none` verifies only the empty signature.
-    assert!(key
-        .verify_token(HEADER.as_bytes(), PAYLOAD.as_bytes(), b"")
-        .is_ok());
-    assert!(key
-        .verify_token(HEADER.as_bytes(), PAYLOAD.as_bytes(), b"forged")
-        .is_err());
+    assert!(
+        key.verify_token(HEADER.as_bytes(), PAYLOAD.as_bytes(), b"")
+            .is_ok()
+    );
+    assert!(
+        key.verify_token(HEADER.as_bytes(), PAYLOAD.as_bytes(), b"forged")
+            .is_err()
+    );
 }

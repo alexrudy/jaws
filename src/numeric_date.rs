@@ -5,7 +5,7 @@
 //! ignoring leap seconds.
 
 use chrono::{DateTime, TimeZone, Utc};
-use serde::{de, de::Deserialize, Deserializer, Serializer};
+use serde::{Deserializer, Serializer, de, de::Deserialize};
 
 /// Serializes a `DateTime<Utc>` as a numeric date.
 pub fn serialize<S>(date: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>

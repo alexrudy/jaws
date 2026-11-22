@@ -5,17 +5,17 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use signature::Keypair;
 
+#[cfg(feature = "rand")]
+use crate::algorithms::RandomizedTokenSigner;
 #[cfg(feature = "ecdsa")]
 use crate::algorithms::ecdsa::{SigningKey, VerifyingKey};
 #[cfg(feature = "hmac")]
 use crate::algorithms::hmac::{Hmac, HmacKey};
 #[cfg(feature = "none")]
 use crate::algorithms::none::NoneAlgorithm;
-#[cfg(feature = "rand")]
-use crate::algorithms::RandomizedTokenSigner;
 use crate::{
-    algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     SignatureBytes, TokenSigner, TokenVerifier,
+    algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
 };
 
 use super::{
@@ -1174,7 +1174,7 @@ impl TokenVerifier for VerifyingWebKey {
 
 #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
 mod serde_keys {
-    use serde::{de, Serialize as _};
+    use serde::{Serialize as _, de};
 
     use crate::key::{DeserializeJWK, Parameters, SerializeJWK};
 
@@ -1198,7 +1198,7 @@ mod serde_keys {
 
 #[cfg(any(feature = "hmac", feature = "rsa", feature = "ecdsa"))]
 mod serde_sigs {
-    use serde::{de, Serialize as _};
+    use serde::{Serialize as _, de};
 
     use crate::key::{DeserializeJWK, Parameters, SerializeJWK};
 

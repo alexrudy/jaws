@@ -9,8 +9,9 @@ use std::marker::PhantomData;
 use base64ct::Encoding;
 use bytes::Bytes;
 use serde::{
+    Serialize,
     de::{self, DeserializeOwned},
-    ser, Serialize,
+    ser,
 };
 
 #[cfg(feature = "fmt")]
@@ -391,7 +392,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     use super::*;
     use crate::algorithms::SignatureBytes;

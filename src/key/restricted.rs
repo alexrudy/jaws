@@ -1,8 +1,8 @@
 //! A wrapper around a key that restricts the algorithms that can be used with it.
 
 use crate::{
-    algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
     SignatureBytes, TokenSigner, TokenVerifier,
+    algorithms::{AlgorithmIdentifier, DynJsonWebAlgorithm},
 };
 
 use super::{
@@ -227,7 +227,7 @@ where
 mod tests {
     use rsa::Generate;
 
-    use crate::{algorithms::none::NoneAlgorithm, key::Identified, Token};
+    use crate::{Token, algorithms::none::NoneAlgorithm, key::Identified};
 
     use super::*;
 

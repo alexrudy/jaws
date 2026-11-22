@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
+use jaws::Compact;
+use jaws::JWTFormat;
+use jaws::RegisteredClaims;
 use jaws::algorithms::SignatureBytes;
 use jaws::algorithms::TokenSigner;
 use jaws::algorithms::TokenVerifier;
 use jaws::token::{Unsigned, Unverified};
-use jaws::Compact;
-use jaws::JWTFormat;
-use jaws::RegisteredClaims;
 use rsa::pkcs8::DecodePrivateKey;
 use serde_json::json;
 use sha2::Sha256;

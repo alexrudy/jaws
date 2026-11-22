@@ -460,8 +460,6 @@ where
 
 impl<H, Fmt, P> Token<P, Unsigned<H>, Fmt>
 where
-    H: Serialize,
-    P: Serialize,
     Fmt: TokenFormat,
 {
     /// Sign this token using the given algorithm.
@@ -508,6 +506,8 @@ specified by constraining the type of `key` when calling [`Token::sign`].
     where
         A: crate::algorithms::TokenSigner<S> + ?Sized,
         S: SignatureEncoding,
+        P: Serialize,
+        H: Serialize,
     {
         let header = self.state.header.into_signed_header(algorithm)?;
         let payload = self.payload.serialized_value()?;
@@ -536,6 +536,8 @@ specified by constraining the type of `key` when calling [`Token::sign`].
     where
         A: crate::algorithms::RandomizedTokenSigner<S> + ?Sized,
         S: SignatureEncoding,
+        P: Serialize,
+        H: Serialize,
     {
         let header = self.state.header.into_signed_header(algorithm)?;
         let payload = self.payload.serialized_value()?;
@@ -557,8 +559,6 @@ specified by constraining the type of `key` when calling [`Token::sign`].
 impl<H, Fmt, P> Token<P, Unverified<H>, Fmt>
 where
     Fmt: TokenFormat,
-    H: Serialize,
-    P: Serialize,
 {
     /// Returns `true` if the token can be verified with the given algorithm.
     pub fn can_verify<A>(&self, algorithm: &A) -> bool
@@ -582,8 +582,6 @@ where
     where
         A: crate::algorithms::TokenVerifier<S> + ?Sized,
         S: SignatureEncoding,
-        P: Serialize,
-        H: Serialize + std::fmt::Debug,
     {
         if algorithm.identifier() != *self.state.header.algorithm() {
             return Err(TokenVerifyingError::Algorithm(

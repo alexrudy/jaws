@@ -2,11 +2,22 @@
 
 ## Unreleased
 
+## [3.0.0-rc1](https://github.com/alexrudy/jaws/compare/v2.1.2...v3.0.0-rc1) - 2026-11-22
+
+- JWK Sets can validate tokens by ID, by guessing, or by ID with a guess fallback.
+- `Restrict<JWKSet<_>>` works as expected.
+- Header lifetimes are fixed to match the lifetime of the token.
+- Put registered claims behind the `claims` feature (on by default)
+- Use `jiff` for timestamp support in claims
+
+### Other
+
+- Rust Edition 2024
+
 ## [2.1.2](https://github.com/alexrudy/jaws/compare/v2.1.1...v2.1.2) - 2026-11-22
 
 ### Other
 
-- Merge pull request #74 from alexrudy/bugfix/serde-bounds
 - remove unnecessary serde bounds
 
 ## [2.1.1](https://github.com/alexrudy/jaws/compare/v2.1.0...v2.2.0) - 2026-11-21

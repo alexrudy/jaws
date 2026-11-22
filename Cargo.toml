@@ -1,6 +1,6 @@
 [package]
 name = "jaws"
-version = "2.1.2"
+version = "3.0.0-rc1"
 edition = "2024"
 authors = ["Alex Rudy <opensource@alexrudy.net>"]
 license = "MIT"
@@ -22,12 +22,12 @@ default-target = "x86_64-unknown-linux-gnu"
 [dependencies]
 base64ct = { version = "1.8", features = ["std"] }
 bytes = { version = "1.12" }
-jiff = { version = "1", optional = true }
 crypto-bigint = { version = "0.7", features = ["alloc"], optional = true }
 der = { version = "0.8", optional = true }
 digest = { version = "0.11" }
 ecdsa = { version = "0.17", features = ["der"], optional = true }
 hmac = { version = "0.13", optional = true }
+jiff = { version = "1", optional = true }
 p256 = { version = "0.14", features = ["ecdsa"], optional = true }
 p384 = { version = "0.14", features = ["ecdsa"], optional = true }
 p521 = { version = "0.14", features = ["ecdsa"], optional = true }
@@ -40,8 +40,8 @@ sha1 = "0.11"
 sha2 = "0.11"
 signature = { version = "3.0", features = ["digest", "alloc"] }
 spki = { version = "0.8", optional = true, features = ["alloc"] }
-tracing = "0.1"
 thiserror = "2"
+tracing = "0.1"
 url = { version = "2.5", features = ["serde"] }
 zeroize = { version = "1.9", features = ["serde", "derive"] }
 

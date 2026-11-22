@@ -51,7 +51,7 @@ pub mod fmt;
 
 pub mod jose;
 pub mod key;
-mod numeric_date;
+pub mod numeric_date;
 pub mod token;
 
 pub use algorithms::{SignatureBytes, TokenSigner, TokenVerifier};

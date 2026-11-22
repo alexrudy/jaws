@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## [3.0.0](https://github.com/alexrudy/jaws/compare/v2.1.2...v3.0.0) - 2026-11-22
+
+### Added
+
+- add support for claim validation
+- Validate JWKSets when restricted.
+- Validate tokens using a JWKS
+
+### Other
+
+- cargo clippy
+- Fixup doctests
+- Fix feature dependencies for tests/claims
+- Move claims behind a feature
+- jiff wrapper type for serde
+- migrate from chrono to jiff
+- Merge pull request #79 from alexrudy/chore/rust-2024
+- Merge pull request #76 from alexrudy/bugfix/numeric-date
+- clippy fix for rust 2024
+- fmt change for 2024
+- upgrade to rust 2024
+- fixes
+- Review follow-ups
+- Header lifetimes come from token
+- Expose the chrono serde implementation for JWTs
+
 ## [2.1.2](https://github.com/alexrudy/jaws/compare/v2.1.1...v2.1.2) - 2026-11-22
 
 ### Other

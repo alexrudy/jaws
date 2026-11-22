@@ -158,13 +158,13 @@ impl DeserializeJWK for PrivateKey {
                 let value =
                     to_biguint(val).ok_or(crate::key::JsonWebKeyError::MissingParameter(name))?;
 
-                if let Some(pc_value) = precomputed {
-                    if value != *pc_value {
-                        return Err(crate::key::JsonWebKeyError::InvalidKey(
-                            "RSA",
-                            format!("{} does not match precomputed value", name).into(),
-                        ));
-                    }
+                if let Some(pc_value) = precomputed
+                    && value != *pc_value
+                {
+                    return Err(crate::key::JsonWebKeyError::InvalidKey(
+                        "RSA",
+                        format!("{} does not match precomputed value", name).into(),
+                    ));
                 }
             }
             Ok(())

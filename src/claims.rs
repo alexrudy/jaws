@@ -42,7 +42,7 @@ pub mod jiff_jwt_serde {
         D: serde::Deserializer<'de>,
     {
         i64::deserialize(deserializer)
-            .and_then(|t| jiff::Timestamp::from_second(t).map_err(|err| de::Error::custom(err)))
+            .and_then(|t| jiff::Timestamp::from_second(t).map_err(de::Error::custom))
     }
 
     /// Serializer/deserializer for [jiff::Timestamp] values.
@@ -72,9 +72,9 @@ pub mod jiff_jwt_serde {
             D: serde::Deserializer<'de>,
         {
             Option::deserialize(deserializer).and_then(|t: Option<i64>| {
-                t.map(|s| jiff::Timestamp::from_second(s))
+                t.map(jiff::Timestamp::from_second)
                     .transpose()
-                    .map_err(|err| de::Error::custom(err))
+                    .map_err(de::Error::custom)
             })
         }
     }
@@ -180,15 +180,15 @@ impl<ISS, SUB, AUD, JTI> RegisteredClaims<ISS, SUB, AUD, JTI> {
         &self,
         now: jiff::Timestamp,
     ) -> Result<(), ClaimValidationError> {
-        if let Some(expiration) = &self.expiration {
-            if now >= *expiration {
-                return Err(ClaimValidationError::Expired(*expiration));
-            }
+        if let Some(expiration) = &self.expiration
+            && now >= *expiration
+        {
+            return Err(ClaimValidationError::Expired(*expiration));
         }
-        if let Some(not_before) = &self.not_before {
-            if now <= *not_before {
-                return Err(ClaimValidationError::NotYetValid(*not_before));
-            }
+        if let Some(not_before) = &self.not_before
+            && now <= *not_before
+        {
+            return Err(ClaimValidationError::NotYetValid(*not_before));
         }
         Ok(())
     }

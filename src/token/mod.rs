@@ -801,13 +801,12 @@ pub enum TokenSigningError {
     Serialization(#[from] serde_json::Error),
 }
 
-#[cfg(all(test, feature = "rsa"))]
+#[cfg(all(test, feature = "rsa", feature = "claims"))]
 mod test_rsa {
     use super::*;
     use crate::{claims::Claims, key::DeserializeJWK as _};
 
     use base64ct::Encoding;
-    use chrono::TimeZone;
     use serde_json::json;
     use sha2::Sha256;
 
@@ -840,7 +839,7 @@ mod test_rsa {
         });
 
         let mut claims = Claims::from(custom);
-        claims.registered.issued_at = chrono::Utc.timestamp_opt(1300819380, 0).single();
+        claims.registered.issued_at = Some(jiff::Timestamp::constant(1300819380, 0).into());
         claims.registered.issuer = Some("joe".into());
 
         let token = Token::new((), claims, Compact::new());

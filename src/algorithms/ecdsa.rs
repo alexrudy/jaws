@@ -20,7 +20,7 @@
 //! - ES256: ECDSA using P-256 and SHA-256
 //! - ES384: ECDSA using P-384 and SHA-384
 #![cfg_attr(
-    all(feature = "p256", feature = "fmt"),
+    all(feature = "p256", feature = "fmt", feature = "claims"),
     doc = r#"
 # Examples:
 

@@ -22,7 +22,7 @@ default-target = "x86_64-unknown-linux-gnu"
 [dependencies]
 base64ct = { version = "1.8", features = ["std"] }
 bytes = { version = "1.12" }
-chrono = { version = "0.4", features = ["serde"], default-features = false }
+jiff = { version = "1", optional = true }
 crypto-bigint = { version = "0.7", features = ["alloc"], optional = true }
 der = { version = "0.8", optional = true }
 digest = { version = "0.11" }
@@ -55,7 +55,7 @@ static_assertions = "1.1.0"
 rand = "0.10"
 
 [features]
-default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac"]
+default = ["fmt", "rsa", "ecdsa", "p256", "p384", "p521", "hmac", "claims"]
 fmt = []
 rand = ["dep:rand_core"]
 rsa = ["dep:rsa", "dep:crypto-bigint"]
@@ -69,6 +69,7 @@ spki = ["dep:spki"]
 der = ["dep:der"]
 ed25519 = []
 none = []
+claims = ["dep:jiff"]
 
 [[example]]
 name = "acme-new-account"
@@ -78,13 +79,13 @@ required-features = ["fmt", "rsa"]
 [[example]]
 name = "rfc7515-a2"
 path = "examples/rfc7515a2.rs"
-required-features = ["fmt", "rsa"]
+required-features = ["fmt", "rsa", "claims"]
 doc-scrape-examples = true
 
 [[example]]
 name = "dyn-key"
 path = "examples/dyn-key.rs"
-required-features = ["fmt", "rsa"]
+required-features = ["fmt", "rsa", "claims"]
 doc-scrape-examples = true
 
 [[example]]
@@ -95,13 +96,13 @@ required-features = ["fmt", "rsa"]
 [[test]]
 name = "dyn-rsa-key"
 path = "tests/dyn-rsa-key.rs"
-required-features = ["fmt", "rsa"]
+required-features = ["fmt", "rsa", "claims"]
 doc-scrape-examples = true
 
 [[test]]
 name = "web-key-rsa"
 path = "tests/web-key-rsa.rs"
-required-features = ["fmt", "rsa"]
+required-features = ["fmt", "rsa", "claims"]
 doc-scrape-examples = true
 
 # Pin transitive dependencies without triggering `unused` warnings

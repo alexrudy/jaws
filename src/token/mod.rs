@@ -372,7 +372,7 @@ impl<P, State: MaybeSigned, Fmt: TokenFormat> Token<P, State, Fmt> {
     /// let header = token.header();
     /// assert_eq!(&header.r#type(), &None);
     /// ```
-    pub fn header(&'_ self) -> HeaderAccess<'_, State::Header, State::HeaderState> {
+    pub fn header(&self) -> HeaderAccess<'_, State::Header, State::HeaderState> {
         HeaderAccess::new(self.state.header())
     }
 }

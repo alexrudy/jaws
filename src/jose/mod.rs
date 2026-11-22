@@ -372,6 +372,7 @@ where
 
 /// Access to the header fields of a JOSE header.
 #[derive(Debug)]
+#[must_use = "header access should be used immediately"]
 pub struct HeaderAccess<'h, H, State> {
     header: &'h Header<H, State>,
 }
@@ -500,6 +501,7 @@ where
 }
 
 /// Mutable access to header fields of a JOSE header.
+#[must_use = "header access should be used immediately"]
 pub struct HeaderAccessMut<'h, H, State> {
     header: &'h mut Header<H, State>,
 }

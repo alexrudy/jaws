@@ -366,7 +366,7 @@ where
         algorithm: AlgorithmIdentifier,
     ) -> Result<K, UnsupportedAlgorithmError> {
         if !self.supports_algorithm(algorithm) {
-            return Err(UnsupportedAlgorithmError::from(algorithm));
+            return Err(algorithm.into());
         }
         Ok(self)
     }
@@ -475,7 +475,7 @@ where
         algorithm: AlgorithmIdentifier,
     ) -> Result<Self::Key, UnsupportedAlgorithmError> {
         if !self.supports_algorithm(algorithm) {
-            return Err(UnsupportedAlgorithmError::from(algorithm));
+            return Err(algorithm.into());
         }
         Ok(self)
     }

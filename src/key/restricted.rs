@@ -75,7 +75,7 @@ impl<K> Restricted<K> {
     }
 
     /// Returns whether the algorithm is supported by this key.
-    pub fn supports_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
+    pub fn allows_algorithm(&self, algorithm: AlgorithmIdentifier) -> bool {
         self.allowed_algorithms.contains(&algorithm)
     }
 
@@ -84,7 +84,7 @@ impl<K> Restricted<K> {
         &self,
         algorithm: AlgorithmIdentifier,
     ) -> Result<(), UnsupportedAlgorithmError> {
-        if self.supports_algorithm(algorithm) {
+        if self.allows_algorithm(algorithm) {
             Ok(())
         } else {
             Err(algorithm.into())
@@ -111,7 +111,7 @@ where
         payload: &[u8],
         signature: &[u8],
     ) -> Result<SignatureBytes, signature::Error> {
-        if !self.supports_algorithm(self.identifier()) {
+        if !self.allows_algorithm(self.identifier()) {
             return Err(signature::Error::from_source(
                 RestrictedAlgorithmError::from(self.identifier()),
             ));
@@ -157,7 +157,7 @@ where
         header: &str,
         payload: &str,
     ) -> Result<SignatureBytes, signature::Error> {
-        if !self.supports_algorithm(self.identifier()) {
+        if !self.allows_algorithm(self.identifier()) {
             return Err(signature::Error::from_source(
                 RestrictedAlgorithmError::from(self.identifier()),
             ));
@@ -279,14 +279,14 @@ mod tests {
 
         assert!(
             keyset.verify_token_any(token.clone()).is_ok(),
-            "signing should succeed with None algorithm"
+            "verify should succeed with None algorithm"
         );
 
         let restricted_keyset = Restricted::all(keyset);
 
         assert!(
             restricted_keyset.verify_token_any(token).is_err(),
-            "signing should fail with None algorithm"
+            "verify should fail with None algorithm"
         );
     }
 }

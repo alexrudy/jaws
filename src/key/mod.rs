@@ -33,7 +33,7 @@ pub use self::jwks::{JWKSetVerifyError, JWKSetVerifyErrorKind, JwkSet, VerifyJWK
 pub use self::restricted::{Restricted, RestrictedAlgorithmError};
 
 /// Error when an algorithm is not supported.
-#[derive(Debug, Clone, Copy, thiserror::Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("unsupported algorithm: {0}")]
 pub struct UnsupportedAlgorithmError(pub AlgorithmIdentifier);
 
@@ -755,7 +755,7 @@ impl<Key> Identified<Key> {
         Self { key, id: None }
     }
 
-    /// Returns the identifier of the key.
+    /// Sets the identifier of the key.
     pub fn with_id(self, id: String) -> Self {
         Self {
             id: Some(id),

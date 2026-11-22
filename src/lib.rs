@@ -1,7 +1,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(all(feature = "rsa", feature = "fmt"), doc = include_str!("../README.md"))]
+#![cfg_attr(all(feature = "rsa", feature = "fmt", feature = "claims"), doc = include_str!("../README.md"))]
 #![cfg_attr(
-    not(all(feature = "rsa", feature = "fmt")),
+    not(all(feature = "rsa", feature = "fmt", feature = "claims")),
     doc = "# JAWS: JSON Web tokens
 
 JSON Web Tokens are used to send signed, authenticated and/or encrypted data using

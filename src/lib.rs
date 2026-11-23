@@ -58,7 +58,7 @@ pub mod token;
 pub use algorithms::{SignatureBytes, TokenSigner, TokenVerifier};
 
 #[cfg(feature = "claims")]
-pub use claims::{Claims, RegisteredClaims};
+pub use claims::{Claims, RegisteredClaims, jiff_jwt_serde};
 #[cfg(feature = "fmt")]
 pub use fmt::JWTFormat;
 pub use token::Token;

@@ -20,7 +20,7 @@ use crate::fmt;
 
 /// Serializer/deserializer for [jiff::Timestamp] values.
 ///
-/// Use via `with = "jaws::claims::jiff_jwt_serde"` on an `Option<Timestamp>` field.
+/// Use via `with = "jaws::jiff_jwt_serde"` on an `Option<Timestamp>` field.
 pub mod jiff_jwt_serde {
     use serde::{Deserialize, Serialize, de};
 
